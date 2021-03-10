@@ -1,0 +1,4 @@
+/target
+/trash
+/Cargo.lock
+*.dat
