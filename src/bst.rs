@@ -5,16 +5,6 @@ use std::cmp::Ordering::*;
 
 
 
-// #[derive(Debug)]
-// enum RemoveError {
-//     DidNotExist,
-//     WasEqual,
-//     ParentHadTwoChildren,
-// }
-
-
-
-
 struct Node {
     value: i32,
     l: Option<Box<Node>>,
@@ -32,6 +22,11 @@ impl Node {
 
     fn new(value: i32) -> Self {
         Self { value, l: None, r: None }
+    }
+
+    fn len(&self) -> usize {
+        self.l.as_ref().map_or(0, |l| l.len()) +
+        self.r.as_ref().map_or(0, |r| r.len()) + 1
     }
 
     fn contains(&self, value: i32) -> bool {
@@ -73,49 +68,53 @@ impl Node {
                     Less    => Self::remove(&mut n.l, value),
                     Greater => Self::remove(&mut n.r, value),
                     Equal => {
-                        match (n.l.take(), n.r.take()) {
+                        *node = match (n.l.take(), n.r.take()) {
                             (None, None) => {
-                                *node = None;
+                                None
                             }
                             (Some(l), None) => {
-                                *node = Some(l)
+                                Some(l)
                             }
                             (None, Some(r)) => {
-                                *node = Some(r)
+                                Some(r)
                             }
-                            _ => {}
-                        }
+                            (Some(l), Some(r)) => {
+
+                                // 1. Find successor node, E, E's maybe-parent G, and E's maybe-child F
+                                // 2. Transplant F from E to G
+                                // 3. Supplant D with E
+
+                                todo!()
+                            }
+                        };
                     }
                 }
             }
-            None => todo!()
+            None => {}
         }
     }
 
 
 
 
-    // ========================================================================
-    fn successor(&self, value: i32) -> Option<&Node> {
-        match value.cmp(&self.value) {
-            Greater|Equal => self.r.as_ref().and_then(|r| r.successor(value)),
-            Less          => self.l.as_ref().and_then(|l| l.successor(value)).or(Some(self))
+    /**
+     * Return this node with its minimum value removed. The node must have a
+     * left child.
+     */
+    fn take_min(mut node: Box<Self>) -> (Box<Self>, i32) {
+        if node.l.as_ref().unwrap().l.is_none() {
+            let Node { value, l, r } = *node.l.unwrap();
+            let new_node = Node {
+                value: node.value,
+                l: None,
+                r: node.r
+            };
+            (Box::new(new_node), value)
+        } else {
+            let (new_l, min) = Self::take_min(node.l.take().unwrap());
+            node.l = Some(new_l);
+            (node, min)
         }
-    }
-
-    fn predecessor(&self, value: i32) -> Option<&Node> {
-        match value.cmp(&self.value) {
-            Less|Equal    => self.l.as_ref().and_then(|l| l.predecessor(value)),
-            Greater       => self.r.as_ref().and_then(|r| r.predecessor(value)).or(Some(self))
-        }
-    }
-
-    fn min(&self) -> &Node {
-        self.l.as_ref().map_or(self, |l| l.min())
-    }
-
-    fn max(&self) -> &Node {
-        self.r.as_ref().map_or(self, |r| r.max())
     }
 }
 
@@ -136,6 +135,10 @@ impl Tree {
         Self { root: None }
     }
 
+    fn len(&self) -> usize {
+        self.root.as_ref().map_or(0, |root| root.len())
+    }
+
     pub fn contains(&self, value: i32) -> bool {
         self.root.as_ref().map_or(false, |root| root.contains(value))
     }
@@ -151,17 +154,6 @@ impl Tree {
     pub fn remove(&mut self, value: i32) {
         Node::remove(&mut self.root, value)
     }
-
-
-
-
-    // ========================================================================
-    fn successor(&self, value: i32) -> Option<&Node> {
-        self.root.as_ref().and_then(|root| root.successor(value))
-    }
-    fn predecessor(&self, value: i32) -> Option<&Node> {
-        self.root.as_ref().and_then(|root| root.predecessor(value))
-    }
 }
 
 
@@ -169,7 +161,7 @@ impl Tree {
 
 mod test {
 
-    use crate::bst::Tree;
+    use crate::bst::{Tree, Node};
 
     fn ordered_tree() -> Tree {
         let mut tree = Tree::new();
@@ -199,20 +191,6 @@ mod test {
         assert!(!tree.contains(12));
     }
 
-    fn successor_works_on(tree: Tree) {
-        assert_eq!(tree.successor(-3).unwrap().value, -2);
-        assert_eq!(tree.successor(10).unwrap().value, 11);
-        assert_eq!(tree.successor(12).unwrap().value, 15);
-        assert!(tree.successor(16).is_none());
-    }
-
-    fn predecessor_works_on(tree: Tree) {
-        assert_eq!(tree.predecessor(10).unwrap().value, -2);
-        assert_eq!(tree.predecessor(11).unwrap().value, 10);
-        assert_eq!(tree.predecessor(15).unwrap().value, 11);
-        assert!(tree.predecessor(-2).is_none());
-    }
-
     fn remove_value_works_on(mut tree: Tree) {
         assert!(tree.contains(-2));
         tree.remove(-2);
@@ -221,30 +199,33 @@ mod test {
         assert!(tree.contains(15));
         tree.remove(15);
         assert!(!tree.contains(15));
+
+        tree.remove(0);
+        assert_eq!(tree.len(), 3);
     }
 
     #[test]
-    fn tree_successor_works_on_ordered_tree() {
-        successor_works_on(ordered_tree());
-    }
-
-    #[test]
-    fn tree_successor_works_on_random_tree() {
-        successor_works_on(random_tree());
-    }
-
-    #[test]
-    fn tree_predecessor_works_on_ordered_tree() {
-        predecessor_works_on(ordered_tree());
-    }
-
-    #[test]
-    fn tree_predecessor_works_on_random_tree() {
-        predecessor_works_on(random_tree());
+    fn tree_len_is_correct() {
+        assert_eq!(ordered_tree().len(), 5);
+        assert_eq!(random_tree().len(), 5);
     }
 
     #[test]
     fn remove_value_works_on_ordered_tree() {
         remove_value_works_on(ordered_tree());
+    }
+
+    // #[test]
+    // fn remove_value_works_on_random_tree() {
+    //     remove_value_works_on(random_tree());
+    // }
+
+    #[test]
+    fn can_take_min_node() {
+        let tree = random_tree();
+        let (root, min) = Node::take_min(tree.root.unwrap());
+
+        assert_eq!(min, -2);
+        assert_eq!(root.len(), 4);
     }
 }
