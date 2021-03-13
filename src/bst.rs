@@ -5,13 +5,30 @@ use std::cmp::Ordering::*;
 
 
 
+// #[derive(Debug)]
+// enum RemoveError {
+//     DidNotExist,
+//     WasEqual,
+//     ParentHadTwoChildren,
+// }
+
+
+
+
 struct Node {
     value: i32,
     l: Option<Box<Node>>,
     r: Option<Box<Node>>,
 }
 
+
+
+
+// ============================================================================
 impl Node {
+
+
+
 
     fn new(value: i32) -> Self {
         Self { value, l: None, r: None }
@@ -49,6 +66,36 @@ impl Node {
 
 
     // ========================================================================
+    fn remove(node: &mut Option<Box<Node>>, value: i32) {
+        match node {
+            Some(n) => {
+                match value.cmp(&n.value) {
+                    Less    => Self::remove(&mut n.l, value),
+                    Greater => Self::remove(&mut n.r, value),
+                    Equal => {
+                        match (n.l.take(), n.r.take()) {
+                            (None, None) => {
+                                *node = None;
+                            }
+                            (Some(l), None) => {
+                                *node = Some(l)
+                            }
+                            (None, Some(r)) => {
+                                *node = Some(r)
+                            }
+                            _ => {}
+                        }
+                    }
+                }
+            }
+            None => todo!()
+        }
+    }
+
+
+
+
+    // ========================================================================
     fn successor(&self, value: i32) -> Option<&Node> {
         match value.cmp(&self.value) {
             Greater|Equal => self.r.as_ref().and_then(|r| r.successor(value)),
@@ -76,12 +123,13 @@ impl Node {
 
 
 struct Tree {
-    root: Option<Node>
+    root: Option<Box<Node>>
 }
 
 
 
 
+// ============================================================================
 impl Tree {
 
     pub fn new() -> Self {
@@ -96,8 +144,12 @@ impl Tree {
         if let Some(root) = &mut self.root {
             root.insert(value)
         } else {
-            self.root = Some(Node::new(value))
+            self.root = Some(Box::new(Node::new(value)))
         }
+    }
+
+    pub fn remove(&mut self, value: i32) {
+        Node::remove(&mut self.root, value)
     }
 
 
@@ -161,6 +213,16 @@ mod test {
         assert!(tree.predecessor(-2).is_none());
     }
 
+    fn remove_value_works_on(mut tree: Tree) {
+        assert!(tree.contains(-2));
+        tree.remove(-2);
+        assert!(!tree.contains(-2));
+
+        assert!(tree.contains(15));
+        tree.remove(15);
+        assert!(!tree.contains(15));
+    }
+
     #[test]
     fn tree_successor_works_on_ordered_tree() {
         successor_works_on(ordered_tree());
@@ -179,5 +241,10 @@ mod test {
     #[test]
     fn tree_predecessor_works_on_random_tree() {
         predecessor_works_on(random_tree());
+    }
+
+    #[test]
+    fn remove_value_works_on_ordered_tree() {
+        remove_value_works_on(ordered_tree());
     }
 }
