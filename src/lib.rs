@@ -1,2 +1,2 @@
 pub mod quilt;
-pub mod bst2;
+pub mod bst;
