@@ -91,29 +91,27 @@ impl<T: Ord> Node<T> {
                 match value.cmp(&n.value) {
                     Less    => Self::remove(&mut n.l, value),
                     Greater => Self::remove(&mut n.r, value),
-                    Equal   => {
-                        match (n.l.take(), n.r.take()) {
-                            (None, None) => {
-                                *node = None
-                            }
-                            (Some(l), None) => {
-                                *node = Some(l)
-                            }
-                            (None, Some(r)) => {
-                                *node = Some(r)
-                            }
-                            (Some(l), Some(r)) => {
-                                if l.len() > r.len() {
-                                    let (new_r, min_r) = r.take_min();
-                                    n.value = min_r;
-                                    n.l = Some(l);
-                                    n.r = new_r;
-                                } else {
-                                    let (new_l, max_l) = l.take_max();
-                                    n.value = max_l;
-                                    n.l = new_l;                                    
-                                    n.r = Some(r);
-                                }
+                    Equal   => match (n.l.take(), n.r.take()) {
+                        (None, None) => {
+                            *node = None
+                        }
+                        (Some(l), None) => {
+                            *node = Some(l)
+                        }
+                        (None, Some(r)) => {
+                            *node = Some(r)
+                        }
+                        (Some(l), Some(r)) => {
+                            if r.len() > l.len() {
+                                let (new_r, min_r) = r.take_min();
+                                n.value = min_r;
+                                n.l = Some(l);
+                                n.r = new_r;
+                            } else {
+                                let (new_l, max_l) = l.take_max();
+                                n.value = max_l;
+                                n.l = new_l;                                    
+                                n.r = Some(r);
                             }
                         }
                     }
@@ -213,6 +211,64 @@ impl<T: Ord> Tree<T> {
 
 
 // ============================================================================
+impl<T> IntoIterator for Tree<T> {
+    type Item = T;
+    type IntoIter = TreeIntoIter<T>;
+
+    fn into_iter(self) -> Self::IntoIter {
+        TreeIntoIter::new(self)
+    }
+}
+
+
+
+
+// ============================================================================
+pub struct TreeIntoIter<T> {
+    nodes: Vec<Node<T>>
+}
+
+impl<T> TreeIntoIter<T> {
+    fn new(tree: Tree<T>) -> Self {
+        Self {
+            nodes: tree.root.into_iter().map(|root| *root).collect()
+        }
+    }
+}
+
+impl<T> Iterator for TreeIntoIter<T> {
+    type Item = T;
+
+    fn next(&mut self) -> Option<Self::Item> {
+
+        /*
+         * While the last node on the stack (A) has a left child B, push B onto
+         * the stack.
+         *
+         * If B has a right child C, then push C onto the stack.
+         *
+         * Yield the value of B.
+         */
+
+        while let Some(l) = self.nodes.last_mut().and_then(|n| n.l.take()) {
+            self.nodes.push(*l)
+        }
+
+        if let Some(mut node) = self.nodes.pop() {
+            if let Some(r) = node.r.take() {
+                self.nodes.push(*r)
+            }
+            Some(node.value)
+        } else {
+            None
+        }
+    }
+}
+
+
+
+
+// ============================================================================
 #[cfg(test)]
 mod test {
 
@@ -287,5 +343,23 @@ mod test {
 
         assert_eq!(min, -2);
         assert_eq!(root.unwrap().len(), 4);
+    }
+
+    #[test]
+    fn can_iterate_tree() {
+        let mut iter = ordered_tree().into_iter();
+        assert_eq!(iter.next(), Some(-2));
+        assert_eq!(iter.next(), Some(10));
+        assert_eq!(iter.next(), Some(11));
+        assert_eq!(iter.next(), Some(15));
+        assert_eq!(iter.next(), Some(16));
+        assert_eq!(iter.next(), None);
+
+        let mut vec = Vec::new();
+
+        for value in random_tree() {
+            vec.push(value)
+        }
+        assert_eq!(vec, vec![-2, 10, 11, 15, 16]);
     }
 }
