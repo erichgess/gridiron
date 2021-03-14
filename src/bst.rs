@@ -3,17 +3,20 @@ use std::cmp::Ordering::*;
 
 
 
-struct Node {
-    value: i32,
-    l: Option<Box<Node>>,
-    r: Option<Box<Node>>,
+/**
+ * A node in a binary search tree
+ */
+struct Node<T> {
+    value: T,
+    l: Option<Box<Node<T>>>,
+    r: Option<Box<Node<T>>>,
 }
 
 
 
 
 // ============================================================================
-impl Node {
+impl<T: Ord> Node<T> {
 
 
 
@@ -21,7 +24,7 @@ impl Node {
     /**
      * Create an empty sub-tree with the given value
      */
-    fn new(value: i32) -> Self {
+    fn new(value: T) -> Self {
         Self { value, l: None, r: None }
     }
 
@@ -42,7 +45,7 @@ impl Node {
     /**
      * Return true of the given value exists in this sub-tree.
      */
-    fn contains(&self, value: i32) -> bool {
+    fn contains(&self, value: T) -> bool {
         match value.cmp(&self.value) {
             Less    => self.l.as_ref().map_or(false, |l| l.contains(value)),
             Greater => self.r.as_ref().map_or(false, |r| r.contains(value)),
@@ -56,7 +59,7 @@ impl Node {
     /**
      * Insert a node with the given value into this sub-tree.
      */
-    fn insert(&mut self, value: i32) {
+    fn insert(&mut self, value: T) {
         match value.cmp(&self.value) {
             Less => {
                 if let Some(l) = &mut self.l {
@@ -82,7 +85,7 @@ impl Node {
     /**
      * Remove a node with the given value from this sub-tree.
      */
-    fn remove(node: &mut Option<Box<Node>>, value: i32) {
+    fn remove(node: &mut Option<Box<Node<T>>>, value: T) {
         match node {
             Some(n) => {
                 match value.cmp(&n.value) {
@@ -127,7 +130,7 @@ impl Node {
      * Return this sub-tree, but with the left-most descendant node removed.
      * Also return the value of that node.
      */
-    fn take_min(mut self: Box<Self>) -> (Option<Box<Self>>, i32) {
+    fn take_min(mut self: Box<Self>) -> (Option<Box<Self>>, T) {
         if let Some(l) = self.l {
             if l.l.is_none() {
                 self.l = None;
@@ -149,7 +152,7 @@ impl Node {
      * Return this sub-tree, but with the right-most descendant node removed.
      * Also return the value of that node.
      */
-    fn take_max(mut self: Box<Self>) -> (Option<Box<Self>>, i32) {
+    fn take_max(mut self: Box<Self>) -> (Option<Box<Self>>, T) {
         if let Some(r) = self.r {
             if r.r.is_none() {
                 self.r = None;
@@ -168,15 +171,18 @@ impl Node {
 
 
 
-struct Tree {
-    root: Option<Box<Node>>
+/**
+ * A binary search tree
+ */
+pub struct Tree<T> {
+    root: Option<Box<Node<T>>>
 }
 
 
 
 
 // ============================================================================
-impl Tree {
+impl<T: Ord> Tree<T> {
 
     pub fn new() -> Self {
         Self { root: None }
@@ -186,11 +192,11 @@ impl Tree {
         self.root.as_ref().map_or(0, |root| root.len())
     }
 
-    pub fn contains(&self, value: i32) -> bool {
+    pub fn contains(&self, value: T) -> bool {
         self.root.as_ref().map_or(false, |root| root.contains(value))
     }
 
-    pub fn insert(&mut self, value: i32) {
+    pub fn insert(&mut self, value: T) {
         if let Some(root) = &mut self.root {
             root.insert(value)
         } else {
@@ -198,7 +204,7 @@ impl Tree {
         }
     }
 
-    pub fn remove(&mut self, value: i32) {
+    pub fn remove(&mut self, value: T) {
         Node::remove(&mut self.root, value)
     }
 }
@@ -206,11 +212,13 @@ impl Tree {
 
 
 
+// ============================================================================
+#[cfg(test)]
 mod test {
 
     use crate::bst::Tree;
 
-    fn ordered_tree() -> Tree {
+    fn ordered_tree() -> Tree<i32> {
         let mut tree = Tree::new();
         tree.insert(-2);
         tree.insert(10);
@@ -220,7 +228,7 @@ mod test {
         tree        
     }
 
-    fn random_tree() -> Tree {
+    fn random_tree() -> Tree<i32> {
         let mut tree = Tree::new();
         tree.insert(15);
         tree.insert(16);
@@ -230,15 +238,7 @@ mod test {
         tree        
     }
 
-    #[test]
-    fn tree_insertion_works() {
-        let tree = ordered_tree();
-        assert!(tree.contains(10));
-        assert!(tree.contains(11));
-        assert!(!tree.contains(12));
-    }
-
-    fn remove_value_works_on(mut tree: Tree) {
+    fn remove_value_works_on(mut tree: Tree<i32>) {
         assert!(tree.contains(-2));
         tree.remove(-2);
         assert!(!tree.contains(-2));
@@ -254,6 +254,14 @@ mod test {
         assert!(tree.contains(11));
         tree.remove(11);
         assert!(!tree.contains(11));
+    }
+
+    #[test]
+    fn tree_insertion_works() {
+        let tree = ordered_tree();
+        assert!(tree.contains(10));
+        assert!(tree.contains(11));
+        assert!(!tree.contains(12));
     }
 
     #[test]
