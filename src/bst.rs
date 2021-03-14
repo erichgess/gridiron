@@ -32,11 +32,41 @@ impl<T: Ord> Node<T> {
 
 
     /**
+     * Create a sub-tree from a slice, which is into_balanced if the slice is sorted,
+     */
+    fn from_slice(slice: &mut [Option<T>]) -> Option<Box<Self>> {
+        if slice.is_empty() {
+            None
+        } else {
+            let mid = slice.len() / 2;
+            Some(Box::new(Self {
+                value: slice[mid].take().unwrap(),
+                l: Self::from_slice(&mut slice[..mid]),
+                r: Self::from_slice(&mut slice[mid + 1..]),
+            }))
+        }
+    }
+
+
+
+
+    /**
      * Return the number of nodes contained in this sub-tree (including self).
      */
     fn len(&self) -> usize {
         self.l.as_ref().map_or(0, |l| l.len()) +
         self.r.as_ref().map_or(0, |r| r.len()) + 1
+    }
+
+
+
+
+    /**
+     * Return the height of this sub-tree
+     */
+    fn height(&self) -> usize {
+        self.l.as_ref().map_or(0, |l| l.height()).max(
+        self.r.as_ref().map_or(0, |r| r.height())) + 1
     }
 
 
@@ -73,7 +103,7 @@ impl<T: Ord> Node<T> {
                     r.insert(value)
                 } else {
                     self.r = Some(Box::new(Node::new(value)))
-                }                
+                }
             }
             Equal => {}
         }
@@ -110,7 +140,7 @@ impl<T: Ord> Node<T> {
                             } else {
                                 let (new_l, max_l) = l.take_max();
                                 n.value = max_l;
-                                n.l = new_l;                                    
+                                n.l = new_l;
                                 n.r = Some(r);
                             }
                         }
@@ -190,6 +220,10 @@ impl<T: Ord> Tree<T> {
         self.root.as_ref().map_or(0, |root| root.len())
     }
 
+    pub fn height(&self) -> usize {
+        self.root.as_ref().map_or(0, |root| root.height())
+    }
+
     pub fn contains(&self, value: T) -> bool {
         self.root.as_ref().map_or(false, |root| root.contains(value))
     }
@@ -204,6 +238,26 @@ impl<T: Ord> Tree<T> {
 
     pub fn remove(&mut self, value: T) {
         Node::remove(&mut self.root, value)
+    }
+
+    pub fn into_balanced(self) -> Self {
+        self.into_iter().collect()
+    }
+}
+
+
+
+
+// ============================================================================
+impl<T: Ord> std::iter::FromIterator<T> for Tree<T> {
+    fn from_iter<I>(iter: I) -> Self
+    where
+        I: IntoIterator<Item = T>
+    {
+        let mut values: Vec<_> = iter.into_iter().map(|v| Some(v)).collect();
+        Self {
+            root: Node::from_slice(&mut values[..])
+        }
     }
 }
 
@@ -281,7 +335,7 @@ mod test {
         tree.insert(11);
         tree.insert(15);
         tree.insert(16);
-        tree        
+        tree
     }
 
     fn random_tree() -> Tree<i32> {
@@ -291,7 +345,7 @@ mod test {
         tree.insert(10);
         tree.insert(11);
         tree.insert(-2);
-        tree        
+        tree
     }
 
     fn remove_value_works_on(mut tree: Tree<i32>) {
@@ -324,6 +378,12 @@ mod test {
     fn tree_len_is_correct() {
         assert_eq!(ordered_tree().len(), 5);
         assert_eq!(random_tree().len(), 5);
+    }
+
+    #[test]
+    fn tree_height_is_correct() {
+        assert_eq!(ordered_tree().height(), 5);
+        assert_eq!(random_tree().height(), 3);
     }
 
     #[test]
@@ -361,5 +421,26 @@ mod test {
             vec.push(value)
         }
         assert_eq!(vec, vec![-2, 10, 11, 15, 16]);
+    }
+
+    #[test]
+    fn can_build_tree_from_iter() {
+        let tree: Tree<_> = [-2, 10, 11, 15, 16].iter().collect();
+        assert_eq!(tree.len(), 5);
+    }
+
+    #[test]
+    fn can_balance_tree() {
+        let tree: Tree<_> = (0..0).collect();
+        assert_eq!(tree.into_balanced().height(), 0);
+
+        let tree: Tree<_> = (0..1).collect();
+        assert_eq!(tree.into_balanced().height(), 1);
+
+        let tree: Tree<_> = (0..2).collect();
+        assert_eq!(tree.into_balanced().height(), 2);
+
+        let tree: Tree<_> = (0..1024).collect();
+        assert_eq!(tree.into_balanced().height(), 11);
     }
 }
