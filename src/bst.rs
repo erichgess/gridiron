@@ -79,12 +79,13 @@ impl Node {
                                 Some(r)
                             }
                             (Some(l), Some(r)) => {
-
-                                // 1. Find successor node, E, E's maybe-parent G, and E's maybe-child F
-                                // 2. Transplant F from E to G
-                                // 3. Supplant D with E
-
-                                todo!()
+                                let (new_r, min_r) = Self::take_min(r);
+                                let new_node = Node {
+                                    value: min_r,
+                                    l: Some(l),
+                                    r: new_r,
+                                };
+                                Some(Box::new(new_node))
                             }
                         };
                     }
@@ -101,21 +102,26 @@ impl Node {
      * Return this node with its minimum value removed. The node must have a
      * left child.
      */
-    fn take_min(mut node: Box<Self>) -> (Box<Self>, i32) {
-        if node.l.as_ref().unwrap().l.is_none() {
+    fn take_min(mut node: Box<Self>) -> (Option<Box<Self>>, i32) {
+        if node.l.as_ref().is_none() {
+            let Node { value, .. } = *node;
+            (None, value)
+        }
+        else if node.l.as_ref().unwrap().l.is_none() {
             let Node { value, l, r } = *node.l.unwrap();
             let new_node = Node {
                 value: node.value,
                 l: None,
                 r: node.r
             };
-            (Box::new(new_node), value)
+            (Some(Box::new(new_node)), value)
         } else {
             let (new_l, min) = Self::take_min(node.l.take().unwrap());
-            node.l = Some(new_l);
-            (node, min)
+            node.l = new_l;
+            (Some(node), min)
         }
     }
+
 }
 
 
@@ -215,10 +221,10 @@ mod test {
         remove_value_works_on(ordered_tree());
     }
 
-    // #[test]
-    // fn remove_value_works_on_random_tree() {
-    //     remove_value_works_on(random_tree());
-    // }
+    #[test]
+    fn remove_value_works_on_random_tree() {
+        remove_value_works_on(random_tree());
+    }
 
     #[test]
     fn can_take_min_node() {
@@ -226,6 +232,6 @@ mod test {
         let (root, min) = Node::take_min(tree.root.unwrap());
 
         assert_eq!(min, -2);
-        assert_eq!(root.len(), 4);
+        assert_eq!(root.unwrap().len(), 4);
     }
 }
