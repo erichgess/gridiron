@@ -20,15 +20,30 @@ impl Node {
 
 
 
+    /**
+     * Create an empty sub-tree with the given value
+     */
     fn new(value: i32) -> Self {
         Self { value, l: None, r: None }
     }
 
+
+
+
+    /**
+     * Return the number of nodes contained in this sub-tree (including self).
+     */
     fn len(&self) -> usize {
         self.l.as_ref().map_or(0, |l| l.len()) +
         self.r.as_ref().map_or(0, |r| r.len()) + 1
     }
 
+
+
+
+    /**
+     * Return true of the given value exists in this sub-tree.
+     */
     fn contains(&self, value: i32) -> bool {
         match value.cmp(&self.value) {
             Less    => self.l.as_ref().map_or(false, |l| l.contains(value)),
@@ -37,6 +52,12 @@ impl Node {
         }
     }
 
+
+
+
+    /**
+     * Insert a node with the given value into this sub-tree.
+     */
     fn insert(&mut self, value: i32) {
         match value.cmp(&self.value) {
             Less => {
@@ -60,34 +81,40 @@ impl Node {
 
 
 
-    // ========================================================================
+    /**
+     * Remove a node with the given value from this sub-tree.
+     */
     fn remove(node: &mut Option<Box<Node>>, value: i32) {
         match node {
             Some(n) => {
                 match value.cmp(&n.value) {
                     Less    => Self::remove(&mut n.l, value),
                     Greater => Self::remove(&mut n.r, value),
-                    Equal => {
-                        *node = match (n.l.take(), n.r.take()) {
+                    Equal   => {
+                        match (n.l.take(), n.r.take()) {
                             (None, None) => {
-                                None
+                                *node = None
                             }
                             (Some(l), None) => {
-                                Some(l)
+                                *node = Some(l)
                             }
                             (None, Some(r)) => {
-                                Some(r)
+                                *node = Some(r)
                             }
                             (Some(l), Some(r)) => {
-                                let (new_r, min_r) = Self::take_min(r);
-                                let new_node = Node {
-                                    value: min_r,
-                                    l: Some(l),
-                                    r: new_r,
-                                };
-                                Some(Box::new(new_node))
+                                if l.len() > r.len() {
+                                    let (new_r, min_r) = r.take_min();
+                                    n.value = min_r;
+                                    n.l = Some(l);
+                                    n.r = new_r;
+                                } else {
+                                    let (new_l, max_l) = l.take_max();
+                                    n.value = max_l;
+                                    n.l = new_l;                                    
+                                    n.r = Some(r);
+                                }
                             }
-                        };
+                        }
                     }
                 }
             }
@@ -99,29 +126,45 @@ impl Node {
 
 
     /**
-     * Return this node with its minimum value removed. The node must have a
-     * left child.
+     * Return this sub-tree, but with the left-most descendant node removed.
+     * Also return the value of that node.
      */
-    fn take_min(mut node: Box<Self>) -> (Option<Box<Self>>, i32) {
-        if node.l.as_ref().is_none() {
-            let Node { value, .. } = *node;
-            (None, value)
-        }
-        else if node.l.as_ref().unwrap().l.is_none() {
-            let Node { value, l, r } = *node.l.unwrap();
-            let new_node = Node {
-                value: node.value,
-                l: None,
-                r: node.r
-            };
-            (Some(Box::new(new_node)), value)
+    fn take_min(mut self: Box<Self>) -> (Option<Box<Self>>, i32) {
+        if let Some(l) = self.l {
+            if l.l.is_none() {
+                self.l = None;
+                (Some(self), l.value)
+            } else {
+                let (new_l, min) = l.take_min();
+                self.l = new_l;
+                (Some(self), min)
+            }
         } else {
-            let (new_l, min) = Self::take_min(node.l.take().unwrap());
-            node.l = new_l;
-            (Some(node), min)
+            (None, self.value)
         }
     }
 
+
+
+
+    /**
+     * Return this sub-tree, but with the right-most descendant node removed.
+     * Also return the value of that node.
+     */
+    fn take_max(mut self: Box<Self>) -> (Option<Box<Self>>, i32) {
+        if let Some(r) = self.r {
+            if r.r.is_none() {
+                self.r = None;
+                (Some(self), r.value)
+            } else {
+                let (new_r, max) = r.take_max();
+                self.r = new_r;
+                (Some(self), max)
+            }
+        } else {
+            (None, self.value)
+        }
+    }
 }
 
 
@@ -141,7 +184,7 @@ impl Tree {
         Self { root: None }
     }
 
-    fn len(&self) -> usize {
+    pub fn len(&self) -> usize {
         self.root.as_ref().map_or(0, |root| root.len())
     }
 
@@ -206,8 +249,13 @@ mod test {
         tree.remove(15);
         assert!(!tree.contains(15));
 
+        assert_eq!(tree.len(), 3);
         tree.remove(0);
         assert_eq!(tree.len(), 3);
+
+        assert!(tree.contains(11));
+        tree.remove(11);
+        assert!(!tree.contains(11));
     }
 
     #[test]
@@ -229,7 +277,7 @@ mod test {
     #[test]
     fn can_take_min_node() {
         let tree = random_tree();
-        let (root, min) = Node::take_min(tree.root.unwrap());
+        let (root, min) = tree.root.unwrap().take_min();
 
         assert_eq!(min, -2);
         assert_eq!(root.unwrap().len(), 4);
