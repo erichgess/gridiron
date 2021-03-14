@@ -184,6 +184,22 @@ impl<T: Ord> Node<T> {
             (None, self.value)
         }
     }
+
+
+
+
+    /**
+     * Return a list of node references forming a path from this node to its
+     * leftmost node.
+     */
+    fn min_path(&self) -> Vec<&Self> {
+        let mut path = vec![self];
+
+        while let Some(l) = path.last().and_then(|b| b.l.as_ref()) {
+            path.push(l)
+        }
+        path
+    }
 }
 
 
@@ -229,6 +245,14 @@ impl<T: Ord> Tree<T> {
     pub fn into_balanced(self) -> Self {
         self.into_iter().collect()
     }
+
+    pub fn iter<'a>(&'a self) -> TreeIter<'a, T> {
+        TreeIter::new(self)
+    }
+
+    fn min_path(&self) -> Vec<&Node<T>> {
+        self.root.as_ref().map_or(Vec::new(), |root| root.min_path())
+    }
 }
 
 
@@ -241,19 +265,6 @@ impl<T: Ord> FromIterator<T> for Tree<T> {
         Self {
             root: Node::from_slice(&mut values[..])
         }
-    }
-}
-
-
-
-
-// ============================================================================
-impl<T> IntoIterator for Tree<T> {
-    type Item = T;
-    type IntoIter = TreeIntoIter<T>;
-
-    fn into_iter(self) -> Self::IntoIter {
-        TreeIntoIter::new(self)
     }
 }
 
@@ -278,14 +289,14 @@ impl<T> Iterator for TreeIntoIter<T> {
 
     fn next(&mut self) -> Option<Self::Item> {
 
-        /*
-         * While the last node on the stack (A) has a left child B, push B onto
-         * the stack.
-         *
-         * If B has a right child C, then push C onto the stack.
-         *
-         * Yield the value of B.
-         */
+       /*
+        * While the last node on the stack (A) has a left child B, take B from A
+        * and push it onto the stack.
+        *
+        * If B has a right child C, then push C onto the stack.
+        *
+        * Yield the value of B.
+        */
 
         while let Some(l) = self.nodes.last_mut().and_then(|n| n.l.take()) {
             self.nodes.push(*l)
@@ -299,6 +310,65 @@ impl<T> Iterator for TreeIntoIter<T> {
         } else {
             None
         }
+    }
+}
+
+impl<T> IntoIterator for Tree<T> {
+    type Item = T;
+    type IntoIter = TreeIntoIter<T>;
+
+    fn into_iter(self) -> Self::IntoIter {
+        TreeIntoIter::new(self)
+    }
+}
+
+
+
+
+// ============================================================================
+pub struct TreeIter<'a, T> {
+    nodes: Vec<&'a Node<T>>
+}
+
+impl<'a, T> TreeIter<'a, T> where T: Ord {
+    fn new(tree: &'a Tree<T>) -> Self {
+        Self {
+            nodes: tree.min_path()
+        }
+    }
+}
+
+impl<'a, T> Iterator for TreeIter<'a, T> where T: Ord {
+    type Item = &'a T;
+
+    fn next(&mut self) -> Option<Self::Item> {
+
+       /*
+        * Pop the last node on the stack (A).
+        *
+        * If A has a right child (B) then push B onto the stack, followed by the
+        * path to its minumum node.
+        *
+        * Yield the value of A.
+        */
+
+        if let Some(a) = self.nodes.pop() {
+            if let Some(b) = &a.r {
+                self.nodes.extend(b.min_path());
+            }
+            Some(&a.value)
+        } else {
+            None
+        }
+    }
+}
+
+impl<'a, T> IntoIterator for &'a Tree<T> where T: Ord {
+    type Item = &'a T;
+    type IntoIter = TreeIter<'a, T>;
+
+    fn into_iter(self) -> Self::IntoIter {
+        TreeIter::new(self)
     }
 }
 
@@ -389,7 +459,7 @@ mod test {
     }
 
     #[test]
-    fn can_iterate_tree() {
+    fn tree_into_iter_works() {
         let mut iter = ordered_tree().into_iter();
         assert_eq!(iter.next(), Some(-2));
         assert_eq!(iter.next(), Some(10));
@@ -404,6 +474,26 @@ mod test {
             vec.push(value)
         }
         assert_eq!(vec, vec![-2, 10, 11, 15, 16]);
+    }
+
+    #[test]
+    fn tree_iter_works() {
+        let tree = ordered_tree();
+        let mut iter = tree.iter();
+        assert_eq!(iter.next(), Some(&-2));
+        assert_eq!(iter.next(), Some(&10));
+        assert_eq!(iter.next(), Some(&11));
+        assert_eq!(iter.next(), Some(&15));
+        assert_eq!(iter.next(), Some(&16));
+        assert_eq!(iter.next(), None);
+
+        let tree = random_tree();
+        let mut vec = Vec::new();
+
+        for value in &tree {
+            vec.push(value)
+        }
+        assert_eq!(vec, vec![&-2, &10, &11, &15, &16]);
     }
 
     #[test]
