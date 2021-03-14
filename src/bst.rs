@@ -1,5 +1,3 @@
-#![allow(unused)]
-
 use std::cmp::Ordering::*;
 
 
@@ -210,7 +208,7 @@ impl Tree {
 
 mod test {
 
-    use crate::bst::{Tree, Node};
+    use crate::bst::Tree;
 
     fn ordered_tree() -> Tree {
         let mut tree = Tree::new();
