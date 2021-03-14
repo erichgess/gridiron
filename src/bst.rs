@@ -1,4 +1,5 @@
-use std::cmp::Ordering::*;
+use std::cmp::Ordering::{Less, Greater, Equal};
+use std::iter::FromIterator;
 
 
 
@@ -32,7 +33,7 @@ impl<T: Ord> Node<T> {
 
 
     /**
-     * Create a sub-tree from a slice, which is into_balanced if the slice is sorted,
+     * Create a sub-tree from a slice, which is balanced if the slice is sorted.
      */
     fn from_slice(slice: &mut [Option<T>]) -> Option<Box<Self>> {
         if slice.is_empty() {
@@ -89,23 +90,15 @@ impl<T: Ord> Node<T> {
     /**
      * Insert a node with the given value into this sub-tree.
      */
-    fn insert(&mut self, value: T) {
-        match value.cmp(&self.value) {
-            Less => {
-                if let Some(l) = &mut self.l {
-                    l.insert(value)
-                } else {
-                    self.l = Some(Box::new(Node::new(value)))
-                }
+    fn insert(node: &mut Option<Box<Node<T>>>, value: T) {
+        if let Some(n) = node {
+            match value.cmp(&n.value) {
+                Less    => Self::insert(&mut n.l, value),
+                Greater => Self::insert(&mut n.r, value),
+                Equal => {}
             }
-            Greater => {
-                if let Some(r) = &mut self.r {
-                    r.insert(value)
-                } else {
-                    self.r = Some(Box::new(Node::new(value)))
-                }
-            }
-            Equal => {}
+        } else {
+            *node = Some(Box::new(Node::new(value)))
         }
     }
 
@@ -116,38 +109,35 @@ impl<T: Ord> Node<T> {
      * Remove a node with the given value from this sub-tree.
      */
     fn remove(node: &mut Option<Box<Node<T>>>, value: T) {
-        match node {
-            Some(n) => {
-                match value.cmp(&n.value) {
-                    Less    => Self::remove(&mut n.l, value),
-                    Greater => Self::remove(&mut n.r, value),
-                    Equal   => match (n.l.take(), n.r.take()) {
-                        (None, None) => {
-                            *node = None
-                        }
-                        (Some(l), None) => {
-                            *node = Some(l)
-                        }
-                        (None, Some(r)) => {
-                            *node = Some(r)
-                        }
-                        (Some(l), Some(r)) => {
-                            if r.len() > l.len() {
-                                let (new_r, min_r) = r.take_min();
-                                n.value = min_r;
-                                n.l = Some(l);
-                                n.r = new_r;
-                            } else {
-                                let (new_l, max_l) = l.take_max();
-                                n.value = max_l;
-                                n.l = new_l;
-                                n.r = Some(r);
-                            }
+        if let Some(n) = node {
+            match value.cmp(&n.value) {
+                Less    => Self::remove(&mut n.l, value),
+                Greater => Self::remove(&mut n.r, value),
+                Equal   => match (n.l.take(), n.r.take()) {
+                    (None, None) => {
+                        *node = None
+                    }
+                    (Some(l), None) => {
+                        *node = Some(l)
+                    }
+                    (None, Some(r)) => {
+                        *node = Some(r)
+                    }
+                    (Some(l), Some(r)) => {
+                        if r.len() > l.len() {
+                            let (new_r, min_r) = r.take_min();
+                            n.value = min_r;
+                            n.l = Some(l);
+                            n.r = new_r;
+                        } else {
+                            let (new_l, max_l) = l.take_max();
+                            n.value = max_l;
+                            n.l = new_l;
+                            n.r = Some(r);
                         }
                     }
                 }
             }
-            None => {}
         }
     }
 
@@ -229,11 +219,7 @@ impl<T: Ord> Tree<T> {
     }
 
     pub fn insert(&mut self, value: T) {
-        if let Some(root) = &mut self.root {
-            root.insert(value)
-        } else {
-            self.root = Some(Box::new(Node::new(value)))
-        }
+        Node::insert(&mut self.root, value)
     }
 
     pub fn remove(&mut self, value: T) {
@@ -249,11 +235,8 @@ impl<T: Ord> Tree<T> {
 
 
 // ============================================================================
-impl<T: Ord> std::iter::FromIterator<T> for Tree<T> {
-    fn from_iter<I>(iter: I) -> Self
-    where
-        I: IntoIterator<Item = T>
-    {
+impl<T: Ord> FromIterator<T> for Tree<T> {
+    fn from_iter<I: IntoIterator<Item = T>>(iter: I) -> Self {
         let mut values: Vec<_> = iter.into_iter().map(|v| Some(v)).collect();
         Self {
             root: Node::from_slice(&mut values[..])
@@ -434,13 +417,10 @@ mod test {
         let tree: Tree<_> = (0..0).collect();
         assert_eq!(tree.into_balanced().height(), 0);
 
-        let tree: Tree<_> = (0..1).collect();
-        assert_eq!(tree.into_balanced().height(), 1);
-
-        let tree: Tree<_> = (0..2).collect();
-        assert_eq!(tree.into_balanced().height(), 2);
-
-        let tree: Tree<_> = (0..1024).collect();
+        let tree: Tree<_> = (0..2047).collect();
         assert_eq!(tree.into_balanced().height(), 11);
+
+        let tree: Tree<_> = (0..2048).collect();
+        assert_eq!(tree.into_balanced().height(), 12);
     }
 }
