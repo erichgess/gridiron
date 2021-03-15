@@ -76,7 +76,7 @@ impl<T: Ord> Node<T> {
     /**
      * Return true of the given value exists in this sub-tree.
      */
-    fn contains(&self, value: T) -> bool {
+    fn contains(&self, value: &T) -> bool {
         match value.cmp(&self.value) {
             Less    => self.l.as_ref().map_or(false, |l| l.contains(value)),
             Greater => self.r.as_ref().map_or(false, |r| r.contains(value)),
@@ -108,7 +108,7 @@ impl<T: Ord> Node<T> {
     /**
      * Remove a node with the given value from this sub-tree.
      */
-    fn remove(node: &mut Option<Box<Node<T>>>, value: T) {
+    fn remove(node: &mut Option<Box<Node<T>>>, value: &T) {
         if let Some(n) = node {
             match value.cmp(&n.value) {
                 Less    => Self::remove(&mut n.l, value),
@@ -216,6 +216,21 @@ impl<T: Ord> Node<T> {
         }
         path
     }
+
+
+
+
+    /**
+     * Return the first node whose value is greater than or equal to the given
+     * value.
+     */
+    fn _successor(&self, value: &T) -> Option<&Self> {
+        if value <= &self.value {
+            Some(self)
+        } else {
+            self.r.as_ref().and_then(|r| r._successor(value))
+        }
+    }
 }
 
 
@@ -247,7 +262,7 @@ impl<T: Ord> Tree<T> {
     }
 
     pub fn contains(&self, value: T) -> bool {
-        self.root.as_ref().map_or(false, |root| root.contains(value))
+        self.root.as_ref().map_or(false, |root| root.contains(&value))
     }
 
     pub fn insert(&mut self, value: T) {
@@ -255,7 +270,7 @@ impl<T: Ord> Tree<T> {
     }
 
     pub fn remove(&mut self, value: T) {
-        Node::remove(&mut self.root, value)
+        Node::remove(&mut self.root, &value)
     }
 
     pub fn into_balanced(self) -> Self {
@@ -272,6 +287,10 @@ impl<T: Ord> Tree<T> {
 
     fn into_min_path(mut self) -> Vec<Node<T>> {
         self.root.take().map_or(Vec::new(), |root| root.into_min_path())
+    }
+
+    fn _successor(&self, value: &T) -> Option<&Node<T>> {
+        self.root.as_ref().and_then(|root| root._successor(value))        
     }
 }
 
@@ -528,5 +547,13 @@ mod test {
 
         let tree: Tree<_> = (0..2048).collect();
         assert_eq!(tree.into_balanced().height(), 12);
+    }
+
+    #[test]
+    fn can_get_successor_node() {
+        let tree = ordered_tree();
+        assert_eq!(tree._successor(&-3).unwrap().value, -2);
+        assert_eq!(tree._successor(&-2).unwrap().value, -2);
+        assert_eq!(tree._successor(&-1).unwrap().value, 10);
     }
 }

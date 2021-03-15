@@ -1,18 +1,8 @@
 #![allow(unused)]
 use std::cmp::Ordering;
 use std::iter::once;
-use core::ops::Range;
-use crate::bst;
-
-
-
-
-
-#[derive(Clone, PartialEq, Eq)]
-struct IntervalL(Range<i32>);
-
-#[derive(Clone, PartialEq, Eq)]
-struct IntervalR(Range<i32>);
+use std::collections::BTreeMap;
+use core::ops::{Bound, Range, RangeBounds};
 
 
 
@@ -22,54 +12,10 @@ type Interval = Range<i32>;
 
 
 
-// ============================================================================
-impl From<Interval> for IntervalL {
-    fn from(interval: Interval) -> Self {
-        Self(interval)
-    }
-}
-
-impl PartialOrd for IntervalL {
-    fn partial_cmp(&self, other: &Self) -> Option<Ordering> {
-        Some(self.0.start.cmp(&other.0.start))
-    }
-}
-
-impl Ord for IntervalL {
-    fn cmp(&self, other: &Self) -> Ordering {
-        self.0.start.cmp(&other.0.start)
-    }
-}
-
-
-
-
-// ============================================================================
-impl From<Interval> for IntervalR {
-    fn from(interval: Interval) -> Self {
-        Self(interval)
-    }
-}
-
-impl PartialOrd for IntervalR {
-    fn partial_cmp(&self, other: &Self) -> Option<Ordering> {
-        Some(self.0.end.cmp(&other.0.end))
-    }
-}
-
-impl Ord for IntervalR {
-    fn cmp(&self, other: &Self) -> Ordering {
-        self.0.end.cmp(&other.0.end)
-    }
-}
-
-
-
-
 /**
- * A location of an interval with respect to a point
+ * The ways an interval can contain, or not contain, a point.
  */
-enum Location {
+enum Containment {
     /// The interval lies to the left of a point
     L,
     /// The interval lies to the right of a point
@@ -82,7 +28,7 @@ enum Location {
 
 
 // ============================================================================
-impl Location {
+impl Containment {
     fn from(interval: &Interval, point: i32) -> Self {
         if interval.end <= point {
             Self::L
@@ -104,8 +50,8 @@ impl Location {
  */
 struct Node {
     center: i32,
-    sorted_l: bst::Tree<IntervalL>,
-    sorted_r: bst::Tree<IntervalR>,
+    cl: BTreeMap<i32, Interval>,
+    cr: BTreeMap<i32, Interval>,
     l: Option<Box<Node>>,
     r: Option<Box<Node>>,
 }
@@ -119,8 +65,8 @@ impl Node {
     fn new(interval: Interval) -> Self {
         Self {
             center: (interval.start + interval.end) / 2,
-            sorted_l: once(interval.clone().into()).collect(),
-            sorted_r: once(interval.clone().into()).collect(),
+            cl: once((interval.start, interval.clone())).collect(),
+            cr: once((interval.end,   interval.clone())).collect(),
             l: None,
             r: None,
         }
@@ -128,21 +74,21 @@ impl Node {
 
     fn len(&self) -> usize {
         self.l.as_ref().map_or(0, |l| l.len()) +
-        self.r.as_ref().map_or(0, |r| r.len()) + self.sorted_l.len()
+        self.r.as_ref().map_or(0, |r| r.len()) + self.cl.len()
     }
 
     fn insert(node: &mut Option<Box<Node>>, interval: Interval) {
         if let Some(n) = node {
-            match Location::from(&interval, n.center) {
-                Location::L => {
+            match Containment::from(&interval, n.center) {
+                Containment::L => {
                     Node::insert(&mut n.l, interval)
                 }
-                Location::R => {
+                Containment::R => {
                     Node::insert(&mut n.r, interval)
                 }
-                Location::C => {
-                    n.sorted_l.insert(interval.clone().into());
-                    n.sorted_r.insert(interval.clone().into());
+                Containment::C => {
+                    n.cl.insert(interval.start, interval.clone());
+                    n.cr.insert(interval.end,   interval.clone());
                 }
             }
         } else {
@@ -154,19 +100,16 @@ impl Node {
         let mut result = Vec::new();
 
         if point < self.center {
-            result.extend(self.l.as_ref().map_or(Vec::new(), |l| l.including(point)))
+            if let Some(l) = &self.l {
+                result.extend(l.including(point))
+            }
+            result.extend(self.cl.range(..point + 1).map(|e| e.1.clone()));
         } else {
-            result.extend(self.r.as_ref().map_or(Vec::new(), |r| r.including(point)))
+            if let Some(r) = &self.r {
+                result.extend(r.including(point))
+            }
+            result.extend(self.cr.range(point + 1..).map(|e| e.1.clone()));
         }
-
-        let center = self
-            .sorted_l
-            .iter()
-            .cloned()
-            .map(|i| i.0)
-            .filter(|interval| interval.contains(&point));
-
-        result.extend(center);
         result
     }
 }
