@@ -13,39 +13,6 @@ type Interval = Range<i32>;
 
 
 /**
- * The ways an interval can contain, or not contain, a point.
- */
-enum Containment {
-    /// The interval lies to the left of a point
-    L,
-    /// The interval lies to the right of a point
-    R,
-    /// The interval contains a point
-    C,
-}
-
-
-
-
-// ============================================================================
-impl Containment {
-    fn from(interval: &Interval, point: i32) -> Self {
-        if interval.end <= point {
-            Self::L
-        } else if interval.start > point {
-            Self::R
-        } else if interval.contains(&point) {
-            Self::C
-        } else {
-            unreachable!()
-        }
-    }
-}
-
-
-
-
-/**
  * A node in an interval tree
  */
 struct Node {
@@ -63,6 +30,9 @@ struct Node {
 impl Node {
 
     fn new(interval: Interval) -> Self {
+
+        assert!(!interval.is_empty(), "cannot hold empty intervals");
+
         Self {
             center: (interval.start + interval.end) / 2,
             cl: once((interval.start, interval.clone())).collect(),
@@ -77,22 +47,45 @@ impl Node {
         self.r.as_ref().map_or(0, |r| r.len()) + self.cl.len()
     }
 
+    fn is_empty(&self) -> bool {
+        self.cl.is_empty() &&
+        self.l.as_ref().map_or(true, |l| l.is_empty()) &&
+        self.r.as_ref().map_or(true, |r| r.is_empty())
+    }
+
     fn insert(node: &mut Option<Box<Node>>, interval: Interval) {
         if let Some(n) = node {
-            match Containment::from(&interval, n.center) {
-                Containment::L => {
-                    Node::insert(&mut n.l, interval)
-                }
-                Containment::R => {
-                    Node::insert(&mut n.r, interval)
-                }
-                Containment::C => {
-                    n.cl.insert(interval.start, interval.clone());
-                    n.cr.insert(interval.end,   interval.clone());
-                }
+            if interval.end <= n.center {
+                Node::insert(&mut n.l, interval)
+            }
+            else if interval.start > n.center {
+                Node::insert(&mut n.r, interval)
+            }
+            else {
+                n.cl.insert(interval.start, interval.clone());
+                n.cr.insert(interval.end,   interval.clone());
             }
         } else {
             *node = Some(Box::new(Node::new(interval)))
+        }
+    }
+
+    fn remove(node: &mut Option<Box<Self>>, interval: &Interval) {
+        if let Some(n) = node {
+            if interval.end <= n.center {
+                Node::remove(&mut n.l, interval)
+            }
+            else if interval.start > n.center {
+                Node::remove(&mut n.r, interval)
+            }
+            else {
+                n.cl.remove(&interval.start);
+                n.cr.remove(&interval.end);
+            }
+
+            if n.is_empty() {
+                *node = None
+            }
         }
     }
 
@@ -137,7 +130,11 @@ impl IntervalTree {
     }
 
     pub fn len(&self) -> usize {
-        self.root.as_ref().map_or(0, |root| root.len())        
+        self.root.as_ref().map_or(0, |root| root.len())
+    }
+
+    pub fn is_empty(&self) -> bool {
+        self.root.as_ref().map_or(true, |root| root.is_empty())
     }
 
     pub fn insert(&mut self, interval: Interval) {
@@ -146,6 +143,10 @@ impl IntervalTree {
 
     pub fn including(&self, point: i32) -> Vec<Interval> {
         self.root.as_ref().map_or(Vec::new(), |root| root.including(point))
+    }
+
+    pub fn remove(&mut self, interval: &Interval) {
+        Node::remove(&mut self.root, interval)
     }
 }
 
@@ -159,27 +160,52 @@ mod test {
     use crate::interval_tree::IntervalTree;
 
     #[test]
-    fn interaval_tree_has_correct_length() {
-        let mut tree = IntervalTree::new();
-        tree.insert(0..10);
-        tree.insert(5..10);
-        tree.insert(5..10);
-        assert_eq!(tree.len(), 2);
+    fn interval_tree_has_correct_length() {
+        let mut ranges = IntervalTree::new();
+        ranges.insert(0..10);
+        ranges.insert(5..10);
+        ranges.insert(5..10);
+        assert_eq!(ranges.len(), 2);
     }
 
     #[test]
-    fn interaval_tree_query_works() {
-        let mut tree = IntervalTree::new();
-        tree.insert( 2..12);
-        tree.insert(-2..8);
-        tree.insert( 0..10);
-        tree.insert( 4..14);
-        tree.insert(-4..6);
+    #[should_panic]
+    fn interval_tree_panics_on_empty_interval() {
+        let mut ranges = IntervalTree::new();
+        ranges.insert(0..0);
+    }
 
-        assert_eq!(tree.including(-5), vec![]);
-        assert_eq!(tree.including(-4), vec![-4..6]);
-        assert_eq!(tree.including(-3), vec![-4..6]);
-        assert_eq!(tree.including(-2), vec![-4..6, -2..8]);
-        assert_eq!(tree.including(12), vec![ 4..14]);
+    #[test]
+    fn interval_tree_query_works() {
+        let mut ranges = IntervalTree::new();
+        ranges.insert( 2..12);
+        ranges.insert(-2..8);
+        ranges.insert( 0..10);
+        ranges.insert( 4..14);
+        ranges.insert(-4..6);
+
+        assert_eq!(ranges.including(-5), vec![]);
+        assert_eq!(ranges.including(-4), vec![-4..6]);
+        assert_eq!(ranges.including(-3), vec![-4..6]);
+        assert_eq!(ranges.including(-2), vec![-4..6, -2..8]);
+        assert_eq!(ranges.including(12), vec![ 4..14]);
+    }
+
+
+    #[test]
+    fn interval_tree_can_remove_interval() {
+        let mut ranges = IntervalTree::new();
+
+        ranges.insert(-2..8);
+        ranges.insert( 0..10);
+        ranges.insert( 4..14);
+
+        assert!(!ranges.including(-2).is_empty());
+        ranges.remove(&(-2..8));
+        assert!(ranges.including(-2).is_empty());
+
+        assert!(!ranges.including(13).is_empty());
+        ranges.remove(&(4..14));
+        assert!(ranges.including(13).is_empty());
     }
 }
