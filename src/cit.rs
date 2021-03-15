@@ -1,8 +1,6 @@
-#![allow(unused)]
-use std::cmp::Ordering;
 use std::iter::once;
 use std::collections::BTreeMap;
-use core::ops::{Bound, Range, RangeBounds};
+use core::ops::Range;
 
 
 
@@ -89,17 +87,17 @@ impl Node {
         }
     }
 
-    fn including(&self, point: i32) -> Vec<Interval> {
+    fn containing(&self, point: i32) -> Vec<Interval> {
         let mut result = Vec::new();
 
         if point < self.center {
             if let Some(l) = &self.l {
-                result.extend(l.including(point))
+                result.extend(l.containing(point))
             }
             result.extend(self.cl.range(..point + 1).map(|e| e.1.clone()));
         } else {
             if let Some(r) = &self.r {
-                result.extend(r.including(point))
+                result.extend(r.containing(point))
             }
             result.extend(self.cr.range(point + 1..).map(|e| e.1.clone()));
         }
@@ -113,7 +111,7 @@ impl Node {
 /**
  * An interval tree
  */
-struct IntervalTree {
+pub struct CenteredIntervalTree {
     root: Option<Box<Node>>
 }
 
@@ -121,7 +119,7 @@ struct IntervalTree {
 
 
 // ============================================================================
-impl IntervalTree {
+impl CenteredIntervalTree {
 
     pub fn new() -> Self {
         Self {
@@ -141,8 +139,8 @@ impl IntervalTree {
         Node::insert(&mut self.root, interval)
     }
 
-    pub fn including(&self, point: i32) -> Vec<Interval> {
-        self.root.as_ref().map_or(Vec::new(), |root| root.including(point))
+    pub fn containing(&self, point: i32) -> Vec<Interval> {
+        self.root.as_ref().map_or(Vec::new(), |root| root.containing(point))
     }
 
     pub fn remove(&mut self, interval: &Interval) {
@@ -157,11 +155,11 @@ impl IntervalTree {
 #[cfg(test)]
 mod test {
 
-    use crate::interval_tree::IntervalTree;
+    use crate::cit::CenteredIntervalTree;
 
     #[test]
     fn interval_tree_has_correct_length() {
-        let mut ranges = IntervalTree::new();
+        let mut ranges = CenteredIntervalTree::new();
         ranges.insert(0..10);
         ranges.insert(5..10);
         ranges.insert(5..10);
@@ -171,41 +169,49 @@ mod test {
     #[test]
     #[should_panic]
     fn interval_tree_panics_on_empty_interval() {
-        let mut ranges = IntervalTree::new();
+        let mut ranges = CenteredIntervalTree::new();
         ranges.insert(0..0);
     }
 
     #[test]
     fn interval_tree_query_works() {
-        let mut ranges = IntervalTree::new();
+        let mut ranges = CenteredIntervalTree::new();
         ranges.insert( 2..12);
         ranges.insert(-2..8);
         ranges.insert( 0..10);
         ranges.insert( 4..14);
         ranges.insert(-4..6);
 
-        assert_eq!(ranges.including(-5), vec![]);
-        assert_eq!(ranges.including(-4), vec![-4..6]);
-        assert_eq!(ranges.including(-3), vec![-4..6]);
-        assert_eq!(ranges.including(-2), vec![-4..6, -2..8]);
-        assert_eq!(ranges.including(12), vec![ 4..14]);
-    }
+        assert_eq!(ranges.containing(-5), vec![]);
+        assert_eq!(ranges.containing(-4), vec![-4..6]);
+        assert_eq!(ranges.containing(-3), vec![-4..6]);
+        assert_eq!(ranges.containing(-2), vec![-4..6, -2..8]);
+        assert_eq!(ranges.containing(12), vec![ 4..14]);
 
+        let mut ranges = CenteredIntervalTree::new();
+        ranges.insert(0..4);
+        ranges.insert(6..8);
+        assert!(ranges.containing(5).is_empty());
+    }
 
     #[test]
     fn interval_tree_can_remove_interval() {
-        let mut ranges = IntervalTree::new();
+        let mut ranges = CenteredIntervalTree::new();
 
         ranges.insert(-2..8);
         ranges.insert( 0..10);
         ranges.insert( 4..14);
 
-        assert!(!ranges.including(-2).is_empty());
+        assert!(!ranges.containing(-2).is_empty());
         ranges.remove(&(-2..8));
-        assert!(ranges.including(-2).is_empty());
+        assert!(ranges.containing(-2).is_empty());
 
-        assert!(!ranges.including(13).is_empty());
+        assert!(!ranges.containing(13).is_empty());
         ranges.remove(&(4..14));
-        assert!(ranges.including(13).is_empty());
+        assert!(ranges.containing(13).is_empty());
+
+        ranges.remove(&(0..10));
+        assert!(ranges.is_empty());
+        assert!(ranges.root.is_none());
     }
 }
