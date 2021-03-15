@@ -200,6 +200,22 @@ impl<T: Ord> Node<T> {
         }
         path
     }
+
+
+
+
+    /**
+     * Consume this node and return a list of nodes forming a path from this
+     * node to its leftmost node.
+     */
+    fn into_min_path(self) -> Vec<Node<T>> {
+        let mut path = vec![self];
+
+        while let Some(l) = path.last_mut().and_then(|n| n.l.take()) {
+            path.push(*l)
+        }
+        path
+    }
 }
 
 
@@ -253,6 +269,10 @@ impl<T: Ord> Tree<T> {
     fn min_path(&self) -> Vec<&Node<T>> {
         self.root.as_ref().map_or(Vec::new(), |root| root.min_path())
     }
+
+    fn into_min_path(mut self) -> Vec<Node<T>> {
+        self.root.take().map_or(Vec::new(), |root| root.into_min_path())
+    }
 }
 
 
@@ -276,44 +296,40 @@ pub struct TreeIntoIter<T> {
     nodes: Vec<Node<T>>
 }
 
-impl<T> TreeIntoIter<T> {
+impl<T: Ord> TreeIntoIter<T> {
     fn new(tree: Tree<T>) -> Self {
         Self {
-            nodes: tree.root.into_iter().map(|root| *root).collect()
+            nodes: tree.into_min_path()
         }
     }
 }
 
-impl<T> Iterator for TreeIntoIter<T> {
+impl<T: Ord> Iterator for TreeIntoIter<T> {
     type Item = T;
 
     fn next(&mut self) -> Option<Self::Item> {
 
        /*
-        * While the last node on the stack (A) has a left child B, take B from A
-        * and push it onto the stack.
+        * Pop the last node on the stack (A).
         *
-        * If B has a right child C, then push C onto the stack.
+        * If A has a right child (B) then take B and push it onto the stack,
+        * followed by the path to its minimum node.
         *
-        * Yield the value of B.
+        * Yield the value of A.
         */
 
-        while let Some(l) = self.nodes.last_mut().and_then(|n| n.l.take()) {
-            self.nodes.push(*l)
-        }
-
-        if let Some(mut node) = self.nodes.pop() {
-            if let Some(r) = node.r.take() {
-                self.nodes.push(*r)
+        if let Some(mut a) = self.nodes.pop() {
+            if let Some(r) = a.r.take() {
+                self.nodes.extend(r.into_min_path())
             }
-            Some(node.value)
+            Some(a.value)
         } else {
             None
         }
     }
 }
 
-impl<T> IntoIterator for Tree<T> {
+impl<T: Ord> IntoIterator for Tree<T> {
     type Item = T;
     type IntoIter = TreeIntoIter<T>;
 
@@ -330,7 +346,7 @@ pub struct TreeIter<'a, T> {
     nodes: Vec<&'a Node<T>>
 }
 
-impl<'a, T> TreeIter<'a, T> where T: Ord {
+impl<'a, T: Ord> TreeIter<'a, T> {
     fn new(tree: &'a Tree<T>) -> Self {
         Self {
             nodes: tree.min_path()
@@ -338,7 +354,7 @@ impl<'a, T> TreeIter<'a, T> where T: Ord {
     }
 }
 
-impl<'a, T> Iterator for TreeIter<'a, T> where T: Ord {
+impl<'a, T: Ord> Iterator for TreeIter<'a, T> {
     type Item = &'a T;
 
     fn next(&mut self) -> Option<Self::Item> {
@@ -347,7 +363,7 @@ impl<'a, T> Iterator for TreeIter<'a, T> where T: Ord {
         * Pop the last node on the stack (A).
         *
         * If A has a right child (B) then push B onto the stack, followed by the
-        * path to its minumum node.
+        * path to its minimum node.
         *
         * Yield the value of A.
         */
