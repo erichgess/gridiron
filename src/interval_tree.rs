@@ -8,10 +8,10 @@ use crate::bst;
 
 
 
-#[derive(PartialEq, Eq)]
+#[derive(Clone, PartialEq, Eq)]
 struct IntervalL(Range<i32>);
 
-#[derive(PartialEq, Eq)]
+#[derive(Clone, PartialEq, Eq)]
 struct IntervalR(Range<i32>);
 
 
@@ -150,14 +150,24 @@ impl Node {
         }
     }
 
-    fn find(&self, point: i32) -> Option<Interval> {
+    fn including(&self, point: i32) -> Vec<Interval> {
+        let mut result = Vec::new();
+
         if point < self.center {
-            None
-        } else if point >= self.center {
-            None
+            result.extend(self.l.as_ref().map_or(Vec::new(), |l| l.including(point)))
         } else {
-            None
+            result.extend(self.r.as_ref().map_or(Vec::new(), |r| r.including(point)))
         }
+
+        let center = self
+            .sorted_l
+            .iter()
+            .cloned()
+            .map(|i| i.0)
+            .filter(|interval| interval.contains(&point));
+
+        result.extend(center);
+        result
     }
 }
 
@@ -177,18 +187,22 @@ struct IntervalTree {
 // ============================================================================
 impl IntervalTree {
 
-    fn new() -> Self {
+    pub fn new() -> Self {
         Self {
             root: None
         }
     }
 
-    fn len(&self) -> usize {
+    pub fn len(&self) -> usize {
         self.root.as_ref().map_or(0, |root| root.len())        
     }
 
-    fn insert(&mut self, interval: Interval) {
+    pub fn insert(&mut self, interval: Interval) {
         Node::insert(&mut self.root, interval)
+    }
+
+    pub fn including(&self, point: i32) -> Vec<Interval> {
+        self.root.as_ref().map_or(Vec::new(), |root| root.including(point))
     }
 }
 
@@ -202,10 +216,27 @@ mod test {
     use crate::interval_tree::IntervalTree;
 
     #[test]
-    fn can_build_interval_tree() {
+    fn interaval_tree_has_correct_length() {
         let mut tree = IntervalTree::new();
         tree.insert(0..10);
         tree.insert(5..10);
+        tree.insert(5..10);
         assert_eq!(tree.len(), 2);
+    }
+
+    #[test]
+    fn interaval_tree_query_works() {
+        let mut tree = IntervalTree::new();
+        tree.insert( 2..12);
+        tree.insert(-2..8);
+        tree.insert( 0..10);
+        tree.insert( 4..14);
+        tree.insert(-4..6);
+
+        assert_eq!(tree.including(-5), vec![]);
+        assert_eq!(tree.including(-4), vec![-4..6]);
+        assert_eq!(tree.including(-3), vec![-4..6]);
+        assert_eq!(tree.including(-2), vec![-4..6, -2..8]);
+        assert_eq!(tree.including(12), vec![ 4..14]);
     }
 }
