@@ -51,8 +51,27 @@ impl<T: Ord + Copy> Node<T> {
             let l = Self::from_slice(&mut slice[..mid]);
             let r = Self::from_slice(&mut slice[mid + 1..]);
             let max = Self::local_max(key.end, &l, &r);
-            Some(Box::new(Self { key, max, l, r }))
+            Some(Box::new(Self { key, max, l, r }.validate()))
         }
+    }
+
+
+
+
+    /**
+     * Ensure a node's children are properly ordered.
+     */
+    fn validate(self) -> Self {
+        let valid = match (&self.l, &self.r) {
+            (None, None) => true,
+            (Some(l), None) => l.key.start < self.key.start,
+            (None, Some(r)) => r.key.start > self.key.start,
+            (Some(l), Some(r)) => l.key.start < self.key.start && r.key.start > self.key.start,
+        };
+        if !valid {
+            panic!("unordered node")
+        }
+        self
     }
 
 
@@ -342,10 +361,10 @@ mod test {
         let tree: Tree<_> = vec![2..3, 4..6, 5..7].iter().cloned().collect();
         assert_eq!(tree.max(), Some(7));
 
-        let tree: Tree<_> = vec![2..3, 5..7, 4..6].iter().cloned().collect();
+        let tree: Tree<_> = vec![2..3, 3..7, 4..6].iter().cloned().collect();
         assert_eq!(tree.max(), Some(7));
 
-        let tree: Tree<_> = vec![5..7, 4..6, 2..3].iter().cloned().collect();
+        let tree: Tree<_> = vec![4..7, 5..6, 6..7].iter().cloned().collect();
         assert_eq!(tree.max(), Some(7));
     }
 }

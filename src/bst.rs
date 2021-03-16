@@ -33,7 +33,8 @@ impl<T: Ord> Node<T> {
 
 
     /**
-     * Create a sub-tree from a slice, which is balanced if the slice is sorted.
+     * Create a sub-tree from a sorted slice. This method panics if the slice is
+     * not sorted.
      */
     fn from_slice(slice: &mut [Option<T>]) -> Option<Box<Self>> {
         if slice.is_empty() {
@@ -44,8 +45,27 @@ impl<T: Ord> Node<T> {
                 value: slice[mid].take().unwrap(),
                 l: Self::from_slice(&mut slice[..mid]),
                 r: Self::from_slice(&mut slice[mid + 1..]),
-            }))
+            }.validate()))
         }
+    }
+
+
+
+
+    /**
+     * Ensure a node's children are properly ordered.
+     */
+    fn validate(self) -> Self {
+        let valid = match (&self.l, &self.r) {
+            (None, None) => true,
+            (Some(l), None) => l.value < self.value,
+            (None, Some(r)) => r.value > self.value,
+            (Some(l), Some(r)) => l.value < self.value && r.value > self.value,
+        };
+        if !valid {
+            panic!("unordered node")
+        }
+        self
     }
 
 
@@ -535,6 +555,12 @@ mod test {
     fn can_build_tree_from_iter() {
         let tree: Tree<_> = [-2, 10, 11, 15, 16].iter().collect();
         assert_eq!(tree.len(), 5);
+    }
+
+    #[test]
+    #[should_panic]
+    fn collect_into_tree_panics_if_the_iterator_is_not_sorted() {
+        let _: Tree<_> = [-2, 10, 15, 16, 11].iter().collect();
     }
 
     #[test]
