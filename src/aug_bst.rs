@@ -40,38 +40,21 @@ impl<T: Ord + Copy> Node<T> {
 
 
     /**
-     * Create a sub-tree from a slice, which is balanced if the slice is sorted.
+     * Create a balanced sub-tree from a sorted slice. If the slice is not
+     * sorted, the resulting tree is invalid, which is why this function is not
+     * public.
      */
-    fn from_slice(slice: &mut [Option<Range<T>>]) -> Option<Box<Self>> {
+    fn from_sorted_slice(slice: &[Range<T>]) -> Option<Box<Self>> {
         if slice.is_empty() {
             None
         } else {
             let mid = slice.len() / 2;
-            let key = slice[mid].take().unwrap();
-            let l = Self::from_slice(&mut slice[..mid]);
-            let r = Self::from_slice(&mut slice[mid + 1..]);
+            let key = slice[mid].clone();
+            let l = Self::from_sorted_slice(&slice[..mid]);
+            let r = Self::from_sorted_slice(&slice[mid + 1..]);
             let max = Self::local_max(key.end, &l, &r);
-            Some(Box::new(Self { key, max, l, r }.validate()))
+            Some(Box::new(Self { key, max, l, r }))
         }
-    }
-
-
-
-
-    /**
-     * Ensure a node's children are properly ordered.
-     */
-    fn validate(self) -> Self {
-        let valid = match (&self.l, &self.r) {
-            (None, None) => true,
-            (Some(l), None) => l.key.start < self.key.start,
-            (None, Some(r)) => r.key.start > self.key.start,
-            (Some(l), Some(r)) => l.key.start < self.key.start && r.key.start > self.key.start,
-        };
-        if !valid {
-            panic!("unordered node")
-        }
-        self
     }
 
 
@@ -103,7 +86,7 @@ impl<T: Ord + Copy> Node<T> {
      * Return true of the given key exists in this sub-tree.
      */
     fn contains(&self, key: Range<T>) -> bool {
-        match key.start.cmp(&self.key.start) {
+        match (key.start, key.end).cmp(&(self.key.start, self.key.end)) {
             Less    => self.l.as_ref().map_or(false, |l| l.contains(key)),
             Greater => self.r.as_ref().map_or(false, |r| r.contains(key)),
             Equal   => true
@@ -121,7 +104,7 @@ impl<T: Ord + Copy> Node<T> {
 
             n.max = key.end.max(n.max);
 
-            match key.start.cmp(&n.key.start) {
+            match (key.start, key.end).cmp(&(n.key.start, n.key.end)) {
                 Less    => Self::insert(&mut n.l, key),
                 Greater => Self::insert(&mut n.r, key),
                 Equal => {}
@@ -139,7 +122,7 @@ impl<T: Ord + Copy> Node<T> {
      */
     fn remove(node: &mut Option<Box<Self>>, key: Range<T>) {
         if let Some(n) = node {
-            match key.start.cmp(&n.key.start) {
+            match (key.start, key.end).cmp(&(n.key.start, n.key.end)) {
                 Less    => Self::remove(&mut n.l, key),
                 Greater => Self::remove(&mut n.r, key),
                 Equal   => match (n.l.take(), n.r.take()) {
@@ -154,12 +137,12 @@ impl<T: Ord + Copy> Node<T> {
                     }
                     (Some(l), Some(r)) => {
                         if r.len() > l.len() {
-                            let (new_r, min_r) = r.take_min();
+                            let (new_r, min_r) = r.take_lmost();
                             n.key = min_r;
                             n.l = Some(l);
                             n.r = new_r;
                         } else {
-                            let (new_l, max_l) = l.take_max();
+                            let (new_l, max_l) = l.take_rmost();
                             n.key = max_l;
                             n.l = new_l;
                             n.r = Some(r);
@@ -180,13 +163,13 @@ impl<T: Ord + Copy> Node<T> {
      * Return this sub-tree, but with the left-most descendant node removed.
      * Also return the key of that node.
      */
-    fn take_min(mut self: Box<Self>) -> (Option<Box<Self>>, Range<T>) {
+    fn take_lmost(mut self: Box<Self>) -> (Option<Box<Self>>, Range<T>) {
         if let Some(l) = self.l {
             if l.l.is_none() {
                 self.l = None;
                 (Some(self), l.key)
             } else {
-                let (new_l, min) = l.take_min();
+                let (new_l, min) = l.take_lmost();
                 self.l = new_l;
                 (Some(self), min)
             }
@@ -202,13 +185,13 @@ impl<T: Ord + Copy> Node<T> {
      * Return this sub-tree, but with the right-most descendant node removed.
      * Also return the key of that node.
      */
-    fn take_max(mut self: Box<Self>) -> (Option<Box<Self>>, Range<T>) {
+    fn take_rmost(mut self: Box<Self>) -> (Option<Box<Self>>, Range<T>) {
         if let Some(r) = self.r {
             if r.r.is_none() {
                 self.r = None;
                 (Some(self), r.key)
             } else {
-                let (new_r, max) = r.take_max();
+                let (new_r, max) = r.take_rmost();
                 self.r = new_r;
                 (Some(self), max)
             }
@@ -247,6 +230,38 @@ impl<T: Ord + Copy> Node<T> {
             path.push(*l)
         }
         path
+    }
+
+
+
+
+    fn validate_max(&self) {
+        if self.max != self.compute_max() {
+            panic!("incorrect maximum upper bound on node");
+        }
+        if let Some(l) = &self.l {
+            l.validate_max()
+        }
+        if let Some(r) = &self.r {
+            r.validate_max()
+        }
+    }
+
+
+
+
+    /**
+     * Return the maximum upper bound on this sub-tree. This *should* be the
+     * same as the `max` data member on the node, but this function can be
+     * useful to test validity of this augmented data.
+     */
+    fn compute_max(&self) -> T {
+        match (&self.l, &self.r) {
+            (Some(l), Some(r)) => l.compute_max().max(r.compute_max()),
+            (Some(l), None) => l.compute_max(),
+            (None, Some(r)) => r.compute_max(),
+            (None, None) => self.key.end,
+        }.max(self.key.end)
     }
 
 
@@ -307,7 +322,8 @@ impl<T: Ord + Copy> Tree<T> {
     }
 
     // pub fn into_balanced(self) -> Self {
-    //     self.into_iter().collect()
+    //     let data: Vec<_> = self.into_iter().collect();
+    //     Self::from_sorted_slice(&data[..])
     // }
 
     // pub fn iter<'a>(&'a self) -> TreeIter<'a, T> {
@@ -321,6 +337,12 @@ impl<T: Ord + Copy> Tree<T> {
     fn into_min_path(mut self) -> Vec<Node<T>> {
         self.root.take().map_or(Vec::new(), |root| root.into_min_path())
     }
+
+    fn validate_max(&self) {
+        if let Some(root) = &self.root {
+            root.validate_max()
+        }
+    }
 }
 
 
@@ -329,9 +351,12 @@ impl<T: Ord + Copy> Tree<T> {
 // ============================================================================
 impl<T: Ord + Copy> FromIterator<Range<T>> for Tree<T> {
     fn from_iter<I: IntoIterator<Item = Range<T>>>(iter: I) -> Self {
-        let mut values: Vec<_> = iter.into_iter().map(|v| Some(v)).collect();
+        let mut values: Vec<_> = iter.into_iter().collect();
+
+        values.sort_by(|a, b| a.start.cmp(&b.start));
+
         Self {
-            root: Node::from_slice(&mut values[..])
+            root: Node::from_sorted_slice(&values[..])
         }
     }
 }
@@ -343,28 +368,53 @@ impl<T: Ord + Copy> FromIterator<Range<T>> for Tree<T> {
 #[cfg(test)]
 mod test {
 
+    use core::ops::Range;
     use crate::aug_bst::Tree;
 
-    #[test]
-    fn max_value_is_correctly_recorded_if_built_from_insert() {
-        let mut tree = Tree::new();
-        tree.insert( 0.. 10);
-        tree.insert( 2..  3);
-        tree.insert( 5..  6);
-        tree.insert(-3.. 12);
-        tree.insert(-2..  0);
-        assert_eq!(tree.max(), Some(12));
+    /**
+     * A simple deterministic linear congruential generator:
+     *
+     * https://en.wikipedia.org/wiki/Linear_congruential_generator
+     */
+    fn stupid_random_intervals(len: usize, mut seed: i64) -> Vec<Range<i64>> {
+        let mut values = Vec::new();
+        let a = 1103515245;
+        let c = 12345;
+        let m = 1 << 31;
+        for i in 0..len {
+            seed = (a * seed + c) % m;
+            values.push(seed..seed + 30)
+        }
+        values
     }
 
     #[test]
-    fn max_value_is_correctly_recorded_if_built_from_iter() {
-        let tree: Tree<_> = vec![2..3, 4..6, 5..7].iter().cloned().collect();
-        assert_eq!(tree.max(), Some(7));
+    fn max_value_is_correctly_recorded_for_random_collected_tree() {
+        let tree: Tree<_> = stupid_random_intervals(1000, 666).into_iter().collect();
+        tree.validate_max();
+    }
 
-        let tree: Tree<_> = vec![2..3, 3..7, 4..6].iter().cloned().collect();
-        assert_eq!(tree.max(), Some(7));
+    #[test]
+    fn max_value_is_correctly_recorded_for_random_incremental_tree() {
+        let mut tree = Tree::new();
+        for x in stupid_random_intervals(1000, 12345) {
+            tree.insert(x)
+        }
+        tree.validate_max();
+    }
 
-        let tree: Tree<_> = vec![4..7, 5..6, 6..7].iter().cloned().collect();
-        assert_eq!(tree.max(), Some(7));
+    #[test]
+    fn tree_contains_works() {
+        let mut tree = Tree::new();
+
+        tree.insert(-5..0);
+        tree.insert(-2..0);
+        tree.insert(-8..8);
+        tree.insert(-6..2);
+        tree.insert(-1..2);
+        assert_eq!(tree.len(), 5);
+        assert!( tree.contains(-1..2));
+        assert!( tree.contains(-6..2));
+        assert!(!tree.contains(-6..3));
     }
 }
