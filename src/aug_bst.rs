@@ -85,8 +85,8 @@ impl<T: Ord + Copy> Node<T> {
     /**
      * Return true of the given key exists in this sub-tree.
      */
-    fn contains(&self, key: Range<T>) -> bool {
-        match (key.start, key.end).cmp(&(self.key.start, self.key.end)) {
+    fn contains(&self, key: &Range<T>) -> bool {
+        match (key.start, key.end).cmp(&self.t()) {
             Less    => self.l.as_ref().map_or(false, |l| l.contains(key)),
             Greater => self.r.as_ref().map_or(false, |r| r.contains(key)),
             Equal   => true
@@ -104,7 +104,7 @@ impl<T: Ord + Copy> Node<T> {
 
             n.max = key.end.max(n.max);
 
-            match (key.start, key.end).cmp(&(n.key.start, n.key.end)) {
+            match (key.start, key.end).cmp(&n.t()) {
                 Less    => Self::insert(&mut n.l, key),
                 Greater => Self::insert(&mut n.r, key),
                 Equal => {}
@@ -120,9 +120,9 @@ impl<T: Ord + Copy> Node<T> {
     /**
      * Remove a node with the given key from this sub-tree.
      */
-    fn remove(node: &mut Option<Box<Self>>, key: Range<T>) {
+    fn remove(node: &mut Option<Box<Self>>, key: &Range<T>) {
         if let Some(n) = node {
-            match (key.start, key.end).cmp(&(n.key.start, n.key.end)) {
+            match (key.start, key.end).cmp(&n.t()) {
                 Less    => Self::remove(&mut n.l, key),
                 Greater => Self::remove(&mut n.r, key),
                 Equal   => match (n.l.take(), n.r.take()) {
@@ -235,9 +235,12 @@ impl<T: Ord + Copy> Node<T> {
 
 
 
+    /**
+     * Panic unless a node is storing the maximum endpoint of its subtree.
+     */
     fn validate_max(&self) {
         if self.max != self.compute_max() {
-            panic!("incorrect maximum upper bound on node");
+            panic!("stored maximum endpoint out of sync with subtree");
         }
         if let Some(l) = &self.l {
             l.validate_max()
@@ -245,6 +248,40 @@ impl<T: Ord + Copy> Node<T> {
         if let Some(r) = &self.r {
             r.validate_max()
         }
+    }
+
+
+
+
+    /**
+     * Panic unless a node and its entire subtree is properly ordered.
+     */
+    fn validate_order(&self) {
+        if !match (&self.l, &self.r) {
+            (None, None) => true,
+            (Some(l), None) => l.t() < self.t(),
+            (None, Some(r)) => r.t() > self.t(),
+            (Some(l), Some(r)) => l.t() < self.t() && r.t() > self.t(),
+        } {
+            panic!("unordered node")
+        }
+        if let Some(l) = &self.l {
+            l.validate_order()
+        }
+        if let Some(r) = &self.r {
+            r.validate_order()
+        }
+    }
+
+
+
+
+    /**
+     * Return this node's interval as a tuple, useful for dictionary
+     * comparisons.
+     */
+    fn t(&self) -> (T, T) {
+        (self.key.start, self.key.end)
     }
 
 
@@ -305,7 +342,7 @@ impl<T: Ord + Copy> Tree<T> {
         self.root.as_ref().map_or(0, |root| root.height())
     }
 
-    pub fn contains(&self, key: Range<T>) -> bool {
+    pub fn contains(&self, key: &Range<T>) -> bool {
         self.root.as_ref().map_or(false, |root| root.contains(key))
     }
 
@@ -313,7 +350,7 @@ impl<T: Ord + Copy> Tree<T> {
         Node::insert(&mut self.root, key)
     }
 
-    pub fn remove(&mut self, key: Range<T>) {
+    pub fn remove(&mut self, key: &Range<T>) {
         Node::remove(&mut self.root, key)
     }
 
@@ -343,6 +380,12 @@ impl<T: Ord + Copy> Tree<T> {
             root.validate_max()
         }
     }
+
+    fn validate_order(&self) {
+        if let Some(root) = &self.root {
+            root.validate_order()
+        }
+    }
 }
 
 
@@ -353,7 +396,7 @@ impl<T: Ord + Copy> FromIterator<Range<T>> for Tree<T> {
     fn from_iter<I: IntoIterator<Item = Range<T>>>(iter: I) -> Self {
         let mut values: Vec<_> = iter.into_iter().collect();
 
-        values.sort_by(|a, b| a.start.cmp(&b.start));
+        values.sort_by(|a, b| (a.start, a.end).cmp(&(b.start, b.end)));
 
         Self {
             root: Node::from_sorted_slice(&values[..])
@@ -376,7 +419,7 @@ mod test {
      *
      * https://en.wikipedia.org/wiki/Linear_congruential_generator
      */
-    fn stupid_random_intervals(len: usize, mut seed: i64) -> Vec<Range<i64>> {
+    fn stupid_random_intervals(len: usize, mut seed: usize) -> Vec<Range<usize>> {
         let mut values = Vec::new();
         let a = 1103515245;
         let c = 12345;
@@ -406,15 +449,35 @@ mod test {
     #[test]
     fn tree_contains_works() {
         let mut tree = Tree::new();
-
         tree.insert(-5..0);
         tree.insert(-2..0);
         tree.insert(-8..8);
         tree.insert(-6..2);
         tree.insert(-1..2);
         assert_eq!(tree.len(), 5);
-        assert!( tree.contains(-1..2));
-        assert!( tree.contains(-6..2));
-        assert!(!tree.contains(-6..3));
+        assert!( tree.contains(&(-1..2)));
+        assert!( tree.contains(&(-6..2)));
+        assert!(!tree.contains(&(-6..3)));
+        tree.validate_max();
+    }
+
+    #[test]
+    fn tree_removal_works() {
+        for i in 0..100 {
+            let intervals = stupid_random_intervals(100, i);
+            let mut tree = Tree::new();
+
+            for x in &intervals {
+                tree.insert(x.clone())
+            }
+
+            let x = &intervals[i];
+            assert!(tree.contains(x));
+            tree.remove(x);
+            assert!(!tree.contains(x));
+
+            tree.validate_order();
+            tree.validate_max();
+        }
     }
 }
