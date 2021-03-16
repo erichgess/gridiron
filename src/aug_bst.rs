@@ -92,6 +92,39 @@ impl<T: Ord + Copy> Node<T> {
 
 
     /**
+     * Return those ancestor nodes above the given key, from which an in-order
+     * traversal could proceed. The path includes only the ancestor nodes which
+     * need to be visited to complete an in-order traversal proceeding from the
+     * given key: the nodes at which the path takes a left turn.
+     */
+    fn path_to<'a>(&'a self, key: &Range<T>, mut path: Vec<&'a Self>) -> Vec<&'a Self> {
+        match Self::compare(key, &self.key) {
+            Less => {
+                if let Some(l) = &self.l {
+                    path.push(self);
+                    l.path_to(key, path)
+                } else {
+                    path
+                }
+            }
+            Greater => {
+                if let Some(r) = &self.r {
+                    r.path_to(key, path)
+                } else {
+                    path
+                }
+            }
+            Equal => {
+                path.push(self);
+                path
+            }
+        }
+    }
+
+
+
+
+    /**
      * Insert a node with the given key into this sub-tree.
      */
     fn insert(node: &mut Option<Box<Self>>, key: Range<T>) {
@@ -363,8 +396,12 @@ impl<T: Ord + Copy> Tree<T> {
         Tree { root: Node::from_sorted_slice(&data[..]) }
     }
 
-    pub fn iter<'a>(&'a self) -> TreeIter<'a, T> {
-        TreeIter::new(self)
+    pub fn iter(&self) -> TreeIter<T> {
+        TreeIter { nodes: self.lmost_path() }
+    }
+
+    pub fn iter_from(&self, key: &Range<T>) -> TreeIter<T> {
+        TreeIter { nodes: self.path_to(key) }
     }
 
     pub fn validate_max(&self) {
@@ -385,6 +422,10 @@ impl<T: Ord + Copy> Tree<T> {
 
     fn into_lmost_path(mut self) -> Vec<Node<T>> {
         self.root.take().map_or(Vec::new(), |root| root.into_lmost_path())
+    }
+
+    fn path_to(&self, key: &Range<T>) -> Vec<&Node<T>> {
+        self.root.as_ref().map_or(Vec::new(), |root| root.path_to(key, Vec::new()))        
     }
 }
 
@@ -410,14 +451,6 @@ impl<T: Ord + Copy> FromIterator<Range<T>> for Tree<T> {
 // ============================================================================
 pub struct TreeIntoIter<T: Ord + Copy> {
     nodes: Vec<Node<T>>
-}
-
-impl<T: Ord + Copy> TreeIntoIter<T> {
-    fn new(tree: Tree<T>) -> Self {
-        Self {
-            nodes: tree.into_lmost_path()
-        }
-    }
 }
 
 impl<T: Ord + Copy> Iterator for TreeIntoIter<T> {
@@ -450,7 +483,7 @@ impl<T: Ord + Copy> IntoIterator for Tree<T> {
     type IntoIter = TreeIntoIter<T>;
 
     fn into_iter(self) -> Self::IntoIter {
-        TreeIntoIter::new(self)
+        TreeIntoIter { nodes: self.into_lmost_path() }
     }
 }
 
@@ -512,7 +545,7 @@ impl<'a, T: Ord + Copy> IntoIterator for &'a Tree<T> where T: Ord {
 mod test {
 
     use core::ops::Range;
-    use crate::aug_bst::Tree;
+    use crate::aug_bst::{Tree, TreeIter};
 
     /**
      * A simple deterministic linear congruential generator:
@@ -626,5 +659,23 @@ mod test {
         assert_eq!(iter.next(), Some(5..12));
         assert_eq!(iter.next(), Some(7..12));
         assert_eq!(iter.next(), None);
+    }
+
+    #[test]
+    fn can_get_the_path_to_a_node() {
+        let intervals = stupid_random_intervals(100, 2345);
+        let mut tree = Tree::new();
+
+        for x in &intervals {
+            tree.insert(x.clone())
+        }
+
+        for x in &intervals[40..60] {
+            let iter1 = tree.iter().skip_while(|y| *y != x);
+            let iter2 = TreeIter { nodes: tree.path_to(x) };
+            let vec1: Vec<_> = iter1.collect();
+            let vec2: Vec<_> = iter2.collect();
+            assert_eq!(vec1, vec2);
+        }
     }
 }
