@@ -90,7 +90,7 @@ impl<T: Ord> Node<T> {
     /**
      * Insert a node with the given value into this sub-tree.
      */
-    fn insert(node: &mut Option<Box<Node<T>>>, value: T) {
+    fn insert(node: &mut Option<Box<Self>>, value: T) {
         if let Some(n) = node {
             match value.cmp(&n.value) {
                 Less    => Self::insert(&mut n.l, value),
@@ -108,7 +108,7 @@ impl<T: Ord> Node<T> {
     /**
      * Remove a node with the given value from this sub-tree.
      */
-    fn remove(node: &mut Option<Box<Node<T>>>, value: &T) {
+    fn remove(node: &mut Option<Box<Self>>, value: &T) {
         if let Some(n) = node {
             match value.cmp(&n.value) {
                 Less    => Self::remove(&mut n.l, value),
@@ -208,7 +208,7 @@ impl<T: Ord> Node<T> {
      * Consume this node and return a list of nodes forming a path from this
      * node to its leftmost node.
      */
-    fn into_min_path(self) -> Vec<Node<T>> {
+    fn into_min_path(self) -> Vec<Self> {
         let mut path = vec![self];
 
         while let Some(l) = path.last_mut().and_then(|n| n.l.take()) {
