@@ -36,8 +36,8 @@ impl<T: Ord + Copy> Node<T> {
 
     /**
      * Create a balanced sub-tree from a sorted slice. If the slice is not
-     * sorted, the resulting tree is invalid, which is why this function is not
-     * public.
+     * sorted, the resulting tree is invalid. No check is done here to ensure
+     * the slice is sorted.
      */
     fn from_sorted_slice(slice: &[Range<T>]) -> Option<Box<Self>> {
         if slice.is_empty() {
@@ -204,9 +204,10 @@ impl<T: Ord + Copy> Node<T> {
 
     /**
      * Return a list of node references forming a path from this node to its
-     * leftmost node.
+     * leftmost node. This function is to facilitate non-consuming in-order
+     * traversal.
      */
-    fn min_path(&self) -> Vec<&Self> {
+    fn lmost_path(&self) -> Vec<&Self> {
         let mut path = vec![self];
 
         while let Some(l) = path.last().and_then(|b| b.l.as_ref()) {
@@ -220,9 +221,10 @@ impl<T: Ord + Copy> Node<T> {
 
     /**
      * Consume this node and return a list of nodes forming a path from this
-     * node to its leftmost node.
+     * node to its leftmost node. This function is to facilitate consuming
+     * in-order traversal.
      */
-    fn into_min_path(self) -> Vec<Self> {
+    fn into_lmost_path(self) -> Vec<Self> {
         let mut path = vec![self];
 
         while let Some(l) = path.last_mut().and_then(|n| n.l.take()) {
@@ -235,7 +237,8 @@ impl<T: Ord + Copy> Node<T> {
 
 
     /**
-     * Panic unless a node is storing the maximum endpoint of its subtree.
+     * Panic unless a node is storing the maximum endpoint of its subtree. This
+     * function is for testing purposes.
      */
     fn validate_max(&self) {
         if self.max != self.compute_max() {
@@ -253,7 +256,8 @@ impl<T: Ord + Copy> Node<T> {
 
 
     /**
-     * Panic unless a node and its entire subtree is properly ordered.
+     * Panic unless a node and its entire subtree is properly ordered. This
+     * function is for testing purposes.
      */
     fn validate_order(&self) {
         if self.l.as_ref().map_or(Less,    |l| Self::compare(&l.key, &self.key)) != Less ||
@@ -375,12 +379,12 @@ impl<T: Ord + Copy> Tree<T> {
         }
     }
 
-    fn min_path(&self) -> Vec<&Node<T>> {
-        self.root.as_ref().map_or(Vec::new(), |root| root.min_path())
+    fn lmost_path(&self) -> Vec<&Node<T>> {
+        self.root.as_ref().map_or(Vec::new(), |root| root.lmost_path())
     }
 
-    fn into_min_path(mut self) -> Vec<Node<T>> {
-        self.root.take().map_or(Vec::new(), |root| root.into_min_path())
+    fn into_lmost_path(mut self) -> Vec<Node<T>> {
+        self.root.take().map_or(Vec::new(), |root| root.into_lmost_path())
     }
 }
 
@@ -411,7 +415,7 @@ pub struct TreeIntoIter<T: Ord + Copy> {
 impl<T: Ord + Copy> TreeIntoIter<T> {
     fn new(tree: Tree<T>) -> Self {
         Self {
-            nodes: tree.into_min_path()
+            nodes: tree.into_lmost_path()
         }
     }
 }
@@ -432,7 +436,7 @@ impl<T: Ord + Copy> Iterator for TreeIntoIter<T> {
 
         if let Some(mut a) = self.nodes.pop() {
             if let Some(r) = a.r.take() {
-                self.nodes.extend(r.into_min_path())
+                self.nodes.extend(r.into_lmost_path())
             }
             Some(a.key)
         } else {
@@ -461,7 +465,7 @@ pub struct TreeIter<'a, T: Ord + Copy> {
 impl<'a, T: Ord + Copy> TreeIter<'a, T> {
     fn new(tree: &'a Tree<T>) -> Self {
         Self {
-            nodes: tree.min_path()
+            nodes: tree.lmost_path()
         }
     }
 }
@@ -482,7 +486,7 @@ impl<'a, T: Ord + Copy> Iterator for TreeIter<'a, T> {
 
         if let Some(a) = self.nodes.pop() {
             if let Some(b) = &a.r {
-                self.nodes.extend(b.min_path());
+                self.nodes.extend(b.lmost_path());
             }
             Some(&a.key)
         } else {
@@ -531,6 +535,7 @@ mod test {
     fn max_value_is_correctly_recorded_for_random_collected_tree() {
         let tree: Tree<_> = stupid_random_intervals(1000, 666).into_iter().collect();
         tree.validate_max();
+        tree.validate_order();
     }
 
     #[test]
@@ -540,6 +545,7 @@ mod test {
             tree.insert(x)
         }
         tree.validate_max();
+        tree.validate_order();
     }
 
     #[test]
@@ -555,6 +561,7 @@ mod test {
         assert!( tree.contains(&(-6..2)));
         assert!(!tree.contains(&(-6..3)));
         tree.validate_max();
+        tree.validate_order();
     }
 
     #[test]
@@ -572,8 +579,8 @@ mod test {
             tree.remove(x);
             assert!(!tree.contains(x));
 
-            tree.validate_order();
             tree.validate_max();
+            tree.validate_order();
         }
     }
 
