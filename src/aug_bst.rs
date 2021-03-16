@@ -1,5 +1,5 @@
 use core::ops::Range;
-use std::cmp::Ordering::{Less, Greater, Equal};
+use std::cmp::Ordering::{self, Less, Greater, Equal};
 use std::iter::FromIterator;
 
 
@@ -81,7 +81,7 @@ impl<T: Ord + Copy> Node<T> {
      * Return true of the given key exists in this sub-tree.
      */
     fn contains(&self, key: &Range<T>) -> bool {
-        match (key.start, key.end).cmp(&self.t()) {
+        match Self::compare(key, &self.key) {
             Less    => self.l.as_ref().map_or(false, |l| l.contains(key)),
             Greater => self.r.as_ref().map_or(false, |r| r.contains(key)),
             Equal   => true
@@ -99,7 +99,7 @@ impl<T: Ord + Copy> Node<T> {
 
             n.max = key.end.max(n.max);
 
-            match (key.start, key.end).cmp(&n.t()) {
+            match Self::compare(&key, &n.key) {
                 Less    => Self::insert(&mut n.l, key),
                 Greater => Self::insert(&mut n.r, key),
                 Equal => {}
@@ -117,7 +117,7 @@ impl<T: Ord + Copy> Node<T> {
      */
     fn remove(node: &mut Option<Box<Self>>, key: &Range<T>) {
         if let Some(n) = node {
-            match (key.start, key.end).cmp(&n.t()) {
+            match Self::compare(key, &n.key) {
                 Less    => Self::remove(&mut n.l, key),
                 Greater => Self::remove(&mut n.r, key),
                 Equal   => match (n.l.take(), n.r.take()) {
@@ -256,12 +256,8 @@ impl<T: Ord + Copy> Node<T> {
      * Panic unless a node and its entire subtree is properly ordered.
      */
     fn validate_order(&self) {
-        if !match (&self.l, &self.r) {
-            (None, None) => true,
-            (Some(l), None) => l.t() < self.t(),
-            (None, Some(r)) => r.t() > self.t(),
-            (Some(l), Some(r)) => l.t() < self.t() && r.t() > self.t(),
-        } {
+        if self.l.as_ref().map_or(Less,    |l| Self::compare(&l.key, &self.key)) != Less ||
+           self.r.as_ref().map_or(Greater, |r| Self::compare(&r.key, &self.key)) != Greater {
             panic!("unordered node")
         }
         if let Some(l) = &self.l {
@@ -270,17 +266,6 @@ impl<T: Ord + Copy> Node<T> {
         if let Some(r) = &self.r {
             r.validate_order()
         }
-    }
-
-
-
-
-    /**
-     * Return this node's interval as a tuple, useful for dictionary
-     * comparisons.
-     */
-    fn t(&self) -> (T, T) {
-        (self.key.start, self.key.end)
     }
 
 
@@ -315,6 +300,13 @@ impl<T: Ord + Copy> Node<T> {
             (None, Some(r)) => r.max,
             (None, None) => upper,
         }.max(upper)
+    }
+
+
+
+
+    fn compare(a: &Range<T>, b: &Range<T>) -> Ordering {
+        (a.start, a.end).cmp(&(b.start, b.end))
     }
 }
 
@@ -400,7 +392,7 @@ impl<T: Ord + Copy> FromIterator<Range<T>> for Tree<T> {
     fn from_iter<I: IntoIterator<Item = Range<T>>>(iter: I) -> Self {
         let mut values: Vec<_> = iter.into_iter().collect();
 
-        values.sort_by(|a, b| (a.start, a.end).cmp(&(b.start, b.end)));
+        values.sort_by(Node::compare);
 
         Self {
             root: Node::from_sorted_slice(&values[..])
