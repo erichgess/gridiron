@@ -1,8 +1,3 @@
-#![allow(unused)]
-
-
-
-
 use core::ops::Range;
 use std::cmp::Ordering::{Less, Greater, Equal};
 use std::iter::FromIterator;
@@ -367,14 +362,26 @@ impl<T: Ord + Copy> Tree<T> {
         self.root.as_ref().map(|root| root.max)
     }
 
-    // pub fn into_balanced(self) -> Self {
-    //     let data: Vec<_> = self.into_iter().collect();
-    //     Self::from_sorted_slice(&data[..])
-    // }
+    pub fn into_balanced(self) -> Self {
+        let data: Vec<_> = self.into_iter().collect();
+        Tree { root: Node::from_sorted_slice(&data[..]) }
+    }
 
-    // pub fn iter<'a>(&'a self) -> TreeIter<'a, T> {
-    //     TreeIter::new(self)
-    // }
+    pub fn iter<'a>(&'a self) -> TreeIter<'a, T> {
+        TreeIter::new(self)
+    }
+
+    pub fn validate_max(&self) {
+        if let Some(root) = &self.root {
+            root.validate_max()
+        }
+    }
+
+    pub fn validate_order(&self) {
+        if let Some(root) = &self.root {
+            root.validate_order()
+        }
+    }
 
     fn min_path(&self) -> Vec<&Node<T>> {
         self.root.as_ref().map_or(Vec::new(), |root| root.min_path())
@@ -382,18 +389,6 @@ impl<T: Ord + Copy> Tree<T> {
 
     fn into_min_path(mut self) -> Vec<Node<T>> {
         self.root.take().map_or(Vec::new(), |root| root.into_min_path())
-    }
-
-    fn validate_max(&self) {
-        if let Some(root) = &self.root {
-            root.validate_max()
-        }
-    }
-
-    fn validate_order(&self) {
-        if let Some(root) = &self.root {
-            root.validate_order()
-        }
     }
 }
 
@@ -417,6 +412,106 @@ impl<T: Ord + Copy> FromIterator<Range<T>> for Tree<T> {
 
 
 // ============================================================================
+pub struct TreeIntoIter<T: Ord + Copy> {
+    nodes: Vec<Node<T>>
+}
+
+impl<T: Ord + Copy> TreeIntoIter<T> {
+    fn new(tree: Tree<T>) -> Self {
+        Self {
+            nodes: tree.into_min_path()
+        }
+    }
+}
+
+impl<T: Ord + Copy> Iterator for TreeIntoIter<T> {
+    type Item = Range<T>;
+
+    fn next(&mut self) -> Option<Self::Item> {
+
+       /*
+        * Pop the last node on the stack (A).
+        *
+        * If A has a right child (B) then take B and push it onto the stack,
+        * followed by the path to its minimum node.
+        *
+        * Yield the key of A.
+        */
+
+        if let Some(mut a) = self.nodes.pop() {
+            if let Some(r) = a.r.take() {
+                self.nodes.extend(r.into_min_path())
+            }
+            Some(a.key)
+        } else {
+            None
+        }
+    }
+}
+
+impl<T: Ord + Copy> IntoIterator for Tree<T> {
+    type Item = Range<T>;
+    type IntoIter = TreeIntoIter<T>;
+
+    fn into_iter(self) -> Self::IntoIter {
+        TreeIntoIter::new(self)
+    }
+}
+
+
+
+
+// ============================================================================
+pub struct TreeIter<'a, T: Ord + Copy> {
+    nodes: Vec<&'a Node<T>>
+}
+
+impl<'a, T: Ord + Copy> TreeIter<'a, T> {
+    fn new(tree: &'a Tree<T>) -> Self {
+        Self {
+            nodes: tree.min_path()
+        }
+    }
+}
+
+impl<'a, T: Ord + Copy> Iterator for TreeIter<'a, T> {
+    type Item = &'a Range<T>;
+
+    fn next(&mut self) -> Option<Self::Item> {
+
+       /*
+        * Pop the last node on the stack (A).
+        *
+        * If A has a right child (B) then push B onto the stack, followed by the
+        * path to its minimum node.
+        *
+        * Yield the key of A.
+        */
+
+        if let Some(a) = self.nodes.pop() {
+            if let Some(b) = &a.r {
+                self.nodes.extend(b.min_path());
+            }
+            Some(&a.key)
+        } else {
+            None
+        }
+    }
+}
+
+impl<'a, T: Ord + Copy> IntoIterator for &'a Tree<T> where T: Ord {
+    type Item = &'a Range<T>;
+    type IntoIter = TreeIter<'a, T>;
+
+    fn into_iter(self) -> Self::IntoIter {
+        TreeIter::new(self)
+    }
+}
+
+
+
+
+// ============================================================================
 #[cfg(test)]
 mod test {
 
@@ -433,7 +528,7 @@ mod test {
         let a = 1103515245;
         let c = 12345;
         let m = 1 << 31;
-        for i in 0..len {
+        for _ in 0..len {
             seed = (a * seed + c) % m;
             values.push(seed..seed + 30)
         }
@@ -488,5 +583,49 @@ mod test {
             tree.validate_order();
             tree.validate_max();
         }
+    }
+
+    #[test]
+    fn can_balance_tree() {
+        let tree: Tree<_> = (0..0).map(|i| i..i + 10).collect();
+        assert_eq!(tree.into_balanced().height(), 0);
+
+        let tree: Tree<_> = (0..2047).map(|i| i..i + 10).collect();
+        assert_eq!(tree.into_balanced().height(), 11);
+
+        let tree: Tree<_> = (0..2048).map(|i| i..i + 10).collect();
+        assert_eq!(tree.into_balanced().height(), 12);
+    }
+
+    #[test]
+    fn tree_into_iter_works() {
+        let mut tree = Tree::new();
+        tree.insert(5..12);
+        tree.insert(2..12);
+        tree.insert(7..12);
+        tree.insert(0..12);
+
+        let mut iter = tree.iter();
+        assert_eq!(iter.next(), Some(&(0..12)));
+        assert_eq!(iter.next(), Some(&(2..12)));
+        assert_eq!(iter.next(), Some(&(5..12)));
+        assert_eq!(iter.next(), Some(&(7..12)));
+        assert_eq!(iter.next(), None);
+    }
+
+    #[test]
+    fn tree_iter_works() {
+        let mut tree = Tree::new();
+        tree.insert(5..12);
+        tree.insert(2..12);
+        tree.insert(7..12);
+        tree.insert(0..12);
+
+        let mut iter = tree.into_iter();
+        assert_eq!(iter.next(), Some(0..12));
+        assert_eq!(iter.next(), Some(2..12));
+        assert_eq!(iter.next(), Some(5..12));
+        assert_eq!(iter.next(), Some(7..12));
+        assert_eq!(iter.next(), None);
     }
 }
