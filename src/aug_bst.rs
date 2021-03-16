@@ -137,13 +137,13 @@ impl<T: Ord + Copy> Node<T> {
                     }
                     (Some(l), Some(r)) => {
                         if r.len() > l.len() {
-                            let (new_r, min_r) = r.take_lmost();
-                            n.key = min_r;
+                            let (new_r, r_key) = r.take_lmost();
+                            n.key = r_key;
                             n.l = Some(l);
                             n.r = new_r;
                         } else {
-                            let (new_l, max_l) = l.take_rmost();
-                            n.key = max_l;
+                            let (new_l, l_key) = l.take_rmost();
+                            n.key = l_key;
                             n.l = new_l;
                             n.r = Some(r);
                         }
@@ -167,11 +167,13 @@ impl<T: Ord + Copy> Node<T> {
         if let Some(l) = self.l {
             if l.l.is_none() {
                 self.l = None;
+                self.max = Self::local_max(self.key.end, &self.l, &self.r);
                 (Some(self), l.key)
             } else {
-                let (new_l, min) = l.take_lmost();
+                let (new_l, l_key) = l.take_lmost();
                 self.l = new_l;
-                (Some(self), min)
+                self.max = Self::local_max(self.key.end, &self.l, &self.r);
+                (Some(self), l_key)
             }
         } else {
             (None, self.key)
@@ -189,11 +191,13 @@ impl<T: Ord + Copy> Node<T> {
         if let Some(r) = self.r {
             if r.r.is_none() {
                 self.r = None;
+                self.max = Self::local_max(self.key.end, &self.l, &self.r);
                 (Some(self), r.key)
             } else {
-                let (new_r, max) = r.take_rmost();
+                let (new_r, r_key) = r.take_rmost();
                 self.r = new_r;
-                (Some(self), max)
+                self.max = Self::local_max(self.key.end, &self.l, &self.r);
+                (Some(self), r_key)
             }
         } else {
             (None, self.key)
@@ -304,6 +308,11 @@ impl<T: Ord + Copy> Node<T> {
 
 
 
+    /**
+     * Determine the maximum upper bound based on the given endpoint, and two
+     * other maybe-nodes. The result is correct as two maybe-nodes have
+     * correctly stored max upper bounds.
+     */
     fn local_max(upper: T, l: &Option<Box<Self>>, r: &Option<Box<Self>>) -> T {
         match (&l, &r) {
             (Some(l), Some(r)) => l.max.max(r.max),
