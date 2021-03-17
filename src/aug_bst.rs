@@ -100,8 +100,8 @@ impl<T: Ord + Copy> Node<T> {
     fn path_to<'a>(&'a self, key: &Range<T>, mut path: Vec<&'a Self>) -> Vec<&'a Self> {
         match Self::compare(key, &self.key) {
             Less => {
+                path.push(self);
                 if let Some(l) = &self.l {
-                    path.push(self);
                     l.path_to(key, path)
                 } else {
                     path
@@ -677,5 +677,21 @@ mod test {
             let vec2: Vec<_> = iter2.collect();
             assert_eq!(vec1, vec2);
         }
+    }
+
+    #[test]
+    fn iter_from_works() {
+        let mut tree = Tree::new();
+        tree.insert(0..10);
+        tree.insert(4..10);
+        tree.insert(6..10);
+        tree.insert(2..10);
+        assert_eq!(tree.iter_from(&(-1..10)).next(), Some(&(0..10)));
+        assert_eq!(tree.iter_from(&( 1..10)).next(), Some(&(2..10)));
+        assert_eq!(tree.iter_from(&( 3..10)).next(), Some(&(4..10)));
+        assert_eq!(tree.iter_from(&( 4..10)).next(), Some(&(4..10)));
+        assert_eq!(tree.iter_from(&( 5..10)).next(), Some(&(6..10)));
+        let data: Vec<_> = tree.iter_from(&( 1..10)).collect();
+        assert_eq!(data, [&(2..10), &(4..10), &(6..10)]);
     }
 }
