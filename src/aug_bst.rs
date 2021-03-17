@@ -92,31 +92,26 @@ impl<T: Ord + Copy> Node<T> {
 
 
     /**
-     * Return those ancestor nodes above the given key, from which an in-order
-     * traversal could proceed. The path includes only the ancestor nodes which
-     * need to be visited to complete an in-order traversal proceeding from the
-     * given key: the nodes at which the path takes a left turn.
+     * Return the ancestor nodes above the given key, from which an in-order
+     * traversal could proceed. This is only the ancestor nodes at which the
+     * path takes a left turn. If the target key does not exist, the final
+     * element of the path is the successor node.
      */
-    fn path_to<'a>(&'a self, key: &Range<T>, mut path: Vec<&'a Self>) -> Vec<&'a Self> {
+    fn path_to<'a>(&'a self, key: &Range<T>, path: &mut Vec<&'a Self>) {
         match Self::compare(key, &self.key) {
             Less => {
                 path.push(self);
                 if let Some(l) = &self.l {
                     l.path_to(key, path)
-                } else {
-                    path
                 }
             }
             Greater => {
                 if let Some(r) = &self.r {
                     r.path_to(key, path)
-                } else {
-                    path
                 }
             }
             Equal => {
                 path.push(self);
-                path
             }
         }
     }
@@ -425,7 +420,12 @@ impl<T: Ord + Copy> Tree<T> {
     }
 
     fn path_to(&self, key: &Range<T>) -> Vec<&Node<T>> {
-        self.root.as_ref().map_or(Vec::new(), |root| root.path_to(key, Vec::new()))        
+        let mut path = Vec::new();
+
+        if let Some(root) = &self.root {
+            root.path_to(key, &mut path)
+        }
+        path
     }
 }
 
@@ -495,14 +495,6 @@ pub struct TreeIter<'a, T: Ord + Copy> {
     nodes: Vec<&'a Node<T>>
 }
 
-impl<'a, T: Ord + Copy> TreeIter<'a, T> {
-    fn new(tree: &'a Tree<T>) -> Self {
-        Self {
-            nodes: tree.lmost_path()
-        }
-    }
-}
-
 impl<'a, T: Ord + Copy> Iterator for TreeIter<'a, T> {
     type Item = &'a Range<T>;
 
@@ -533,7 +525,7 @@ impl<'a, T: Ord + Copy> IntoIterator for &'a Tree<T> where T: Ord {
     type IntoIter = TreeIter<'a, T>;
 
     fn into_iter(self) -> Self::IntoIter {
-        TreeIter::new(self)
+        TreeIter { nodes: self.lmost_path() }
     }
 }
 
