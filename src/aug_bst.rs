@@ -120,6 +120,26 @@ impl<T: Ord + Copy> Node<T> {
 
 
     /**
+     * Return all the intervals on this subtree which contain the given point.
+     */
+    fn intervals_containing<'a>(&'a self, point: &T, result: &mut Vec<&'a Range<T>>) {
+        if &self.max > point {
+            if self.key.contains(point) {
+                result.push(&self.key)
+            }
+            if let Some(l) = &self.l {
+                l.intervals_containing(point, result)
+            }
+            if let Some(r) = &self.r {
+                r.intervals_containing(point, result)
+            }
+        }
+    }
+
+
+
+
+    /**
      * Insert a node with the given key into this sub-tree.
      */
     fn insert(node: &mut Option<Box<Self>>, key: Range<T>) {
@@ -397,6 +417,15 @@ impl<T: Ord + Copy> Tree<T> {
 
     pub fn iter_from(&self, key: &Range<T>) -> TreeIter<T> {
         TreeIter { nodes: self.path_to(key) }
+    }
+
+    pub fn intervals_containing(&self, point: &T) -> Vec<&Range<T>> {
+        let mut ranges = Vec::new();
+
+        if let Some(root) = &self.root {
+            root.intervals_containing(point, &mut ranges)
+        }
+        ranges
     }
 
     pub fn validate_max(&self) {
@@ -685,5 +714,24 @@ mod test {
         assert_eq!(tree.iter_from(&( 5..10)).next(), Some(&(6..10)));
         let data: Vec<_> = tree.iter_from(&( 1..10)).collect();
         assert_eq!(data, [&(2..10), &(4..10), &(6..10)]);
+    }
+
+    #[test]
+    fn interval_query_works() {
+        let mut tree = Tree::new();
+        tree.insert(0..10);
+        tree.insert(4..7);
+        tree.insert(2..3);
+        tree.insert(8..12);
+        tree.insert(1..17);
+        tree.insert(6..9);
+        tree.validate_max();
+        assert!(tree.intervals_containing(&-1).is_empty());
+        assert_eq!(tree.intervals_containing(&0), [&(0..10)]);
+        assert_eq!(tree.intervals_containing(&1), [&(0..10), &(1..17)]);
+        assert_eq!(tree.intervals_containing(&2), [&(0..10), &(2..3), &(1..17)]);
+        assert_eq!(tree.intervals_containing(&3), [&(0..10), &(1..17)]);
+        assert_eq!(tree.intervals_containing(&4), [&(0..10), &(4..7), &(1..17)]);
+        assert_eq!(tree.intervals_containing(&11), [&(1..17), &(8..12)]);
     }
 }
