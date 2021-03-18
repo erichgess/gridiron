@@ -123,14 +123,16 @@ impl<T: Ord + Copy> Node<T> {
      * Return all the intervals on this subtree which contain the given point.
      */
     fn intervals_containing<'a>(&'a self, point: &T, result: &mut Vec<&'a Range<T>>) {
-        if &self.max > point {
-            if self.key.contains(point) {
-                result.push(&self.key)
-            }
-            if let Some(l) = &self.l {
+        if self.key.contains(point) {
+            result.push(&self.key)
+        }
+        if let Some(l) = &self.l {
+            if point <= &self.max {
                 l.intervals_containing(point, result)
             }
-            if let Some(r) = &self.r {
+        }
+        if let Some(r) = &self.r {
+            if point > &self.key.start {
                 r.intervals_containing(point, result)
             }
         }
