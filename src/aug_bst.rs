@@ -142,6 +142,29 @@ impl<T: Ord + Copy> Node<T> {
 
 
     /**
+     * Return all the intervals on this subtree which overlap the given range
+     * bounds object.
+     */
+    fn intervals_overlapping<'a, R: RangeBounds<T>>(&'a self, range: &R, result: &mut Vec<&'a Range<T>>) {
+        if self.key.overlaps(range) {
+            result.push(&self.key)
+        }
+        if let Some(l) = &self.l {
+            if range.overlaps(&(..self.max)) {
+                l.intervals_overlapping(range, result)
+            }
+        }
+        if let Some(r) = &self.r {
+            if range.overlaps(&(self.key.start..)) {
+                r.intervals_overlapping(range, result)
+            }
+        }
+    }
+
+
+
+
+    /**
      * Insert a node with the given key into this sub-tree.
      */
     fn insert(node: &mut Option<Box<Self>>, key: Range<T>) {
@@ -430,6 +453,15 @@ impl<T: Ord + Copy> Tree<T> {
         ranges
     }
 
+    pub fn intervals_overlapping<R: RangeBounds<T>>(&self, range: &R) -> Vec<&Range<T>> {
+        let mut ranges = Vec::new();
+
+        if let Some(root) = &self.root {
+            root.intervals_overlapping(range, &mut ranges)
+        }
+        ranges
+    }
+
     pub fn validate_max(&self) {
         if let Some(root) = &self.root {
             root.validate_max()
@@ -564,44 +596,59 @@ impl<'a, T: Ord + Copy> IntoIterator for &'a Tree<T> where T: Ord {
 
 
 /**
- * Determine whether two range bound objects overlap. Two ranges that share a
- * and endpoint are considered to overlap if either endpoint is closed.
+ * A trait to determine whether two range bound objects overlap. Two ranges that
+ * share an endpoint are considered to overlap only if both endpoints are open:
+ * that is, the test passes when a point in the set intersection has an epsilon
+ * neighborhood around it that's also in the intersection.
  */
-fn ranges_overlap<T: Ord, R: RangeBounds<T>, S: RangeBounds<T>>(r: &R, s: &S) -> bool
+trait Overlap<T>: RangeBounds<T> {
+    fn overlaps<S: Overlap<T>>(&self, s: &S) -> bool;
+}
+
+
+
+
+// ============================================================================
+impl<R, T> Overlap<T> for R
+where
+    R: RangeBounds<T>,
+    T: Ord
 {
-    use Bound::*;
+    fn overlaps<S: Overlap<T>>(&self, s: &S) -> bool {
+        use Bound::*;
 
-    let lower = match (r.start_bound(), s.start_bound()) {
-        (Unbounded,    Unbounded)    => Unbounded,
-        (Included(l0), Unbounded)    => Included(l0),
-        (Unbounded,    Included(l1)) => Included(l1),
-        (Excluded(l0), Unbounded)    => Excluded(l0),
-        (Unbounded,    Excluded(l1)) => Excluded(l1),
-        (Included(l0), Included(l1)) => Included(l0.max(l1)),
-        (Included(l0), Excluded(l1)) => Excluded(l0.max(l1)),
-        (Excluded(l0), Included(l1)) => Excluded(l0.max(l1)),
-        (Excluded(l0), Excluded(l1)) => Excluded(l0.max(l1)),
-    };
+        let lower = match (self.start_bound(), s.start_bound()) {
+            (Unbounded,    Unbounded)    => Unbounded,
+            (Included(l0), Unbounded)    => Included(l0),
+            (Unbounded,    Included(l1)) => Included(l1),
+            (Excluded(l0), Unbounded)    => Excluded(l0),
+            (Unbounded,    Excluded(l1)) => Excluded(l1),
+            (Included(l0), Included(l1)) => Included(l0.max(l1)),
+            (Included(l0), Excluded(l1)) => Excluded(l0.max(l1)),
+            (Excluded(l0), Included(l1)) => Excluded(l0.max(l1)),
+            (Excluded(l0), Excluded(l1)) => Excluded(l0.max(l1)),
+        };
 
-    let upper = match (r.end_bound(), s.end_bound()) {
-        (Unbounded,    Unbounded)    => Unbounded,
-        (Included(r0), Unbounded)    => Included(r0),
-        (Unbounded,    Included(r1)) => Included(r1),
-        (Excluded(r0), Unbounded)    => Excluded(r0),
-        (Unbounded,    Excluded(r1)) => Excluded(r1),
-        (Included(r0), Included(r1)) => Included(r0.min(r1)),
-        (Included(r0), Excluded(r1)) => Excluded(r0.min(r1)),
-        (Excluded(r0), Included(r1)) => Excluded(r0.min(r1)),
-        (Excluded(r0), Excluded(r1)) => Excluded(r0.min(r1)),
-    };
+        let upper = match (self.end_bound(), s.end_bound()) {
+            (Unbounded,    Unbounded)    => Unbounded,
+            (Included(r0), Unbounded)    => Included(r0),
+            (Unbounded,    Included(r1)) => Included(r1),
+            (Excluded(r0), Unbounded)    => Excluded(r0),
+            (Unbounded,    Excluded(r1)) => Excluded(r1),
+            (Included(r0), Included(r1)) => Included(r0.min(r1)),
+            (Included(r0), Excluded(r1)) => Excluded(r0.min(r1)),
+            (Excluded(r0), Included(r1)) => Excluded(r0.min(r1)),
+            (Excluded(r0), Excluded(r1)) => Excluded(r0.min(r1)),
+        };
 
-    match (lower, upper) {
-        (Unbounded, _) => true,
-        (_, Unbounded) => true,
-        (Included(l), Included(r)) => l <= r,
-        (Included(l), Excluded(r)) => l <= r,
-        (Excluded(l), Included(r)) => l <= r,
-        (Excluded(l), Excluded(r)) => l < r,
+        match (lower, upper) {
+            (Unbounded, _) => true,
+            (_, Unbounded) => true,
+            (Included(l), Included(r)) => l <= r,
+            (Included(l), Excluded(r)) => l < r,
+            (Excluded(l), Included(r)) => l < r,
+            (Excluded(l), Excluded(r)) => l < r,
+        }
     }
 }
 
@@ -613,7 +660,7 @@ fn ranges_overlap<T: Ord, R: RangeBounds<T>, S: RangeBounds<T>>(r: &R, s: &S) ->
 mod test {
 
     use core::ops::Range;
-    use crate::aug_bst::{Tree, TreeIter};
+    use crate::aug_bst::{Tree, TreeIter, Overlap};
 
     /**
      * A simple deterministic linear congruential generator:
@@ -783,14 +830,22 @@ mod test {
     }
 
     #[test]
-    fn overlapping_ranges_works() {
-        use crate::aug_bst::ranges_overlap;
+    fn overlap_query_works() {
+        let mut tree = Tree::new();
+        tree.insert(0..2);
+        tree.insert(4..10);
+        tree.insert(6..12);
+        tree.insert(2..5);
+        assert_eq!(tree.intervals_overlapping(&(5..10)), vec![&(4..10), &(6..12)]);
+    }
 
-        assert!(ranges_overlap(&(0..2), &(1..3)));
-        assert!(ranges_overlap(&(0..2), &(2..3)));
-        assert!(ranges_overlap(&(..=2), &(2..)));
-        assert!(ranges_overlap(&(..), &(..2)));
-        assert!(!ranges_overlap(&(..=2), &(3..)));
-        assert!(!ranges_overlap(&(4..), &(..2)));
+    #[test]
+    fn overlapping_ranges_works() {
+        assert!((0..2).overlaps(&(1..3)));
+        assert!((..=2).overlaps(&(2..)));
+        assert!((..).overlaps(&(..2)));
+        assert!(!(0..2).overlaps(&(2..3)));
+        assert!(!(..=2).overlaps(&(3..)));
+        assert!(!(4..).overlaps(&(..2)));
     }
 }
