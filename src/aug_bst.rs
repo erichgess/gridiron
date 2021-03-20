@@ -1,4 +1,4 @@
-use core::ops::Range;
+use core::ops::{Range, RangeBounds, Bound};
 use std::cmp::Ordering::{self, Less, Greater, Equal};
 use std::iter::FromIterator;
 
@@ -563,6 +563,51 @@ impl<'a, T: Ord + Copy> IntoIterator for &'a Tree<T> where T: Ord {
 
 
 
+/**
+ * Determine whether two range bound objects overlap. Two ranges that share a
+ * and endpoint are considered to overlap if either endpoint is closed.
+ */
+fn ranges_overlap<T: Ord, R: RangeBounds<T>, S: RangeBounds<T>>(r: &R, s: &S) -> bool
+{
+    use Bound::*;
+
+    let lower = match (r.start_bound(), s.start_bound()) {
+        (Unbounded,    Unbounded)    => Unbounded,
+        (Included(l0), Unbounded)    => Included(l0),
+        (Unbounded,    Included(l1)) => Included(l1),
+        (Excluded(l0), Unbounded)    => Excluded(l0),
+        (Unbounded,    Excluded(l1)) => Excluded(l1),
+        (Included(l0), Included(l1)) => Included(l0.max(l1)),
+        (Included(l0), Excluded(l1)) => Excluded(l0.max(l1)),
+        (Excluded(l0), Included(l1)) => Excluded(l0.max(l1)),
+        (Excluded(l0), Excluded(l1)) => Excluded(l0.max(l1)),
+    };
+
+    let upper = match (r.end_bound(), s.end_bound()) {
+        (Unbounded,    Unbounded)    => Unbounded,
+        (Included(r0), Unbounded)    => Included(r0),
+        (Unbounded,    Included(r1)) => Included(r1),
+        (Excluded(r0), Unbounded)    => Excluded(r0),
+        (Unbounded,    Excluded(r1)) => Excluded(r1),
+        (Included(r0), Included(r1)) => Included(r0.min(r1)),
+        (Included(r0), Excluded(r1)) => Excluded(r0.min(r1)),
+        (Excluded(r0), Included(r1)) => Excluded(r0.min(r1)),
+        (Excluded(r0), Excluded(r1)) => Excluded(r0.min(r1)),
+    };
+
+    match (lower, upper) {
+        (Unbounded, _) => true,
+        (_, Unbounded) => true,
+        (Included(l), Included(r)) => l <= r,
+        (Included(l), Excluded(r)) => l <= r,
+        (Excluded(l), Included(r)) => l <= r,
+        (Excluded(l), Excluded(r)) => l < r,
+    }
+}
+
+
+
+
 // ============================================================================
 #[cfg(test)]
 mod test {
@@ -735,5 +780,17 @@ mod test {
         assert_eq!(tree.intervals_containing(&3), [&(0..10), &(1..17)]);
         assert_eq!(tree.intervals_containing(&4), [&(0..10), &(4..7), &(1..17)]);
         assert_eq!(tree.intervals_containing(&11), [&(1..17), &(8..12)]);
+    }
+
+    #[test]
+    fn overlapping_ranges_works() {
+        use crate::aug_bst::ranges_overlap;
+
+        assert!(ranges_overlap(&(0..2), &(1..3)));
+        assert!(ranges_overlap(&(0..2), &(2..3)));
+        assert!(ranges_overlap(&(..=2), &(2..)));
+        assert!(ranges_overlap(&(..), &(..2)));
+        assert!(!ranges_overlap(&(..=2), &(3..)));
+        assert!(!ranges_overlap(&(4..), &(..2)));
     }
 }
