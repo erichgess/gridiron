@@ -273,6 +273,10 @@ impl<T: Ord> Tree<T> {
         Self { root: None }
     }
 
+    pub fn is_empty(&self) -> bool {
+        self.root.is_none()
+    }
+
     pub fn len(&self) -> usize {
         self.root.as_ref().map_or(0, |root| root.len())
     }
@@ -297,7 +301,7 @@ impl<T: Ord> Tree<T> {
         self.into_iter().collect()
     }
 
-    pub fn iter<'a>(&'a self) -> TreeIter<'a, T> {
+    pub fn iter(&self) -> TreeIter<'_, T> {
         TreeIter::new(self)
     }
 
@@ -320,10 +324,16 @@ impl<T: Ord> Tree<T> {
 // ============================================================================
 impl<T: Ord> FromIterator<T> for Tree<T> {
     fn from_iter<I: IntoIterator<Item = T>>(iter: I) -> Self {
-        let mut values: Vec<_> = iter.into_iter().map(|v| Some(v)).collect();
+        let mut values: Vec<_> = iter.into_iter().map(Some).collect();
         Self {
             root: Node::from_slice(&mut values[..])
         }
+    }
+}
+
+impl<T: Ord> Default for Tree<T> {
+    fn default() -> Self {
+        Self::new()
     }
 }
 

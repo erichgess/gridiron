@@ -34,7 +34,7 @@ impl Node {
         Self {
             center: (interval.start + interval.end) / 2,
             cl: once((interval.start, interval.clone())).collect(),
-            cr: once((interval.end,   interval.clone())).collect(),
+            cr: once((interval.end,   interval)).collect(),
             l: None,
             r: None,
         }
@@ -61,7 +61,7 @@ impl Node {
             }
             else {
                 n.cl.insert(interval.start, interval.clone());
-                n.cr.insert(interval.end,   interval.clone());
+                n.cr.insert(interval.end,   interval);
             }
         } else {
             *node = Some(Box::new(Node::new(interval)))
@@ -145,6 +145,16 @@ impl CenteredIntervalTree {
 
     pub fn remove(&mut self, interval: &Interval) {
         Node::remove(&mut self.root, interval)
+    }
+}
+
+
+
+
+// ============================================================================
+impl Default for CenteredIntervalTree {
+    fn default() -> Self {
+        Self::new()
     }
 }
 
