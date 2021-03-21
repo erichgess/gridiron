@@ -41,11 +41,11 @@ impl<T: Ord + Copy, V> IntervalMap<T, V> {
     }
 
     pub fn get(&self, key: &Range<T>) -> Option<&V> {
-        self.root.as_ref().map_or(None, |root| root.get(key))
+        self.root.as_ref().and_then(|root| root.get(key))
     }
 
     pub fn get_mut(&mut self, key: &Range<T>) -> Option<&mut V> {
-        self.root.as_mut().map_or(None, |root| root.get_mut(key))
+        self.root.as_mut().and_then(|root| root.get_mut(key))
     }
 
     pub fn insert(&mut self, key: Range<T>, value: V) {
@@ -78,6 +78,16 @@ impl<T: Ord + Copy, V> IntervalMap<T, V> {
 
 
 // ============================================================================
+impl<T: Ord + Copy, V> Default for IntervalMap<T, V> {
+    fn default() -> Self {
+        Self::new()
+    }
+}
+
+
+
+
+// ============================================================================
 impl<T: Ord + Copy, V> IntoIterator for IntervalMap<T, V> {
     type Item = (Range<T>, V);
     type IntoIter = aug_node::NodeIntoIter<T, V>;
@@ -93,12 +103,8 @@ impl<T: Ord + Copy, V> IntoIterator for IntervalMap<T, V> {
 // ============================================================================
 impl<T: Ord + Copy, V> FromIterator<(Range<T>, V)> for IntervalMap<T, V> {
     fn from_iter<I: IntoIterator<Item = (Range<T>, V)>>(iter: I) -> Self {
-        let mut values: Vec<_> = iter.into_iter().map(Some).collect();
-
-        values.sort_by(Node::compare_key_val);
-
         Self {
-            root: Node::from_sorted_slice(&mut values[..])
+            root: Node::from_iter(iter)
         }
     }
 }

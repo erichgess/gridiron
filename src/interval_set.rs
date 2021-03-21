@@ -65,16 +65,28 @@ impl<T: Ord + Copy> IntervalSet<T> {
         aug_node::query_range(&self.root, range).map(|(r, _)| r)
     }
 
+    #[cfg(test)]
     fn validate_max(&self) {
         if let Some(root) = &self.root {
             root.validate_max()
         }
     }
 
+    #[cfg(test)]
     fn validate_order(&self) {
         if let Some(root) = &self.root {
             root.validate_order()
         }
+    }
+}
+
+
+
+
+// ============================================================================
+impl<T: Ord + Copy> Default for IntervalSet<T> {
+    fn default() -> Self {
+        Self::new()
     }
 }
 
@@ -97,12 +109,8 @@ impl<T: Ord + Copy> IntoIterator for IntervalSet<T> {
 // ============================================================================
 impl<T: Ord + Copy> FromIterator<Range<T>> for IntervalSet<T> {
     fn from_iter<I: IntoIterator<Item = Range<T>>>(iter: I) -> Self {
-        let mut values: Vec<_> = iter.into_iter().map(|r| Some((r, ()))).collect();
-
-        values.sort_by(Node::compare_key_val);
-
         Self {
-            root: Node::from_sorted_slice(&mut values[..])
+            root: Node::from_iter(iter.into_iter().map(|r| (r, ())))
         }
     }
 }

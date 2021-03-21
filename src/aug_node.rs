@@ -108,8 +108,8 @@ impl<T: Ord + Copy, V> Node<T, V> {
      */
     pub(crate) fn get(&self, key: &Range<T>) -> Option<&V> {
         match Self::compare(key, &self.key) {
-            Less    => self.l.as_ref().map_or(None, |l| l.get(key)),
-            Greater => self.r.as_ref().map_or(None, |r| r.get(key)),
+            Less    => self.l.as_ref().and_then(|l| l.get(key)),
+            Greater => self.r.as_ref().and_then(|r| r.get(key)),
             Equal   => Some(&self.value)
         }       
     }
@@ -122,8 +122,8 @@ impl<T: Ord + Copy, V> Node<T, V> {
      */
     pub(crate) fn get_mut(&mut self, key: &Range<T>) -> Option<&mut V> {
         match Self::compare(key, &self.key) {
-            Less    => self.l.as_mut().map_or(None, |l| l.get_mut(key)),
-            Greater => self.r.as_mut().map_or(None, |r| r.get_mut(key)),
+            Less    => self.l.as_mut().and_then(|l| l.get_mut(key)),
+            Greater => self.r.as_mut().and_then(|r| r.get_mut(key)),
             Equal   => Some(&mut self.value)
         }       
     }
@@ -295,6 +295,7 @@ impl<T: Ord + Copy, V> Node<T, V> {
      * Panic unless a node is storing the maximum endpoint of its subtree. This
      * function is for testing purposes.
      */
+    #[cfg(test)]
     pub(crate) fn validate_max(&self) {
         if self.max != self.compute_max() {
             panic!("stored maximum endpoint out of sync with subtree");
@@ -314,6 +315,7 @@ impl<T: Ord + Copy, V> Node<T, V> {
      * Panic unless a node and its entire subtree is properly ordered. This
      * function is for testing purposes.
      */
+    #[cfg(test)]
     pub(crate) fn validate_order(&self) {
         if self.l.as_ref().map_or(Less,    |l| Self::compare(&l.key, &self.key)) != Less ||
            self.r.as_ref().map_or(Greater, |r| Self::compare(&r.key, &self.key)) != Greater {
@@ -335,6 +337,7 @@ impl<T: Ord + Copy, V> Node<T, V> {
      * same as the `max` data member on the node, but this function can be
      * useful to test validity of this augmented data.
      */
+    #[cfg(test)]
     fn compute_max(&self) -> T {
         match (&self.l, &self.r) {
             (Some(l), Some(r)) => l.compute_max().max(r.compute_max()),
@@ -528,8 +531,8 @@ where
 /**
  * Return an iterator that traverses the whole tree by reference.
  */
-pub(crate) fn traversal<'a, T, V>(
-    node: &'a Option<Box<Node<T, V>>>) -> impl Iterator<Item = (&'a Range<T>, &'a V)>
+pub(crate) fn traversal<T, V>(
+    node: &Option<Box<Node<T, V>>>) -> impl Iterator<Item = (&Range<T>, &V)>
 where
     T: Ord + Copy
 {
