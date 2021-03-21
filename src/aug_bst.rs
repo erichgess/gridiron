@@ -120,29 +120,6 @@ impl<T: Ord + Copy> Node<T> {
 
 
     /**
-     * Return all the intervals on this subtree which overlap the given range
-     * bounds object.
-     */
-    fn intervals_overlapping<'a, R: RangeBounds<T>>(&'a self, range: &R, result: &mut Vec<&'a Range<T>>) {
-        if let Some(l) = &self.l {
-            if range.overlaps(&(..self.max)) {
-                l.intervals_overlapping(range, result)
-            }
-        }
-        if self.key.overlaps(range) {
-            result.push(&self.key)
-        }
-        if let Some(r) = &self.r {
-            if range.overlaps(&(self.key.start..)) {
-                r.intervals_overlapping(range, result)
-            }
-        }
-    }
-
-
-
-
-    /**
      * Insert a node with the given key into this sub-tree.
      */
     fn insert(node: &mut Option<Box<Self>>, key: Range<T>) {
@@ -265,6 +242,11 @@ impl<T: Ord + Copy> Node<T> {
 
 
 
+    /**
+     * Like `lmost_path`, except the path only descends left only while the
+     * given predicate is satisfied. The final node in the path is the last one
+     * to satisfy the predicate.
+     */
     fn lmost_path_while<F: Fn(&Self) -> bool>(&self, predicate: &F) -> Vec<&Self> {
         let mut path = vec![self];
 
@@ -436,19 +418,27 @@ impl<T: Ord + Copy> Tree<T> {
         self.query_point(point).collect()
     }
 
-    pub fn intervals_overlapping<R: RangeBounds<T>>(&self, range: &R) -> Vec<&Range<T>> {
-        let mut ranges = Vec::new();
-
-        if let Some(root) = &self.root {
-            root.intervals_overlapping(range, &mut ranges)
-        }
-        ranges
+    pub fn intervals_overlapping<'a, R: RangeBounds<T>>(&'a self, range: &'a R) -> Vec<&'a Range<T>> {
+        self.query_range(range).collect()
     }
 
     pub fn query_point<'a>(&'a self, point: &'a T) -> impl Iterator<Item = &'a Range<T>> {
         let descend_l = move |a: &Node<T>| point < &a.max;
         let descend_r = move |a: &Node<T>| point >= &a.key.start;
         let predicate = move |a: &Node<T>| a.key.contains(point);
+
+        PredicatedTreeIter {
+            nodes: self.lmost_path_while(&descend_l),
+            descend_l,
+            descend_r,
+            predicate,
+        }
+    }
+
+    pub fn query_range<'a, R: RangeBounds<T>>(&'a self, range: &'a R) -> impl Iterator<Item = &'a Range<T>> {
+        let descend_l = move |a: &Node<T>| range.overlaps(&(..a.max));
+        let descend_r = move |a: &Node<T>| range.overlaps(&(a.key.start..));
+        let predicate = move |a: &Node<T>| range.overlaps(&a.key);
 
         PredicatedTreeIter {
             nodes: self.lmost_path_while(&descend_l),
