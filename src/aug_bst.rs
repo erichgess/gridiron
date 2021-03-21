@@ -25,7 +25,7 @@ impl<T: Ord + Copy> Node<T> {
 
 
     /**
-     * Create an empty sub-tree with the given key
+     * Create an empty sub-tree with the given key.
      */
     fn new(key: Range<T>) -> Self {
         Self { max: key.end, key, l: None, r: None }
@@ -67,7 +67,7 @@ impl<T: Ord + Copy> Node<T> {
 
 
     /**
-     * Return the height of this sub-tree
+     * Return the height of this sub-tree.
      */
     fn height(&self) -> usize {
         self.l.as_ref().map_or(0, |l| l.height()).max(
@@ -120,39 +120,17 @@ impl<T: Ord + Copy> Node<T> {
 
 
     /**
-     * Return all the intervals on this subtree which contain the given point.
-     */
-    fn intervals_containing<'a>(&'a self, point: &T, result: &mut Vec<&'a Range<T>>) {
-        if self.key.contains(point) {
-            result.push(&self.key)
-        }
-        if let Some(l) = &self.l {
-            if point <= &self.max {
-                l.intervals_containing(point, result)
-            }
-        }
-        if let Some(r) = &self.r {
-            if point > &self.key.start {
-                r.intervals_containing(point, result)
-            }
-        }
-    }
-
-
-
-
-    /**
      * Return all the intervals on this subtree which overlap the given range
      * bounds object.
      */
     fn intervals_overlapping<'a, R: RangeBounds<T>>(&'a self, range: &R, result: &mut Vec<&'a Range<T>>) {
-        if self.key.overlaps(range) {
-            result.push(&self.key)
-        }
         if let Some(l) = &self.l {
             if range.overlaps(&(..self.max)) {
                 l.intervals_overlapping(range, result)
             }
+        }
+        if self.key.overlaps(range) {
+            result.push(&self.key)
         }
         if let Some(r) = &self.r {
             if range.overlaps(&(self.key.start..)) {
@@ -175,7 +153,7 @@ impl<T: Ord + Copy> Node<T> {
             match Self::compare(&key, &n.key) {
                 Less    => Self::insert(&mut n.l, key),
                 Greater => Self::insert(&mut n.r, key),
-                Equal => {}
+                Equal   => {}
             }
         } else {
             *node = Some(Box::new(Self::new(key)))
@@ -281,9 +259,19 @@ impl<T: Ord + Copy> Node<T> {
      * traversal.
      */
     fn lmost_path(&self) -> Vec<&Self> {
+        self.lmost_path_while(&(|_| true))
+    }
+
+
+
+
+    fn lmost_path_while<F: Fn(&Self) -> bool>(&self, predicate: &F) -> Vec<&Self> {
         let mut path = vec![self];
 
         while let Some(l) = path.last().and_then(|b| b.l.as_ref()) {
+            if !predicate(l) {
+                break
+            }
             path.push(l)
         }
         path
@@ -436,21 +424,16 @@ impl<T: Ord + Copy> Tree<T> {
         Tree { root: Node::from_sorted_slice(&data[..]) }
     }
 
-    pub fn iter(&self) -> TreeIter<T> {
+    pub fn iter(&self) -> impl Iterator<Item = &Range<T>> {
         TreeIter { nodes: self.lmost_path() }
     }
 
-    pub fn iter_from(&self, key: &Range<T>) -> TreeIter<T> {
+    pub fn iter_from(&self, key: &Range<T>) -> impl Iterator<Item = &Range<T>> {
         TreeIter { nodes: self.path_to(key) }
     }
 
-    pub fn intervals_containing(&self, point: &T) -> Vec<&Range<T>> {
-        let mut ranges = Vec::new();
-
-        if let Some(root) = &self.root {
-            root.intervals_containing(point, &mut ranges)
-        }
-        ranges
+    pub fn intervals_containing<'a>(&'a self, point: &'a T) -> Vec<&'a Range<T>> {
+        self.query_point(point).collect()
     }
 
     pub fn intervals_overlapping<R: RangeBounds<T>>(&self, range: &R) -> Vec<&Range<T>> {
@@ -460,6 +443,19 @@ impl<T: Ord + Copy> Tree<T> {
             root.intervals_overlapping(range, &mut ranges)
         }
         ranges
+    }
+
+    pub fn query_point<'a>(&'a self, point: &'a T) -> impl Iterator<Item = &'a Range<T>> {
+        let descend_l = move |a: &Node<T>| point < &a.max;
+        let descend_r = move |a: &Node<T>| point >= &a.key.start;
+        let predicate = move |a: &Node<T>| a.key.contains(point);
+
+        PredicatedTreeIter {
+            nodes: self.lmost_path_while(&descend_l),
+            descend_l,
+            descend_r,
+            predicate,
+        }
     }
 
     pub fn validate_max(&self) {
@@ -476,6 +472,10 @@ impl<T: Ord + Copy> Tree<T> {
 
     fn lmost_path(&self) -> Vec<&Node<T>> {
         self.root.as_ref().map_or(Vec::new(), |root| root.lmost_path())
+    }
+
+    fn lmost_path_while<F: Fn(&Node<T>) -> bool>(&self, descend_l: &F) -> Vec<&Node<T>> {
+        self.root.as_ref().map_or(Vec::new(), |root| root.lmost_path_while(descend_l))
     }
 
     fn into_lmost_path(mut self) -> Vec<Node<T>> {
@@ -541,15 +541,6 @@ impl<T: Ord + Copy> Iterator for TreeIntoIter<T> {
     }
 }
 
-impl<T: Ord + Copy> IntoIterator for Tree<T> {
-    type Item = Range<T>;
-    type IntoIter = TreeIntoIter<T>;
-
-    fn into_iter(self) -> Self::IntoIter {
-        TreeIntoIter { nodes: self.into_lmost_path() }
-    }
-}
-
 
 
 
@@ -574,12 +565,60 @@ impl<'a, T: Ord + Copy> Iterator for TreeIter<'a, T> {
 
         if let Some(a) = self.nodes.pop() {
             if let Some(b) = &a.r {
-                self.nodes.extend(b.lmost_path());
+                self.nodes.extend(b.lmost_path())
             }
             Some(&a.key)
         } else {
             None
         }
+    }
+}
+
+
+
+
+// ============================================================================
+struct PredicatedTreeIter<'a, T: Ord + Copy, F, G, H> {
+    nodes: Vec<&'a Node<T>>,
+    descend_l: F,
+    descend_r: G,
+    predicate: H,
+}
+
+impl<'a, T, F, G, H> Iterator for PredicatedTreeIter<'a, T, F, G, H>
+where
+    T: Ord + Copy,
+    F: Fn(&Node<T>) -> bool,
+    G: Fn(&Node<T>) -> bool,
+    H: Fn(&Node<T>) -> bool,
+{
+    type Item = &'a Range<T>;
+
+    fn next(&mut self) -> Option<Self::Item> {
+        while let Some(a) = self.nodes.pop() {
+            if let Some(b) = &a.r {
+                if (self.descend_r)(a) {
+                    self.nodes.extend(b.lmost_path_while(&self.descend_l))
+                }
+            }
+            if (self.predicate)(a) {
+                return Some(&a.key)
+            }
+        }
+        None
+    }
+}
+
+
+
+
+// ============================================================================
+impl<T: Ord + Copy> IntoIterator for Tree<T> {
+    type Item = Range<T>;
+    type IntoIter = TreeIntoIter<T>;
+
+    fn into_iter(self) -> Self::IntoIter {
+        TreeIntoIter { nodes: self.into_lmost_path() }
     }
 }
 
@@ -596,10 +635,9 @@ impl<'a, T: Ord + Copy> IntoIterator for &'a Tree<T> where T: Ord {
 
 
 /**
- * A trait to determine whether two range bound objects overlap. Two ranges that
- * share an endpoint are considered to overlap only if both endpoints are open:
- * that is, the test passes when a point in the set intersection has an epsilon
- * neighborhood around it that's also in the intersection.
+ * Extension trait to determine whether two range bounds objects overlap. Two
+ * ranges that line up end-to-end do not overlap, regardless of whether the
+ * endpoints that touch are included or exluded.
  */
 trait Overlap<T>: RangeBounds<T> {
     fn overlaps<S: Overlap<T>>(&self, s: &S) -> bool;
@@ -644,7 +682,7 @@ where
         match (lower, upper) {
             (Unbounded, _) => true,
             (_, Unbounded) => true,
-            (Included(l), Included(r)) => l <= r,
+            (Included(l), Included(r)) => l < r,
             (Included(l), Excluded(r)) => l < r,
             (Excluded(l), Included(r)) => l < r,
             (Excluded(l), Excluded(r)) => l < r,
@@ -823,9 +861,9 @@ mod test {
         assert!(tree.intervals_containing(&-1).is_empty());
         assert_eq!(tree.intervals_containing(&0), [&(0..10)]);
         assert_eq!(tree.intervals_containing(&1), [&(0..10), &(1..17)]);
-        assert_eq!(tree.intervals_containing(&2), [&(0..10), &(2..3), &(1..17)]);
+        assert_eq!(tree.intervals_containing(&2), [&(0..10), &(1..17), &(2..3)]);
         assert_eq!(tree.intervals_containing(&3), [&(0..10), &(1..17)]);
-        assert_eq!(tree.intervals_containing(&4), [&(0..10), &(4..7), &(1..17)]);
+        assert_eq!(tree.intervals_containing(&4), [&(0..10), &(1..17), &(4..7)]);
         assert_eq!(tree.intervals_containing(&11), [&(1..17), &(8..12)]);
     }
 
@@ -842,8 +880,8 @@ mod test {
     #[test]
     fn overlapping_ranges_works() {
         assert!((0..2).overlaps(&(1..3)));
-        assert!((..=2).overlaps(&(2..)));
         assert!((..).overlaps(&(..2)));
+        assert!(!(..=2).overlaps(&(2..)));
         assert!(!(0..2).overlaps(&(2..3)));
         assert!(!(..=2).overlaps(&(3..)));
         assert!(!(4..).overlaps(&(..2)));
