@@ -451,13 +451,13 @@ impl<T: Ord + Copy, V> Node<T, V> {
  * key-value pairs.
  */
 pub struct NodeIntoIter<T: Ord + Copy, V> {
-    pub(crate) nodes: Vec<Node<T, V>>
+    pub(crate) stack: Vec<Node<T, V>>
 }
 
 impl<T: Ord + Copy, V> NodeIntoIter<T, V> {
     pub(crate) fn new(node: Option<Box<Node<T, V>>>) -> Self {
         Self {
-            nodes: node.map_or(Vec::new(), |node| node.into_lmost_path())
+            stack: node.map_or(Vec::new(), |node| node.into_lmost_path())
         }
     }
 }
@@ -466,7 +466,7 @@ impl<T: Ord + Copy, V> Iterator for NodeIntoIter<T, V> {
     type Item = (Range<T>, V);
 
     fn next(&mut self) -> Option<Self::Item> {
-        Node::next(&mut self.nodes).map(|n| (n.key, n.value))
+        Node::next(&mut self.stack).map(|n| (n.key, n.value))
     }
 }
 
@@ -475,16 +475,16 @@ impl<T: Ord + Copy, V> Iterator for NodeIntoIter<T, V> {
 
 /**
  * Consuming iterator that traveres an entire sub-tree in-order, returning
- * key only the keys.
+ * only the keys.
  */
 pub struct NodeIntoIterKey<T: Ord + Copy, V> {
-    pub(crate) nodes: Vec<Node<T, V>>
+    pub(crate) stack: Vec<Node<T, V>>
 }
 
 impl<T: Ord + Copy, V> NodeIntoIterKey<T, V> {
     pub(crate) fn new(node: Option<Box<Node<T, V>>>) -> Self {
         Self {
-            nodes: node.map_or(Vec::new(), |node| node.into_lmost_path())
+            stack: node.map_or(Vec::new(), |node| node.into_lmost_path())
         }
     }
 }
@@ -493,7 +493,41 @@ impl<T: Ord + Copy, V> Iterator for NodeIntoIterKey<T, V> {
     type Item = Range<T>;
 
     fn next(&mut self) -> Option<Self::Item> {
-        Node::next(&mut self.nodes).map(|n| n.key)
+        Node::next(&mut self.stack).map(|n| n.key)
+    }
+}
+
+
+
+
+/**
+ * Iterator over mutable values in this sub-tree. The traversal is pre-order.
+ */
+struct NodeIterMut<'a, T: Ord + Copy, V> {
+    stack: Vec<&'a mut Node<T, V>>
+}
+
+impl<'a, T: Ord + Copy, V> NodeIterMut<'a, T, V> {
+    pub(crate) fn new(node: &'a mut Option<Box<Node<T, V>>>) -> Self {
+        Self {
+            stack: node.as_mut().map_or(Vec::new(), |n| vec![n])
+        }
+    }
+}
+
+impl<'a, T: Ord + Copy, V> Iterator for NodeIterMut<'a, T, V> {
+    type Item = (&'a Range<T>, &'a mut V);
+
+    fn next(&mut self) -> Option<Self::Item> {
+        let node = self.stack.pop()?;
+
+        if let Some(l) = &mut node.l {
+            self.stack.push(l)
+        }
+        if let Some(r) = &mut node.r {
+            self.stack.push(r)
+        }
+        Some((&node.key, &mut node.value))
     }
 }
 
@@ -504,8 +538,8 @@ impl<T: Ord + Copy, V> Iterator for NodeIntoIterKey<T, V> {
  * By-reference iterator that traverses a subset of the tree. Used for point and
  * range-bounds queries.
  */
-pub struct NodeQueryIter<'a, T: Ord + Copy, V, F, G, H> {
-    pub(crate) nodes: Vec<&'a Node<T, V>>,
+struct NodeQueryIter<'a, T: Ord + Copy, V, F, G, H> {
+    pub(crate) stack: Vec<&'a Node<T, V>>,
     pub(crate) descend_l: F,
     pub(crate) descend_r: G,
     pub(crate) predicate: H,
@@ -521,7 +555,7 @@ where
     type Item = (&'a Range<T>, &'a V);
 
     fn next(&mut self) -> Option<Self::Item> {
-        Node::next_query(&mut self.nodes, &self.descend_l, &self.descend_r, &self.predicate).map(|n| (&n.key, &n.value))
+        Node::next_query(&mut self.stack, &self.descend_l, &self.descend_r, &self.predicate).map(|n| (&n.key, &n.value))
     }
 }
 
@@ -537,11 +571,26 @@ where
     T: Ord + Copy
 {
     NodeQueryIter {
-        nodes: node.as_ref().map_or(Vec::new(), |node| node.lmost_path()),
+        stack: node.as_ref().map_or(Vec::new(), |node| node.lmost_path()),
         descend_l: |_: &Node<T, V>| true,
         descend_r: |_: &Node<T, V>| true,
         predicate: |_: &Node<T, V>| true,
     }
+}
+
+
+
+
+/**
+ * Return an iterator that does a pre-order traversal, by mutable reference, of
+ * the whole tree.
+ */
+pub(crate) fn preorder_mut<T, V>(
+    node: &mut Option<Box<Node<T, V>>>) -> impl Iterator<Item = (&Range<T>, &mut V)>
+where
+    T: Ord + Copy
+{
+    NodeIterMut::new(node)
 }
 
 
@@ -562,7 +611,7 @@ where
     let predicate = move |a: &Node<T, V>| a.key.contains(point);
 
     NodeQueryIter {
-        nodes: node.as_ref().map_or(Vec::new(), |node| node.lmost_path_while(&descend_l)),
+        stack: node.as_ref().map_or(Vec::new(), |node| node.lmost_path_while(&descend_l)),
         descend_l,
         descend_r,
         predicate,
@@ -587,7 +636,7 @@ where
     let predicate = move |a: &Node<T, V>| range.overlaps(&a.key);
 
     NodeQueryIter {
-        nodes: node.as_ref().map_or(Vec::new(), |node| node.lmost_path_while(&descend_l)),
+        stack: node.as_ref().map_or(Vec::new(), |node| node.lmost_path_while(&descend_l)),
         descend_l,
         descend_r,
         predicate,

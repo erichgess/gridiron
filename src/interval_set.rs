@@ -57,6 +57,10 @@ impl<T: Ord + Copy> IntervalSet<T> {
         aug_node::traversal(&self.root).map(|(r, _)| r)
     }
 
+    pub fn iter_mut(&mut self) -> impl Iterator<Item = &Range<T>> {
+        aug_node::preorder_mut(&mut self.root).map(|(r, _)| r)
+    }
+
     pub fn query_point<'a>(&'a self, point: &'a T) -> impl Iterator<Item = &'a Range<T>> {
         aug_node::query_point(&self.root, point).map(|(r, _)| r)
     }
@@ -122,25 +126,25 @@ impl<T: Ord + Copy> FromIterator<Range<T>> for IntervalSet<T> {
 #[cfg(test)]
 mod test {
 
-	use core::ops::Range;
-	use super::IntervalSet;
+    use core::ops::Range;
+    use super::IntervalSet;
 
-	/**
-	 * A simple deterministic linear congruential generator:
-	 *
-	 * https://en.wikipedia.org/wiki/Linear_congruential_generator
-	 */
-	fn stupid_random_intervals(len: usize, mut seed: usize) -> Vec<Range<usize>> {
-	    let mut values = Vec::new();
-	    let a = 1103515245;
-	    let c = 12345;
-	    let m = 1 << 31;
-	    for _ in 0..len {
-	        seed = (a * seed + c) % m;
-	        values.push(seed..seed + 30)
-	    }
-	    values
-	}
+    /**
+     * A simple deterministic linear congruential generator:
+     *
+     * https://en.wikipedia.org/wiki/Linear_congruential_generator
+     */
+    fn stupid_random_intervals(len: usize, mut seed: usize) -> Vec<Range<usize>> {
+        let mut values = Vec::new();
+        let a = 1103515245;
+        let c = 12345;
+        let m = 1 << 31;
+        for _ in 0..len {
+            seed = (a * seed + c) % m;
+            values.push(seed..seed + 30)
+        }
+        values
+    }
 
     #[test]
     fn set_contains_works() {
@@ -191,35 +195,37 @@ mod test {
     }
 
     #[test]
-    fn set_into_iter_works() {
+    fn set_iter_works() {
+        let mut intervals = stupid_random_intervals(100, 123);
         let mut set = IntervalSet::new();
-        set.insert(5..12);
-        set.insert(2..12);
-        set.insert(7..12);
-        set.insert(0..12);
 
-        let mut iter = set.iter();
-        assert_eq!(iter.next(), Some(&(0..12)));
-        assert_eq!(iter.next(), Some(&(2..12)));
-        assert_eq!(iter.next(), Some(&(5..12)));
-        assert_eq!(iter.next(), Some(&(7..12)));
-        assert_eq!(iter.next(), None);
+        for x in &intervals {
+            set.insert(x.clone());
+        }
+
+        intervals.sort_by(|a, b| (a.start, a.end).cmp(&(b.start, b.end)));
+
+        for (x, y) in intervals.iter().zip(set) {
+            assert_eq!(x.start, y.start);
+            assert_eq!(x.end, y.end);
+        }
     }
 
     #[test]
-    fn set_iter_works() {
+    fn set_into_iter_works() {
+        let mut intervals = stupid_random_intervals(100, 123);
         let mut set = IntervalSet::new();
-        set.insert(5..12);
-        set.insert(2..12);
-        set.insert(7..12);
-        set.insert(0..12);
 
-        let mut iter = set.into_iter();
-        assert_eq!(iter.next(), Some(0..12));
-        assert_eq!(iter.next(), Some(2..12));
-        assert_eq!(iter.next(), Some(5..12));
-        assert_eq!(iter.next(), Some(7..12));
-        assert_eq!(iter.next(), None);
+        for x in &intervals {
+            set.insert(x.clone());
+        }
+
+        intervals.sort_by(|a, b| (a.start, a.end).cmp(&(b.start, b.end)));
+
+        for (x, y) in intervals.into_iter().zip(set) {
+            assert_eq!(x.start, y.start);
+            assert_eq!(x.end, y.end);
+        }
     }
 
     #[test]
