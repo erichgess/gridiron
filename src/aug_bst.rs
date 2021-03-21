@@ -97,24 +97,24 @@ impl<T: Ord + Copy> Node<T> {
      * path takes a left turn. If the target key does not exist, the final
      * element of the path is the successor node.
      */
-    fn path_to<'a>(&'a self, key: &Range<T>, path: &mut Vec<&'a Self>) {
-        match Self::compare(key, &self.key) {
-            Less => {
-                path.push(self);
-                if let Some(l) = &self.l {
-                    l.path_to(key, path)
-                }
-            }
-            Greater => {
-                if let Some(r) = &self.r {
-                    r.path_to(key, path)
-                }
-            }
-            Equal => {
-                path.push(self);
-            }
-        }
-    }
+    // fn path_to<'a>(&'a self, key: &Range<T>, path: &mut Vec<&'a Self>) {
+    //     match Self::compare(key, &self.key) {
+    //         Less => {
+    //             path.push(self);
+    //             if let Some(l) = &self.l {
+    //                 l.path_to(key, path)
+    //             }
+    //         }
+    //         Greater => {
+    //             if let Some(r) = &self.r {
+    //                 r.path_to(key, path)
+    //             }
+    //         }
+    //         Equal => {
+    //             path.push(self);
+    //         }
+    //     }
+    // }
 
 
 
@@ -410,9 +410,9 @@ impl<T: Ord + Copy> Tree<T> {
         TreeIter { nodes: self.lmost_path() }
     }
 
-    pub fn iter_from(&self, key: &Range<T>) -> impl Iterator<Item = &Range<T>> {
-        TreeIter { nodes: self.path_to(key) }
-    }
+    // pub fn iter_from(&self, key: &Range<T>) -> impl Iterator<Item = &Range<T>> {
+    //     TreeIter { nodes: self.path_to(key) }
+    // }
 
     pub fn intervals_containing<'a>(&'a self, point: &'a T) -> Vec<&'a Range<T>> {
         self.query_point(point).collect()
@@ -472,14 +472,14 @@ impl<T: Ord + Copy> Tree<T> {
         self.root.take().map_or(Vec::new(), |root| root.into_lmost_path())
     }
 
-    fn path_to(&self, key: &Range<T>) -> Vec<&Node<T>> {
-        let mut path = Vec::new();
+    // fn path_to(&self, key: &Range<T>) -> Vec<&Node<T>> {
+    //     let mut path = Vec::new();
 
-        if let Some(root) = &self.root {
-            root.path_to(key, &mut path)
-        }
-        path
-    }
+    //     if let Some(root) = &self.root {
+    //         root.path_to(key, &mut path)
+    //     }
+    //     path
+    // }
 }
 
 
@@ -688,7 +688,7 @@ where
 mod test {
 
     use core::ops::Range;
-    use crate::aug_bst::{Tree, TreeIter, Overlap};
+    use crate::aug_bst::{Tree, Overlap};
 
     /**
      * A simple deterministic linear congruential generator:
@@ -804,39 +804,39 @@ mod test {
         assert_eq!(iter.next(), None);
     }
 
-    #[test]
-    fn can_get_the_path_to_a_node() {
-        let intervals = stupid_random_intervals(100, 2345);
-        let mut tree = Tree::new();
+    // #[test]
+    // fn can_get_the_path_to_a_node() {
+    //     let intervals = stupid_random_intervals(100, 2345);
+    //     let mut tree = Tree::new();
 
-        for x in &intervals {
-            tree.insert(x.clone())
-        }
+    //     for x in &intervals {
+    //         tree.insert(x.clone())
+    //     }
 
-        for x in &intervals[40..60] {
-            let iter1 = tree.iter().skip_while(|y| *y != x);
-            let iter2 = TreeIter { nodes: tree.path_to(x) };
-            let vec1: Vec<_> = iter1.collect();
-            let vec2: Vec<_> = iter2.collect();
-            assert_eq!(vec1, vec2);
-        }
-    }
+    //     for x in &intervals[40..60] {
+    //         let iter1 = tree.iter().skip_while(|y| *y != x);
+    //         let iter2 = TreeIter { nodes: tree.path_to(x) };
+    //         let vec1: Vec<_> = iter1.collect();
+    //         let vec2: Vec<_> = iter2.collect();
+    //         assert_eq!(vec1, vec2);
+    //     }
+    // }
 
-    #[test]
-    fn iter_from_works() {
-        let mut tree = Tree::new();
-        tree.insert(0..10);
-        tree.insert(4..10);
-        tree.insert(6..10);
-        tree.insert(2..10);
-        assert_eq!(tree.iter_from(&(-1..10)).next(), Some(&(0..10)));
-        assert_eq!(tree.iter_from(&( 1..10)).next(), Some(&(2..10)));
-        assert_eq!(tree.iter_from(&( 3..10)).next(), Some(&(4..10)));
-        assert_eq!(tree.iter_from(&( 4..10)).next(), Some(&(4..10)));
-        assert_eq!(tree.iter_from(&( 5..10)).next(), Some(&(6..10)));
-        let data: Vec<_> = tree.iter_from(&( 1..10)).collect();
-        assert_eq!(data, [&(2..10), &(4..10), &(6..10)]);
-    }
+    // #[test]
+    // fn iter_from_works() {
+    //     let mut tree = Tree::new();
+    //     tree.insert(0..10);
+    //     tree.insert(4..10);
+    //     tree.insert(6..10);
+    //     tree.insert(2..10);
+    //     assert_eq!(tree.iter_from(&(-1..10)).next(), Some(&(0..10)));
+    //     assert_eq!(tree.iter_from(&( 1..10)).next(), Some(&(2..10)));
+    //     assert_eq!(tree.iter_from(&( 3..10)).next(), Some(&(4..10)));
+    //     assert_eq!(tree.iter_from(&( 4..10)).next(), Some(&(4..10)));
+    //     assert_eq!(tree.iter_from(&( 5..10)).next(), Some(&(6..10)));
+    //     let data: Vec<_> = tree.iter_from(&( 1..10)).collect();
+    //     assert_eq!(data, [&(2..10), &(4..10), &(6..10)]);
+    // }
 
     #[test]
     fn interval_query_works() {
