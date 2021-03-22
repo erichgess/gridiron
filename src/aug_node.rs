@@ -1,5 +1,5 @@
-use core::ops::Range;
-use std::cmp::Ordering::{self, Less, Greater, Equal};
+use core::ops::{Range, RangeBounds};
+use core::cmp::Ordering::{self, Less, Greater, Equal};
 use crate::overlap::Overlap;
 
 
@@ -242,37 +242,6 @@ impl<T: Ord + Copy, V> Node<T, V> {
 
 
 
-    /**
-     * Return a list of node references forming a path from this node to its
-     * leftmost node. This function is to facilitate non-consuming in-order
-     * traversal.
-     */
-    pub(crate) fn lmost_path(&self) -> Vec<&Self> {
-        self.lmost_path_while(&(|_| true))
-    }
-
-
-
-
-    /**
-     * Like `lmost_path`, except the path only descends left only while the
-     * given predicate is satisfied. The final node in the path is the last one
-     * to satisfy the predicate.
-     */
-    pub(crate) fn lmost_path_while<F: Fn(&Self) -> bool>(&self, predicate: &F) -> Vec<&Self> {
-        let mut path = vec![self];
-
-        while let Some(l) = path.last().and_then(|b| b.l.as_ref()) {
-            if !predicate(l) {
-                break
-            }
-            path.push(l)
-        }
-        path
-    }
-
-
-
 
     /**
      * Consume this node and return a list of nodes forming a path from this
@@ -370,7 +339,7 @@ impl<T: Ord + Copy, V> Node<T, V> {
     /**
      * Utility function to dictionary-compare two range objects.
      */
-    pub(crate) fn compare(a: &Range<T>, b: &Range<T>) -> Ordering {
+    fn compare(a: &Range<T>, b: &Range<T>) -> Ordering {
         (a.start, a.end).cmp(&(b.start, b.end))
     }
 
@@ -380,7 +349,7 @@ impl<T: Ord + Copy, V> Node<T, V> {
     /**
      * Utility function to dictionary-compare two Option<(Range<T>, V)> objects.
      */
-    pub(crate) fn compare_key_val(a: &Option<(Range<T>, V)>, b: &Option<(Range<T>, V)>) -> Ordering {
+    fn compare_key_val(a: &Option<(Range<T>, V)>, b: &Option<(Range<T>, V)>) -> Ordering {
         Self::compare(&a.as_ref().unwrap().0, &b.as_ref().unwrap().0)
     }
 
@@ -389,7 +358,7 @@ impl<T: Ord + Copy, V> Node<T, V> {
 
     /**
      * Utility function enabling in-order consuming traversals, for use by
-     * iterators.
+     * the sonsuming in-order traversal iterator.
      */
     fn next(stack: &mut Vec<Self>) -> Option<Self> {
 
@@ -411,36 +380,6 @@ impl<T: Ord + Copy, V> Node<T, V> {
              None
          }
     }
-
-
-
-
-    /**
-     * Utility function enabling in-order by-reference traversals with querying,
-     * for use by iterators.
-     */
-    fn next_query<'a, F, G, H>(
-        stack: &mut Vec<&'a Self>,
-        descend_l: &F,
-        descend_r: &G,
-        predicate: &H) -> Option<&'a Self>
-    where
-        F: Fn(&Node<T, V>) -> bool,
-        G: Fn(&Node<T, V>) -> bool,
-        H: Fn(&Node<T, V>) -> bool,
-    {
-        while let Some(a) = stack.pop() {
-            if let Some(b) = &a.r {
-                if descend_r(a) {
-                    stack.extend(b.lmost_path_while(&descend_l))
-                }
-            }
-            if predicate(&a) {
-                return Some(a)
-            }
-        }
-        None
-    }
 }
 
 
@@ -450,19 +389,19 @@ impl<T: Ord + Copy, V> Node<T, V> {
  * Consuming iterator that traveres an entire sub-tree in-order, returning
  * key-value pairs.
  */
-pub struct NodeIntoIter<T: Ord + Copy, V> {
-    pub(crate) stack: Vec<Node<T, V>>
+pub (crate) struct IntoIterInOrder<T: Ord + Copy, V> {
+    stack: Vec<Node<T, V>>
 }
 
-impl<T: Ord + Copy, V> NodeIntoIter<T, V> {
-    pub(crate) fn new(node: Option<Box<Node<T, V>>>) -> Self {
+impl<T: Ord + Copy, V> IntoIterInOrder<T, V> {
+    pub (crate) fn new(node: Option<Box<Node<T, V>>>) -> Self {
         Self {
             stack: node.map_or(Vec::new(), |node| node.into_lmost_path())
         }
     }
 }
 
-impl<T: Ord + Copy, V> Iterator for NodeIntoIter<T, V> {
+impl<T: Ord + Copy, V> Iterator for IntoIterInOrder<T, V> {
     type Item = (Range<T>, V);
 
     fn next(&mut self) -> Option<Self::Item> {
@@ -474,26 +413,103 @@ impl<T: Ord + Copy, V> Iterator for NodeIntoIter<T, V> {
 
 
 /**
- * Consuming iterator that traveres an entire sub-tree in-order, returning
- * only the keys.
+ * Consuming iterator that does a pre-order traveral of the sub-tree, returning
+ * key-value pairs.
  */
-pub struct NodeIntoIterKey<T: Ord + Copy, V> {
-    pub(crate) stack: Vec<Node<T, V>>
+pub struct IntoIter<T: Ord + Copy, V> {
+    stack: Vec<Node<T, V>>
 }
 
-impl<T: Ord + Copy, V> NodeIntoIterKey<T, V> {
+impl<T: Ord + Copy, V> IntoIter<T, V> {
     pub(crate) fn new(node: Option<Box<Node<T, V>>>) -> Self {
         Self {
-            stack: node.map_or(Vec::new(), |node| node.into_lmost_path())
+            stack: node.into_iter().map(|n| *n).collect()
         }
     }
 }
 
-impl<T: Ord + Copy, V> Iterator for NodeIntoIterKey<T, V> {
+impl<T: Ord + Copy, V> Iterator for IntoIter<T, V> {
+    type Item = (Range<T>, V);
+
+    fn next(&mut self) -> Option<Self::Item> {
+        let node = self.stack.pop()?;
+
+        if let Some(r) = node.r {
+            self.stack.push(*r)
+        }
+        if let Some(l) = node.l {
+            self.stack.push(*l)
+        }
+        Some((node.key, node.value))
+    }
+}
+
+
+
+
+/**
+ * Consuming iterator that does a pre-order traveral of the sub-tree, returning
+ * only the keys.
+ */
+pub struct IntoIterKey<T: Ord + Copy, V> {
+    stack: Vec<Node<T, V>>
+}
+
+impl<T: Ord + Copy, V> IntoIterKey<T, V> {
+    pub(crate) fn new(node: Option<Box<Node<T, V>>>) -> Self {
+        Self {
+            stack: node.into_iter().map(|n| *n).collect()
+        }
+    }
+}
+
+impl<T: Ord + Copy, V> Iterator for IntoIterKey<T, V> {
     type Item = Range<T>;
 
     fn next(&mut self) -> Option<Self::Item> {
-        Node::next(&mut self.stack).map(|n| n.key)
+        let node = self.stack.pop()?;
+
+        if let Some(r) = node.r {
+            self.stack.push(*r)
+        }
+        if let Some(l) = node.l {
+            self.stack.push(*l)
+        }
+        Some(node.key)
+    }
+}
+
+
+
+
+/**
+ * Iterator over immutable values in this sub-tree. The traversal is pre-order.
+ */
+pub (crate) struct Iter<'a, T: Ord + Copy, V> {
+    stack: Vec<&'a Node<T, V>>
+}
+
+impl<'a, T: Ord + Copy, V> Iter<'a, T, V> {
+    pub(crate) fn new(node: &'a Option<Box<Node<T, V>>>) -> Self {
+        Self {
+            stack: node.iter().map(|n| &**n).collect()
+        }
+    }
+}
+
+impl<'a, T: Ord + Copy, V> Iterator for Iter<'a, T, V> {
+    type Item = (&'a Range<T>, &'a V);
+
+    fn next(&mut self) -> Option<Self::Item> {
+        let node = self.stack.pop()?;
+
+        if let Some(r) = &node.r {
+            self.stack.push(r)
+        }
+        if let Some(l) = &node.l {
+            self.stack.push(l)
+        }
+        Some((&node.key, &node.value))
     }
 }
 
@@ -503,29 +519,29 @@ impl<T: Ord + Copy, V> Iterator for NodeIntoIterKey<T, V> {
 /**
  * Iterator over mutable values in this sub-tree. The traversal is pre-order.
  */
-struct NodeIterMut<'a, T: Ord + Copy, V> {
+pub (crate) struct IterMut<'a, T: Ord + Copy, V> {
     stack: Vec<&'a mut Node<T, V>>
 }
 
-impl<'a, T: Ord + Copy, V> NodeIterMut<'a, T, V> {
+impl<'a, T: Ord + Copy, V> IterMut<'a, T, V> {
     pub(crate) fn new(node: &'a mut Option<Box<Node<T, V>>>) -> Self {
         Self {
-            stack: node.as_mut().map_or(Vec::new(), |n| vec![n])
+            stack: node.iter_mut().map(|n| &mut **n).collect()
         }
     }
 }
 
-impl<'a, T: Ord + Copy, V> Iterator for NodeIterMut<'a, T, V> {
+impl<'a, T: Ord + Copy, V> Iterator for IterMut<'a, T, V> {
     type Item = (&'a Range<T>, &'a mut V);
 
     fn next(&mut self) -> Option<Self::Item> {
         let node = self.stack.pop()?;
 
-        if let Some(l) = &mut node.l {
-            self.stack.push(l)
-        }
         if let Some(r) = &mut node.r {
             self.stack.push(r)
+        }
+        if let Some(l) = &mut node.l {
+            self.stack.push(l)
         }
         Some((&node.key, &mut node.value))
     }
@@ -535,27 +551,44 @@ impl<'a, T: Ord + Copy, V> Iterator for NodeIterMut<'a, T, V> {
 
 
 /**
- * By-reference iterator that traverses a subset of the tree. Used for point and
- * range-bounds queries.
+ * Iterator that visits, by reference in pre-order, only those key-value pairs
+ * for which the interval contains the given point.
  */
-struct NodeQueryIter<'a, T: Ord + Copy, V, F, G, H> {
-    pub(crate) stack: Vec<&'a Node<T, V>>,
-    pub(crate) descend_l: F,
-    pub(crate) descend_r: G,
-    pub(crate) predicate: H,
+pub (crate) struct IterPointQuery<'a, T: Ord + Copy, V> {
+    stack: Vec<&'a Node<T, V>>,
+    point: &'a T
 }
 
-impl<'a, T, V, F, G, H> Iterator for NodeQueryIter<'a, T, V, F, G, H>
-where
-    T: Ord + Copy,
-    F: Fn(&Node<T, V>) -> bool,
-    G: Fn(&Node<T, V>) -> bool,
-    H: Fn(&Node<T, V>) -> bool,
-{
+impl<'a, T: Ord + Copy, V> IterPointQuery<'a, T, V> {
+    pub(crate) fn new(node: &'a Option<Box<Node<T, V>>>, point: &'a T) -> Self {
+        Self {
+            stack: node.iter().map(|n| &**n).collect(),
+            point,
+        }
+    }
+}
+
+impl<'a, T: Ord + Copy, V> Iterator for IterPointQuery<'a, T, V> {
     type Item = (&'a Range<T>, &'a V);
 
     fn next(&mut self) -> Option<Self::Item> {
-        Node::next_query(&mut self.stack, &self.descend_l, &self.descend_r, &self.predicate).map(|n| (&n.key, &n.value))
+        loop {
+            let node = self.stack.pop()?;
+
+            if let Some(r) = &node.r {
+                if self.point >= &node.key.start {
+                    self.stack.push(r)
+                }
+            }
+            if let Some(l) = &node.l {
+                if self.point < &node.max {
+                    self.stack.push(l)
+                }
+            }
+            if node.key.contains(self.point) {
+                return Some((&node.key, &node.value))
+            }
+        }
     }
 }
 
@@ -563,83 +596,44 @@ where
 
 
 /**
- * Return an iterator that traverses the whole tree by reference.
+ * Iterator that visits, by reference in pre-order, only those key-value pairs
+ * for which the interval intersects the given range boudns object.
  */
-pub(crate) fn traversal<T, V>(
-    node: &Option<Box<Node<T, V>>>) -> impl Iterator<Item = (&Range<T>, &V)>
-where
-    T: Ord + Copy
-{
-    NodeQueryIter {
-        stack: node.as_ref().map_or(Vec::new(), |node| node.lmost_path()),
-        descend_l: |_: &Node<T, V>| true,
-        descend_r: |_: &Node<T, V>| true,
-        predicate: |_: &Node<T, V>| true,
+pub (crate) struct IterRangeQuery<'a, T: Ord + Copy, V, R: RangeBounds<T>> {
+    stack: Vec<&'a Node<T, V>>,
+    range: &'a R,
+}
+
+impl<'a, T: Ord + Copy, V, R: RangeBounds<T>> IterRangeQuery<'a, T, V, R> {
+    pub(crate) fn new(node: &'a Option<Box<Node<T, V>>>, range: &'a R) -> Self {
+        Self {
+            stack: node.iter().map(|n| &**n).collect(),
+            range,
+        }
     }
 }
 
+impl<'a, T: Ord + Copy, V, R: RangeBounds<T>> Iterator for IterRangeQuery<'a, T, V, R> {
+    type Item = (&'a Range<T>, &'a V);
 
+    fn next(&mut self) -> Option<Self::Item> {
+        loop {
+            let node = self.stack.pop()?;
 
-
-/**
- * Return an iterator that does a pre-order traversal, by mutable reference, of
- * the whole tree.
- */
-pub(crate) fn preorder_mut<T, V>(
-    node: &mut Option<Box<Node<T, V>>>) -> impl Iterator<Item = (&Range<T>, &mut V)>
-where
-    T: Ord + Copy
-{
-    NodeIterMut::new(node)
-}
-
-
-
-
-/**
- * Return an iterator that visits (by reference) only those key-value pairs for
- * which the interval contains the given point.
- */
-pub(crate) fn query_point<'a, T, V>(
-    node: &'a Option<Box<Node<T, V>>>,
-    point: &'a T) -> impl Iterator<Item = (&'a Range<T>, &'a V)>
-where
-    T: Ord + Copy
-{
-    let descend_l = move |a: &Node<T, V>| point < &a.max;
-    let descend_r = move |a: &Node<T, V>| point >= &a.key.start;
-    let predicate = move |a: &Node<T, V>| a.key.contains(point);
-
-    NodeQueryIter {
-        stack: node.as_ref().map_or(Vec::new(), |node| node.lmost_path_while(&descend_l)),
-        descend_l,
-        descend_r,
-        predicate,
-    }
-}
-
-
-
-
-/**
- * Return an iterator that visits (by reference) only those key-value pairs for
- * which the interval overlaps the given range bounds object.
- */
-pub(crate) fn query_range<'a, T, V, R: Overlap<T>>(
-    node: &'a Option<Box<Node<T, V>>>,
-    range: &'a R) -> impl Iterator<Item = (&'a Range<T>, &'a V)>
-where
-    T: Ord + Copy
-{
-    let descend_l = move |a: &Node<T, V>| range.overlaps(&(..a.max));
-    let descend_r = move |a: &Node<T, V>| range.overlaps(&(a.key.start..));
-    let predicate = move |a: &Node<T, V>| range.overlaps(&a.key);
-
-    NodeQueryIter {
-        stack: node.as_ref().map_or(Vec::new(), |node| node.lmost_path_while(&descend_l)),
-        descend_l,
-        descend_r,
-        predicate,
+            if let Some(r) = &node.r {
+                if self.range.overlaps(&(node.key.start..)) {
+                    self.stack.push(r)
+                }
+            }
+            if let Some(l) = &node.l {
+                if self.range.overlaps(&(..node.max)) {
+                    self.stack.push(l)
+                }
+            }
+            if self.range.overlaps(&node.key) {
+                return Some((&node.key, &node.value))
+            }
+        }
     }
 }
 

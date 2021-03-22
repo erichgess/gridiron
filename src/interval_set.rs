@@ -1,13 +1,13 @@
 use core::ops::{Range, RangeBounds};
-use std::iter::FromIterator;
+use core::iter::FromIterator;
 use crate::aug_node::{self, Node};
 
 
 
 
 /**
- * An set type where the keys are `Range` objects. Supports point and
- * range-based queries to iterate over the keys.
+ * A set type where the keys are `Range` objects. Supports point and range-based
+ * queries to iterate over the keys.
  */
 #[derive(Clone)]
 pub struct IntervalSet<T: Ord + Copy> {
@@ -49,26 +49,34 @@ impl<T: Ord + Copy> IntervalSet<T> {
     }
 
     pub fn into_balanced(self) -> Self {
-        let mut data: Vec<_> = self.into_iter().map(|r| Some((r, ()))).collect();
+        let mut data: Vec<_> = self.into_sorted().map(|r| Some((r, ()))).collect();
         Self { root: Node::from_sorted_slice(&mut data[..]) }
     }
 
     pub fn iter(&self) -> impl Iterator<Item = &Range<T>> {
-        aug_node::traversal(&self.root).map(|(r, _)| r)
+        aug_node::Iter::new(&self.root).map(|(k, _)| k)
+    }
+
+    pub fn into_sorted(self) -> impl Iterator<Item = Range<T>> {
+        aug_node::IntoIterInOrder::new(self.root).map(|(k, _)| k)
     }
 
     pub fn iter_mut(&mut self) -> impl Iterator<Item = &Range<T>> {
-        aug_node::preorder_mut(&mut self.root).map(|(r, _)| r)
+        aug_node::IterMut::new(&mut self.root).map(|(r, _)| r)
     }
 
     pub fn query_point<'a>(&'a self, point: &'a T) -> impl Iterator<Item = &'a Range<T>> {
-        aug_node::query_point(&self.root, point).map(|(r, _)| r)
+        aug_node::IterPointQuery::new(&self.root, point).map(|(k, _)| k)
     }
 
     pub fn query_range<'a, R: RangeBounds<T>>(&'a self, range: &'a R) -> impl Iterator<Item = &'a Range<T>> {
-        aug_node::query_range(&self.root, range).map(|(r, _)| r)
+        aug_node::IterRangeQuery::new(&self.root, range).map(|(k, _)| k)
     }
 
+
+
+
+    // ========================================================================
     #[cfg(test)]
     fn validate_max(&self) {
         if let Some(root) = &self.root {
@@ -100,10 +108,10 @@ impl<T: Ord + Copy> Default for IntervalSet<T> {
 // ============================================================================
 impl<T: Ord + Copy> IntoIterator for IntervalSet<T> {
     type Item = Range<T>;
-    type IntoIter = aug_node::NodeIntoIterKey<T, ()>;
+    type IntoIter = aug_node::IntoIterKey<T, ()>;
 
     fn into_iter(self) -> Self::IntoIter {
-        aug_node::NodeIntoIterKey::new(self.root)
+        aug_node::IntoIterKey::new(self.root)
     }
 }
 
@@ -196,23 +204,12 @@ mod test {
 
     #[test]
     fn set_iter_works() {
-        let mut intervals = stupid_random_intervals(100, 123);
-        let mut set = IntervalSet::new();
-
-        for x in &intervals {
-            set.insert(x.clone());
-        }
-
-        intervals.sort_by(|a, b| (a.start, a.end).cmp(&(b.start, b.end)));
-
-        for (x, y) in intervals.iter().zip(set) {
-            assert_eq!(x.start, y.start);
-            assert_eq!(x.end, y.end);
-        }
+        let set: IntervalSet<_> = stupid_random_intervals(100, 123).into_iter().collect();
+        assert_eq!(set.iter().count(), 100);
     }
 
     #[test]
-    fn set_into_iter_works() {
+    fn set_into_sorted_works() {
         let mut intervals = stupid_random_intervals(100, 123);
         let mut set = IntervalSet::new();
 
@@ -222,7 +219,7 @@ mod test {
 
         intervals.sort_by(|a, b| (a.start, a.end).cmp(&(b.start, b.end)));
 
-        for (x, y) in intervals.into_iter().zip(set) {
+        for (x, y) in intervals.into_iter().zip(set.into_sorted()) {
             assert_eq!(x.start, y.start);
             assert_eq!(x.end, y.end);
         }
@@ -241,9 +238,9 @@ mod test {
         assert!(set.query_point(&-1).count() == 0);
         assert_eq!(set.query_point(&0).collect::<Vec<_>>(), [&(0..10)]);
         assert_eq!(set.query_point(&1).collect::<Vec<_>>(), [&(0..10), &(1..17)]);
-        assert_eq!(set.query_point(&2).collect::<Vec<_>>(), [&(0..10), &(1..17), &(2..3)]);
+        assert_eq!(set.query_point(&2).collect::<Vec<_>>(), [&(0..10), &(2..3), &(1..17)]);
         assert_eq!(set.query_point(&3).collect::<Vec<_>>(), [&(0..10), &(1..17)]);
-        assert_eq!(set.query_point(&4).collect::<Vec<_>>(), [&(0..10), &(1..17), &(4..7)]);
+        assert_eq!(set.query_point(&4).collect::<Vec<_>>(), [&(0..10), &(4..7), &(1..17)]);
         assert_eq!(set.query_point(&11).collect::<Vec<_>>(), [&(1..17), &(8..12)]);
     }
 

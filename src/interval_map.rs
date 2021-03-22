@@ -1,5 +1,5 @@
 use core::ops::{Range, RangeBounds};
-use std::iter::FromIterator;
+use core::iter::FromIterator;
 use crate::aug_node::{self, Node};
 
 
@@ -57,20 +57,24 @@ impl<T: Ord + Copy, V> IntervalMap<T, V> {
     }
 
     pub fn into_balanced(self) -> Self {
-        let mut data: Vec<_> = self.into_iter().map(Some).collect();
+        let mut data: Vec<_> = self.into_sorted().map(Some).collect();
         Self { root: Node::from_sorted_slice(&mut data[..]) }
     }
 
-    pub fn iter(&self) -> impl Iterator<Item = (&Range<T>, &V)> {
-        aug_node::traversal(&self.root)
+    pub fn into_sorted(self) -> impl Iterator<Item = (Range<T>, V)> {
+        aug_node::IntoIterInOrder::new(self.root)
+    }
+
+    pub fn iter_mut(&mut self) -> impl Iterator<Item = (&Range<T>, &mut V)> {
+        aug_node::IterMut::new(&mut self.root)
     }
 
     pub fn query_point<'a>(&'a self, point: &'a T) -> impl Iterator<Item = (&'a Range<T>, &'a V)> {
-        aug_node::query_point(&self.root, point)
+        aug_node::IterPointQuery::new(&self.root, point)
     }
 
     pub fn query_range<'a, R: RangeBounds<T>>(&'a self, range: &'a R) -> impl Iterator<Item = (&'a Range<T>, &'a V)> {
-        aug_node::query_range(&self.root, range)
+        aug_node::IterRangeQuery::new(&self.root, range)
     }
 }
 
@@ -90,10 +94,10 @@ impl<T: Ord + Copy, V> Default for IntervalMap<T, V> {
 // ============================================================================
 impl<T: Ord + Copy, V> IntoIterator for IntervalMap<T, V> {
     type Item = (Range<T>, V);
-    type IntoIter = aug_node::NodeIntoIter<T, V>;
+    type IntoIter = aug_node::IntoIter<T, V>;
 
     fn into_iter(self) -> Self::IntoIter {
-        aug_node::NodeIntoIter::new(self.root)
+        aug_node::IntoIter::new(self.root)
     }
 }
 
