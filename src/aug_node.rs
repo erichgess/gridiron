@@ -132,9 +132,10 @@ impl<T: Ord + Copy, V> Node<T, V> {
 
 
     /**
-     * Insert a node with the given key into this sub-tree.
+     * Insert a node with the given key into this sub-tree. If a node with that
+     * key already exists, the value is overwritten.
      */
-    pub(crate) fn insert(node: &mut Option<Box<Self>>, key: Range<T>, value: V) {
+    pub(crate) fn insert(node: &mut Option<Box<Self>>, key: Range<T>, value: V) -> &mut V {
         if let Some(n) = node {
 
             n.max = key.end.max(n.max);
@@ -142,10 +143,41 @@ impl<T: Ord + Copy, V> Node<T, V> {
             match Self::compare(&key, &n.key) {
                 Less    => Self::insert(&mut n.l, key, value),
                 Greater => Self::insert(&mut n.r, key, value),
-                Equal   => {}
+                Equal   => {
+                    n.value = value;
+                    &mut n.value
+                }
             }
         } else {
-            *node = Some(Box::new(Self::new(key, value)))
+            *node = Some(Box::new(Self::new(key, value)));
+            &mut node.as_mut().unwrap().value
+        }
+    }
+
+
+
+
+    /**
+     * Return a mutable reference to the value with the given key if it exists.
+     * If the key does not exist, then create it with the default value and
+     * return a mutable reference to that.
+     */
+    pub(crate) fn require(node: &mut Option<Box<Self>>, key: Range<T>) -> &mut V
+    where
+        V: Default
+    {
+        if let Some(n) = node {
+
+            n.max = key.end.max(n.max);
+
+            match Self::compare(&key, &n.key) {
+                Less    => Self::require(&mut n.l, key),
+                Greater => Self::require(&mut n.r, key),
+                Equal   => &mut n.value
+            }
+        } else {
+            *node = Some(Box::new(Self::new(key, V::default())));
+            &mut node.as_mut().unwrap().value
         }
     }
 
@@ -485,7 +517,7 @@ impl<T: Ord + Copy, V> Iterator for IntoIterKey<T, V> {
 /**
  * Iterator over immutable values in this sub-tree. The traversal is pre-order.
  */
-pub (crate) struct Iter<'a, T: Ord + Copy, V> {
+pub struct Iter<'a, T: Ord + Copy, V> {
     stack: Vec<&'a Node<T, V>>
 }
 
@@ -519,7 +551,7 @@ impl<'a, T: Ord + Copy, V> Iterator for Iter<'a, T, V> {
 /**
  * Iterator over mutable values in this sub-tree. The traversal is pre-order.
  */
-pub (crate) struct IterMut<'a, T: Ord + Copy, V> {
+pub struct IterMut<'a, T: Ord + Copy, V> {
     stack: Vec<&'a mut Node<T, V>>
 }
 

@@ -48,8 +48,12 @@ impl<T: Ord + Copy, V> IntervalMap<T, V> {
         self.root.as_mut().and_then(|root| root.get_mut(key))
     }
 
-    pub fn insert(&mut self, key: Range<T>, value: V) {
+    pub fn insert(&mut self, key: Range<T>, value: V) -> &mut V {
         Node::insert(&mut self.root, key, value)
+    }
+
+    pub fn require(&mut self, key: Range<T>) -> &mut V where V: Default {
+        Node::require(&mut self.root, key)
     }
 
     pub fn remove(&mut self, key: &Range<T>) {
@@ -63,6 +67,10 @@ impl<T: Ord + Copy, V> IntervalMap<T, V> {
 
     pub fn into_sorted(self) -> impl Iterator<Item = (Range<T>, V)> {
         aug_node::IntoIterInOrder::new(self.root)
+    }
+
+    pub fn iter(&self) -> impl Iterator<Item = (&Range<T>, &V)> {
+        aug_node::Iter::new(&self.root)
     }
 
     pub fn iter_mut(&mut self) -> impl Iterator<Item = (&Range<T>, &mut V)> {
@@ -98,6 +106,32 @@ impl<T: Ord + Copy, V> IntoIterator for IntervalMap<T, V> {
 
     fn into_iter(self) -> Self::IntoIter {
         aug_node::IntoIter::new(self.root)
+    }
+}
+
+
+
+
+// ============================================================================
+impl<'a, T: Ord + Copy, V> IntoIterator for &'a IntervalMap<T, V> {
+    type Item = (&'a Range<T>, &'a V);
+    type IntoIter = aug_node::Iter<'a, T, V>;
+
+    fn into_iter(self) -> Self::IntoIter {
+        aug_node::Iter::new(&self.root)
+    }
+}
+
+
+
+
+// ============================================================================
+impl<'a, T: Ord + Copy, V> IntoIterator for &'a mut IntervalMap<T, V> {
+    type Item = (&'a Range<T>, &'a mut V);
+    type IntoIter = aug_node::IterMut<'a, T, V>;
+
+    fn into_iter(self) -> Self::IntoIter {
+        aug_node::IterMut::new(&mut self.root)
     }
 }
 

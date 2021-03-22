@@ -41,7 +41,7 @@ impl<T: Ord + Copy> IntervalSet<T> {
     }
 
     pub fn insert(&mut self, key: Range<T>) {
-        Node::insert(&mut self.root, key, ())
+        Node::insert(&mut self.root, key, ());
     }
 
     pub fn remove(&mut self, key: &Range<T>) {
@@ -251,6 +251,6 @@ mod test {
         set.insert(4..10);
         set.insert(6..12);
         set.insert(2..5);
-        assert_eq!(set.query_range(&(5..10)).collect::<Vec<_>>(), vec![&(4..10), &(6..12)]);
+        assert_eq!(set.query_range(&(5..10)).collect::<Vec<_>>(), [&(4..10), &(6..12)]);
     }
 }
