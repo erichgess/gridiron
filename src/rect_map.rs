@@ -4,7 +4,7 @@ use crate::interval_map::IntervalMap;
 
 
 
-/// Type alias for a 1d range
+/// Type alias for a 2d range
 type Rectangle<T> = (Range<T>, Range<T>);
 
 
@@ -78,7 +78,12 @@ impl<T: Ord + Copy, V> RectangleMap<T, V> {
     }
 
     pub fn into_balanced(self) -> Self {
-        Self { map: self.map.into_sorted().map(|(k, m)| (k, m.into_balanced())).collect() }
+        Self {
+            map: self.map
+                .into_sorted()
+                .map(|(k, m)| (k, m.into_balanced()))
+                .collect()
+        }
     }
 
     pub fn into_iter(self) -> impl Iterator<Item = (Rectangle<T>, V)> {
@@ -102,18 +107,25 @@ impl<T: Ord + Copy, V> RectangleMap<T, V> {
             .flatten()
     }
 
-    pub fn query_point<'a>(&'a self, point: (&'a T, &'a T)) -> impl Iterator<Item = (RectangleRef<'a, T>, &'a V)> {
+    pub fn query_point<'a>(
+        &'a self,
+        point: (&'a T, &'a T)) -> impl Iterator<Item = (RectangleRef<'a, T>, &'a V)> {
         self.map
             .query_point(point.0)
             .map(move |(di, l)| l.query_point(point.1).map(move |(dj, m)| ((di, dj), m)))
             .flatten()
     }
 
-    pub fn query_rect<'a>(&'a self, rect: RectangleRef<'a, T>) -> impl Iterator<Item = (RectangleRef<'a, T>, &'a V)> {
+    pub fn query_rect<'a>(
+        &'a self,
+        rect: RectangleRef<'a, T>) -> impl Iterator<Item = (RectangleRef<'a, T>, &'a V)> {
         self.query_bounds(rect.0, rect.1)
     }
 
-    pub fn query_bounds<'a, R, S>(&'a self, r: &'a R, s: &'a S) -> impl Iterator<Item = (RectangleRef<'a, T>, &'a V)>
+    pub fn query_bounds<'a, R, S>(
+        &'a self,
+        r: &'a R,
+        s: &'a S) -> impl Iterator<Item = (RectangleRef<'a, T>, &'a V)>
     where
         R: RangeBounds<T>,
         S: RangeBounds<T>,
