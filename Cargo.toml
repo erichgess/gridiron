@@ -1,5 +1,5 @@
 [package]
-name = "gridflow"
+name = "gridiron"
 version = "0.1.0"
 authors = ["Jonathan Zrake <jonathan.zrake@gmail.com>"]
 edition = "2018"
