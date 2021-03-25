@@ -126,9 +126,16 @@ mod test {
 
     #[test]
     fn patch_sampling_works() {
-        let patch = Patch::from_function(0, (4..10, 4..10), |i, j| i as f64 + j as f64);
-        assert_eq!(patch.sample(0, (5, 5)), 10.0);
-        assert_eq!(patch.sample(0, (6, 8)), 14.0);
-        assert_eq!(patch.sample(1, (2, 2)), 0.25 * (8.0 + 9.0 + 9.0 + 10.0));
+        let patch = Patch::from_function(1, (4..10, 4..10), |i, j| i as f64 + j as f64);
+        assert_eq!(patch.sample(1, (5, 5)), 10.0);
+        assert_eq!(patch.sample(1, (6, 8)), 14.0);
+        assert_eq!(patch.sample(2, (2, 2)), 0.25 * (8.0 + 9.0 + 9.0 + 10.0));
+
+        // Piecewise constant sampling
+        assert_eq!(patch.sample(0, (8, 8)), 8.0);
+        assert_eq!(patch.sample(0, (9, 8)), 8.0);
+        assert_eq!(patch.sample(0, (8, 9)), 8.0);
+        assert_eq!(patch.sample(0, (9, 9)), 8.0);
+        assert_eq!(patch.sample(0, (10, 10)), 10.0);
     }
 }
