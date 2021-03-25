@@ -48,6 +48,19 @@ impl Patch {
     }
 
 
+    pub fn from_function_n<F, const NUM_FIELDS: usize>(level: u32, area: (Range<i64>, Range<i64>), f: F) -> Self
+    where
+        F: Copy + Fn(i64, i64) -> [f64; NUM_FIELDS]
+    {
+        let (di, dj) = area.clone();
+        Self {
+            level,
+            area,
+            data: di.map(|i| dj.clone().map(move |j| f(i, j)[0])).flatten().collect()
+        }
+    }
+
+
 
 
     /**
@@ -111,7 +124,6 @@ impl Patch {
                 self.area.1.start,
                 self.area.1.start);
         }
-
     }
 }
 
