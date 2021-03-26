@@ -109,7 +109,7 @@ impl<T: Ord + Copy, V> RectangleMap<T, V> {
 
     pub fn query_point<'a>(
         &'a self,
-        point: (&'a T, &'a T)) -> impl Iterator<Item = (RectangleRef<'a, T>, &'a V)> {
+        point: (T, T)) -> impl Iterator<Item = (RectangleRef<'a, T>, &'a V)> {
         self.map
             .query_point(point.0)
             .map(move |(di, l)| l.query_point(point.1).map(move |(dj, m)| ((di, dj), m)))
@@ -191,9 +191,9 @@ mod test {
         rect_map.insert((20..30, 20..30), 2);
         rect_map.insert((9..21, 9..21), 3);
 
-        assert_eq!(rect_map.query_point((&5, &12)).count(), 0);
-        assert_eq!(rect_map.query_point((&5, &5)).count(), 1);
-        assert_eq!(rect_map.query_point((&2, &2)).count(), 1);
-        assert_eq!(rect_map.query_point((&12, &12)).count(), 1);
+        assert_eq!(rect_map.query_point((5, 12)).count(), 0);
+        assert_eq!(rect_map.query_point((5, 5)).count(), 1);
+        assert_eq!(rect_map.query_point((2, 2)).count(), 1);
+        assert_eq!(rect_map.query_point((12, 12)).count(), 1);
     }
 }

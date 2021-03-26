@@ -588,11 +588,11 @@ impl<'a, T: Ord + Copy, V> Iterator for IterMut<'a, T, V> {
  */
 pub (crate) struct IterPointQuery<'a, T: Ord + Copy, V> {
     stack: Vec<&'a Node<T, V>>,
-    point: &'a T
+    point: T
 }
 
 impl<'a, T: Ord + Copy, V> IterPointQuery<'a, T, V> {
-    pub(crate) fn new(node: &'a Option<Box<Node<T, V>>>, point: &'a T) -> Self {
+    pub(crate) fn new(node: &'a Option<Box<Node<T, V>>>, point: T) -> Self {
         Self {
             stack: node.iter().map(|n| &**n).collect(),
             point,
@@ -608,16 +608,16 @@ impl<'a, T: Ord + Copy, V> Iterator for IterPointQuery<'a, T, V> {
             let node = self.stack.pop()?;
 
             if let Some(r) = &node.r {
-                if self.point >= &node.key.start {
+                if self.point >= node.key.start {
                     self.stack.push(r)
                 }
             }
             if let Some(l) = &node.l {
-                if self.point < &node.max {
+                if self.point < node.max {
                     self.stack.push(l)
                 }
             }
-            if node.key.contains(self.point) {
+            if node.key.contains(&self.point) {
                 return Some((&node.key, &node.value))
             }
         }

@@ -65,7 +65,7 @@ impl<T: Ord + Copy> IntervalSet<T> {
         aug_node::IterMut::new(&mut self.root).map(|(r, _)| r)
     }
 
-    pub fn query_point<'a>(&'a self, point: &'a T) -> impl Iterator<Item = &'a Range<T>> {
+    pub fn query_point<'a>(&'a self, point: T) -> impl Iterator<Item = &'a Range<T>> {
         aug_node::IterPointQuery::new(&self.root, point).map(|(k, _)| k)
     }
 
@@ -235,13 +235,13 @@ mod test {
         set.insert(1..17);
         set.insert(6..9);
         set.validate_max();
-        assert!(set.query_point(&-1).count() == 0);
-        assert_eq!(set.query_point(&0).collect::<Vec<_>>(), [&(0..10)]);
-        assert_eq!(set.query_point(&1).collect::<Vec<_>>(), [&(0..10), &(1..17)]);
-        assert_eq!(set.query_point(&2).collect::<Vec<_>>(), [&(0..10), &(2..3), &(1..17)]);
-        assert_eq!(set.query_point(&3).collect::<Vec<_>>(), [&(0..10), &(1..17)]);
-        assert_eq!(set.query_point(&4).collect::<Vec<_>>(), [&(0..10), &(4..7), &(1..17)]);
-        assert_eq!(set.query_point(&11).collect::<Vec<_>>(), [&(1..17), &(8..12)]);
+        assert!(set.query_point(-1).count() == 0);
+        assert_eq!(set.query_point(0).collect::<Vec<_>>(), [&(0..10)]);
+        assert_eq!(set.query_point(1).collect::<Vec<_>>(), [&(0..10), &(1..17)]);
+        assert_eq!(set.query_point(2).collect::<Vec<_>>(), [&(0..10), &(2..3), &(1..17)]);
+        assert_eq!(set.query_point(3).collect::<Vec<_>>(), [&(0..10), &(1..17)]);
+        assert_eq!(set.query_point(4).collect::<Vec<_>>(), [&(0..10), &(4..7), &(1..17)]);
+        assert_eq!(set.query_point(11).collect::<Vec<_>>(), [&(1..17), &(8..12)]);
     }
 
     #[test]

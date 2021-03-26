@@ -18,8 +18,15 @@ use std::ops::Range;
  * cell.  
  */
 pub struct Patch {
+
+    /// The granularity level of this patch. Level 0 is the highest resolution
     level: u32,
+
+    /// The region of index space covered by this patch. The indexes are with
+    /// respect to the ticks at this patch's granularity level.
     area: (Range<i64>, Range<i64>),
+
+    /// The array backing for the data on this patch.
     data: Vec<f64>,
 }
 
@@ -44,19 +51,6 @@ impl Patch {
             level,
             area,
             data: di.map(|i| dj.clone().map(move |j| f(i, j))).flatten().collect()
-        }
-    }
-
-
-    pub fn from_function_n<F, const NUM_FIELDS: usize>(level: u32, area: (Range<i64>, Range<i64>), f: F) -> Self
-    where
-        F: Copy + Fn(i64, i64) -> [f64; NUM_FIELDS]
-    {
-        let (di, dj) = area.clone();
-        Self {
-            level,
-            area,
-            data: di.map(|i| dj.clone().map(move |j| f(i, j)[0])).flatten().collect()
         }
     }
 

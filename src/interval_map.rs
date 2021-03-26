@@ -77,7 +77,7 @@ impl<T: Ord + Copy, V> IntervalMap<T, V> {
         aug_node::IterMut::new(&mut self.root)
     }
 
-    pub fn query_point<'a>(&'a self, point: &'a T) -> impl Iterator<Item = (&'a Range<T>, &'a V)> {
+    pub fn query_point<'a>(&'a self, point: T) -> impl Iterator<Item = (&'a Range<T>, &'a V)> {
         aug_node::IterPointQuery::new(&self.root, point)
     }
 
