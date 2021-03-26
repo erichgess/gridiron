@@ -1,17 +1,18 @@
 use core::ops::{Range, RangeBounds};
 use crate::interval_map::IntervalMap;
+use crate::index_space::IndexSpace2d;
 
 
 
 
 /// Type alias for a 2d range
-type Rectangle<T> = (Range<T>, Range<T>);
+pub type Rectangle<T> = (Range<T>, Range<T>);
 
 
 
 
 /// Type alias for a 2d range, by-reference
-type RectangleRef<'a, T> = (&'a Range<T>, &'a Range<T>);
+pub type RectangleRef<'a, T> = (&'a Range<T>, &'a Range<T>);
 
 
 
@@ -171,6 +172,18 @@ impl<'a, T: Ord + Copy, V> IntoIterator for &'a mut RectangleMap<T, V> {
 
     fn into_iter(self) -> Self::IntoIter {
         self.iter_mut()
+    }
+}
+
+impl From<Rectangle<i64>> for IndexSpace2d {
+    fn from(rect: Rectangle<i64>) -> Self {
+        IndexSpace2d::new(rect.0, rect.1)
+    }
+}
+
+impl From<RectangleRef<'_, i64>> for IndexSpace2d {
+    fn from(rect: RectangleRef<i64>) -> Self {
+        IndexSpace2d::new(rect.0.clone(), rect.1.clone())
     }
 }
 

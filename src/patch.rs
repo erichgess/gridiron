@@ -17,6 +17,7 @@ use std::ops::Range;
  * obtained by averaging over the region within the patch covered by the coarse
  * cell.  
  */
+#[derive(Clone)]
 pub struct Patch {
 
     /// The granularity level of this patch. Level 0 is the highest resolution
@@ -128,11 +129,25 @@ impl Patch {
 #[cfg(test)]
 mod test {
 
-    use super::Patch;
     use std::ops::Range;
+    use crate::rect_map::RectangleMap;
+    use crate::rect_map::RectangleRef;
+    use super::Patch;
 
     fn range2d(di: Range<i64>, dj: Range<i64>) -> impl Iterator<Item = (i64, i64)> {
         di.map(move |i| dj.clone().map(move |j| (i, j))).flatten()
+    }
+
+    fn _extend_patch(area: RectangleRef<i64>, quilt: &RectangleMap<i64, Patch>) -> Patch {
+
+        // WIP...
+
+        let source_patch = quilt.get(area).unwrap();
+        let target_patch = Patch::from_function(source_patch.level, source_patch.area.clone(), |i, j| {
+            source_patch.sample(source_patch.level, (i, j))
+        });
+
+        target_patch
     }
 
     #[test]
@@ -152,7 +167,6 @@ mod test {
 
     #[test]
     fn extend() {
-        use crate::rect_map::RectangleMap;
 
         let mut quilt = RectangleMap::new();
 
