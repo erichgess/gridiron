@@ -129,6 +129,11 @@ impl Patch {
 mod test {
 
     use super::Patch;
+    use std::ops::Range;
+
+    fn range2d(di: Range<i64>, dj: Range<i64>) -> impl Iterator<Item = (i64, i64)> {
+        di.map(move |i| dj.clone().map(move |j| (i, j))).flatten()
+    }
 
     #[test]
     fn patch_sampling_works() {
@@ -143,5 +148,24 @@ mod test {
         assert_eq!(patch.sample(0, (8, 9)), 8.0);
         assert_eq!(patch.sample(0, (9, 9)), 8.0);
         assert_eq!(patch.sample(0, (10, 10)), 10.0);
+    }
+
+    #[test]
+    fn extend() {
+        use crate::rect_map::RectangleMap;
+
+        let mut quilt = RectangleMap::new();
+
+        for (i, j) in range2d(0..4, 0..4) {
+            let area = (i * 10 .. (i + 1) * 10, j * 10 .. (j + 1) * 10);
+            let patch = Patch::from_function(0, area, |i, j| i as f64 + j as f64);
+            quilt.insert(patch.high_resolution_area(), patch);
+        }
+        for (i, j) in range2d(0..4, 0..4) {
+            for index in range2d(i * 10 .. (i + 1) * 10, j * 10 .. (j + 1) * 10) {
+                assert_eq!(quilt.query_point(index).count(), 1);
+            }
+        }
+        assert_eq!(quilt.query_point((40, 40)).count(), 0);
     }
 }
