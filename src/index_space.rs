@@ -43,6 +43,11 @@ impl IndexSpace2d {
     }
 
 
+    pub fn as_rect_ref(&self) -> (&Range<i64>, &Range<i64>) {
+        (&self.di, &self.dj)
+    }
+
+
     pub fn contains(&self, index: (i64, i64)) -> bool {
         self.di.contains(&index.0) && self.dj.contains(&index.1)
     }
@@ -97,4 +102,14 @@ impl From<IndexSpace2d> for (Range<i64>, Range<i64>) {
     fn from(space: IndexSpace2d) -> Self {
         (space.di, space.dj)
     }
+}
+
+
+
+
+/**
+ * Less imposing factory function to construct an IndexSpace2d object.
+ */
+pub fn range2d(di: Range<i64>, dj: Range<i64>) -> IndexSpace2d {
+    IndexSpace2d::new(di, dj)
 }

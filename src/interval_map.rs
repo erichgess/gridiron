@@ -77,6 +77,10 @@ impl<T: Ord + Copy, V> IntervalMap<T, V> {
         aug_node::IterMut::new(&mut self.root)
     }
 
+    pub fn keys(&self) -> impl Iterator<Item = &Range<T>> {
+        self.iter().map(|(k, _)| k)
+    }
+
     pub fn query_point(&self, point: T) -> impl Iterator<Item = (&Range<T>, &V)> + '_ {
         aug_node::IterPointQuery::new(&self.root, point)
     }

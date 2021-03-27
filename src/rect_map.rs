@@ -104,6 +104,13 @@ impl<T: Ord + Copy, V> RectangleMap<T, V> {
             .flatten()
     }
 
+    pub fn keys(&self) -> impl Iterator<Item = RectangleRef<T>> {
+        self.map
+            .iter()
+            .map(|(di, l)| l.keys().map(move |dj| (di, dj)))
+            .flatten()
+    }
+
     pub fn query_point(
         &self,
         point: (T, T)) -> impl Iterator<Item = (RectangleRef<T>, &V)> {

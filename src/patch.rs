@@ -120,8 +120,11 @@ impl Patch {
 
 
 
-use crate::rect_map::RectangleMap;
-use crate::rect_map::RectangleRef;
+// ============================================================================
+use crate::rect_map::{
+    Rectangle,
+    RectangleRef,
+    RectangleMap};
 
 pub fn finest_patch(map: &RectangleMap<i64, Patch>, index: (i64, i64)) -> Option<&Patch> {
     map.query_point(index)
@@ -129,10 +132,11 @@ pub fn finest_patch(map: &RectangleMap<i64, Patch>, index: (i64, i64)) -> Option
        .min_by_key(|p| p.level)
 }
 
-pub fn extend_patch(map: &RectangleMap<i64, Patch>, rect: RectangleRef<i64>) -> Patch {
+pub fn extend_patch(map: &RectangleMap<i64, Patch>, rect: RectangleRef<i64>) -> (Rectangle<i64>, Patch) {
 
     let space: IndexSpace2d = rect.into();
-    let local_map: RectangleMap<_, _> = map.query_rect(space.extend_all(2)).collect();
+    let extended = space.extend_all(2);
+    let local_map: RectangleMap<_, _> = map.query_rect(extended.clone()).collect();
     let p = local_map.get(rect).unwrap();
 
     let sample = |index| {
@@ -144,7 +148,7 @@ pub fn extend_patch(map: &RectangleMap<i64, Patch>, rect: RectangleRef<i64>) -> 
             0.0
         }
     };
-    Patch::from_function(p.level, space.extend_all(2), sample)
+    (extended.clone().into(), Patch::from_function(p.level, extended, sample))
 }
 
 
@@ -154,15 +158,10 @@ pub fn extend_patch(map: &RectangleMap<i64, Patch>, rect: RectangleRef<i64>) -> 
 #[cfg(test)]
 mod test {
 
-    use std::ops::Range;
-    use crate::index_space::IndexSpace2d;
+
+    use crate::index_space::range2d;
     use crate::rect_map::RectangleMap;
     use super::{Patch, extend_patch};
-
-
-    fn range2d(di: Range<i64>, dj: Range<i64>) -> IndexSpace2d {
-        IndexSpace2d::new(di, dj)
-    }
 
 
     #[test]
@@ -192,11 +191,14 @@ mod test {
             quilt.insert(patch.high_resolution_space(), patch);
         }
 
-        for (rect, _) in &quilt {
-            let p = extend_patch(&quilt, rect);
-            assert_eq!(p.space.dim(), (14, 14));
-        }
+        let extended_quilt: RectangleMap<i64, Patch> = quilt
+            .keys()
+            .map(|rect| extend_patch(&quilt, rect))
+            .collect();
 
-        assert_eq!(quilt.query_point((40, 40)).count(), 0);
+        let p12 = extended_quilt.get((&(10 - 2..20 + 2), &(20 - 2..30 + 2))).unwrap();
+        let p21 = extended_quilt.get((&(20 - 2..30 + 2), &(10 - 2..20 + 2))).unwrap();
+
+        assert_eq!(p12.sample(0, (20, 20)), p21.sample(0, (20, 20)));
     }
 }
