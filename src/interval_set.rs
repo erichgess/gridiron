@@ -65,7 +65,7 @@ impl<T: Ord + Copy> IntervalSet<T> {
         aug_node::IterMut::new(&mut self.root).map(|(r, _)| r)
     }
 
-    pub fn query_point<'a>(&'a self, point: T) -> impl Iterator<Item = &'a Range<T>> {
+    pub fn query_point(&self, point: T) -> impl Iterator<Item = &Range<T>> + '_ {
         aug_node::IterPointQuery::new(&self.root, point).map(|(k, _)| k)
     }
 

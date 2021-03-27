@@ -1,4 +1,4 @@
-use core::ops::{Add, Sub, Mul, Div};
+use core::ops::{Add, Sub, Mul, Div, Index};
 
 
 
@@ -27,8 +27,8 @@ where
     fn add(self, other: Vector<U, DIM>) -> Self::Output {
         let mut data = [V::default(); DIM];
 
-        for i in 0..DIM {
-            data[i] = self.data[i].add(other.data[i])
+        for (i, x) in data.iter_mut().enumerate() {
+            *x = self[i].add(other[i])
         }
         Self::Output { data }
     }
@@ -45,8 +45,8 @@ where
     fn sub(self, other: Vector<U, DIM>) -> Self::Output {
         let mut data = [V::default(); DIM];
 
-        for i in 0..DIM {
-            data[i] = self.data[i].sub(other.data[i])
+        for (i, x) in data.iter_mut().enumerate() {
+            *x = self[i].sub(other[i])
         }
         Self::Output { data }
     }
@@ -63,8 +63,8 @@ where
     fn mul(self, other: U) -> Self::Output {
         let mut data = [V::default(); DIM];
 
-        for i in 0..DIM {
-            data[i] = self.data[i].mul(other)
+        for (i, x) in data.iter_mut().enumerate() {
+            *x = self[i].mul(other)
         }
         Self::Output { data }
     }
@@ -81,10 +81,22 @@ where
     fn div(self, other: U) -> Self::Output {
         let mut data = [V::default(); DIM];
 
-        for i in 0..DIM {
-            data[i] = self.data[i].div(other)
+        for (i, x) in data.iter_mut().enumerate() {
+            *x = self[i].div(other)
         }
         Self::Output { data }
+    }
+}
+
+
+
+
+// ============================================================================
+impl<T, const DIM: usize> Index<usize> for Vector<T, DIM> {
+    type Output = T;
+
+    fn index(&self, index: usize) -> &Self::Output {
+        &self.data[index]
     }
 }
 
@@ -98,20 +110,31 @@ mod test {
     use test::Bencher;
     use super::Vector;
 
+    const COUNT: usize = 160000;
+
     #[bench]
     fn bench_add_raw_floats_in_vec(b: &mut Bencher) {
         b.iter(|| {
-            let x: Vec<_> = (0..500000).map(|_| 1.0).collect();
-            let y: Vec<_> = (0..500000).map(|_| 1.0).collect();
+            let x: Vec<_> = (0..COUNT).map(|_| 1.0).collect();
+            let y: Vec<_> = (0..COUNT).map(|_| 1.0).collect();
             let _: Vec<_> = x.into_iter().zip(y).map(|(x, y)| x + y).collect();
         })
     }
 
     #[bench]
-    fn bench_add_numeric_vectors_floats_in_vec(b: &mut Bencher) {
+    fn bench_add_numeric_vectors4_floats_in_vec(b: &mut Bencher) {
         b.iter(|| {
-            let x: Vec<_> = (0..50000).map(|_| Vector { data: [0.0, 1.0, 2.0, 3.0, 4.0, 5.0, 6.0, 7.0, 8.0, 9.0] }).collect();
-            let y: Vec<_> = (0..50000).map(|_| Vector { data: [0.0, 1.0, 2.0, 3.0, 4.0, 5.0, 6.0, 7.0, 8.0, 9.0] }).collect();
+            let x: Vec<_> = (0..COUNT/4).map(|_| Vector { data: [0.0, 1.0, 2.0, 3.0] }).collect();
+            let y: Vec<_> = (0..COUNT/4).map(|_| Vector { data: [0.0, 1.0, 2.0, 3.0] }).collect();
+            let _: Vec<_> = x.into_iter().zip(y).map(|(x, y)| x + y).collect();
+        })
+    }
+
+    #[bench]
+    fn bench_add_numeric_vectors8_floats_in_vec(b: &mut Bencher) {
+        b.iter(|| {
+            let x: Vec<_> = (0..COUNT/8).map(|_| Vector { data: [0.0, 1.0, 2.0, 3.0, 4.0, 5.0, 6.0, 7.0] }).collect();
+            let y: Vec<_> = (0..COUNT/8).map(|_| Vector { data: [0.0, 1.0, 2.0, 3.0, 4.0, 5.0, 6.0, 7.0] }).collect();
             let _: Vec<_> = x.into_iter().zip(y).map(|(x, y)| x + y).collect();
         })
     }

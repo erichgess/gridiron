@@ -86,12 +86,12 @@ impl<T: Ord + Copy, V> RectangleMap<T, V> {
         }
     }
 
-    pub fn into_iter(self) -> impl Iterator<Item = (Rectangle<T>, V)> {
-        self.map
-            .into_iter()
-            .map(|(di, l)| l.into_iter().map(move |(dj, m)| ((di.clone(), dj), m)))
-            .flatten()
-    }
+    // pub fn into_iter(self) -> impl Iterator<Item = (Rectangle<T>, V)> {
+    //     self.map
+    //         .into_iter()
+    //         .map(|(di, l)| l.into_iter().map(move |(dj, m)| ((di.clone(), dj), m)))
+    //         .flatten()
+    // }
 
     pub fn iter(&self) -> impl Iterator<Item = (RectangleRef<T>, &V)> {
         self.map
@@ -107,9 +107,9 @@ impl<T: Ord + Copy, V> RectangleMap<T, V> {
             .flatten()
     }
 
-    pub fn query_point<'a>(
-        &'a self,
-        point: (T, T)) -> impl Iterator<Item = (RectangleRef<'a, T>, &'a V)> {
+    pub fn query_point(
+        &self,
+        point: (T, T)) -> impl Iterator<Item = (RectangleRef<T>, &V)> {
         self.map
             .query_point(point.0)
             .map(move |(di, l)| l.query_point(point.1).map(move |(dj, m)| ((di, dj), m)))
@@ -147,14 +147,14 @@ impl<T: Ord + Copy, V> Default for RectangleMap<T, V> {
     }
 }
 
-impl<T: Ord + Copy, V> IntoIterator for RectangleMap<T, V> {
-    type Item = (Rectangle<T>, V);
-    type IntoIter = impl Iterator<Item = (Rectangle<T>, V)>;
+// impl<T: Ord + Copy, V> IntoIterator for RectangleMap<T, V> {
+//     type Item = (Rectangle<T>, V);
+//     type IntoIter = impl Iterator<Item = (Rectangle<T>, V)>;
 
-    fn into_iter(self) -> Self::IntoIter {
-        self.into_iter()
-    }
-}
+//     fn into_iter(self) -> Self::IntoIter {
+//         self.into_iter()
+//     }
+// }
 
 impl<'a, T: Ord + Copy, V> IntoIterator for &'a RectangleMap<T, V> {
     type Item = (RectangleRef<'a, T>, &'a V);
