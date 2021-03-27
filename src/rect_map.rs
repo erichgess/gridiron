@@ -90,13 +90,6 @@ impl<T: Ord + Copy, V> RectangleMap<T, V> {
         }
     }
 
-    fn into_iter_internal(self) -> impl Iterator<Item = (Rectangle<T>, V)> {
-        self.map
-            .into_iter()
-            .map(|(di, l)| l.into_iter().map(move |(dj, m)| ((di.clone(), dj), m)))
-            .flatten()
-    }
-
     pub fn iter(&self) -> impl Iterator<Item = (RectangleRef<T>, &V)> {
         self.map
             .iter()
@@ -160,7 +153,10 @@ impl<T: Ord + Copy, V> IntoIterator for RectangleMap<T, V> {
     type IntoIter = impl Iterator<Item = Self::Item>;
 
     fn into_iter(self) -> Self::IntoIter {
-        self.into_iter_internal()
+        self.map
+            .into_iter()
+            .map(|(di, l)| l.into_iter().map(move |(dj, m)| ((di.clone(), dj), m)))
+            .flatten()
     }
 }
 

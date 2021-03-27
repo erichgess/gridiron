@@ -65,12 +65,6 @@ impl IndexSpace2d {
     pub fn iter(&self) -> impl Iterator<Item = (i64, i64)> + '_ {
         self.di.clone().map(move |i| self.dj.clone().map(move |j| (i, j))).flatten()
     }
-
-
-    fn into_iter_internal(self) -> impl Iterator<Item = (i64, i64)> {
-        let Self { di, dj } = self;
-        di.map(move |i| dj.clone().map(move |j| (i, j))).flatten()
-    }
 }
 
 
@@ -82,7 +76,8 @@ impl IntoIterator for IndexSpace2d {
     type IntoIter = impl Iterator<Item = Self::Item>;
 
     fn into_iter(self) -> Self::IntoIter {
-        self.into_iter_internal()
+        let Self { di, dj } = self;
+        di.map(move |i| dj.clone().map(move |j| (i, j))).flatten()
     }
 }
 
