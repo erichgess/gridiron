@@ -69,7 +69,7 @@ impl<T: Ord + Copy> IntervalSet<T> {
         aug_node::IterPointQuery::new(&self.root, point).map(|(k, _)| k)
     }
 
-    pub fn query_range<'a, R: RangeBounds<T>>(&'a self, range: &'a R) -> impl Iterator<Item = &'a Range<T>> {
+    pub fn query_range<R: RangeBounds<T>>(&self, range: R) -> impl Iterator<Item = &Range<T>> {
         aug_node::IterRangeQuery::new(&self.root, range).map(|(k, _)| k)
     }
 
@@ -251,6 +251,6 @@ mod test {
         set.insert(4..10);
         set.insert(6..12);
         set.insert(2..5);
-        assert_eq!(set.query_range(&(5..10)).collect::<Vec<_>>(), [&(4..10), &(6..12)]);
+        assert_eq!(set.query_range(5..10).collect::<Vec<_>>(), [&(4..10), &(6..12)]);
     }
 }

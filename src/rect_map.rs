@@ -1,3 +1,4 @@
+use core::iter::FromIterator;
 use core::ops::{Range, RangeBounds};
 use crate::interval_map::IntervalMap;
 
@@ -54,8 +55,11 @@ impl<T: Ord + Copy, V> RectangleMap<T, V> {
         self.map.get_mut(key.0).and_then(|m| m.get_mut(key.1))
     }
 
-    pub fn insert(&mut self, area: Rectangle<T>, value: V) -> &mut V {
-        let (di, dj) = area;
+    pub fn insert<I>(&mut self, space: I, value: V) -> &mut V
+    where
+        I: Into<Rectangle<T>>
+    {
+        let (di, dj) = space.into();
         self.map
             .require(di)
             .insert(dj, value)
@@ -86,12 +90,12 @@ impl<T: Ord + Copy, V> RectangleMap<T, V> {
         }
     }
 
-    // pub fn into_iter(self) -> impl Iterator<Item = (Rectangle<T>, V)> {
-    //     self.map
-    //         .into_iter()
-    //         .map(|(di, l)| l.into_iter().map(move |(dj, m)| ((di.clone(), dj), m)))
-    //         .flatten()
-    // }
+    fn into_iter_internal(self) -> impl Iterator<Item = (Rectangle<T>, V)> {
+        self.map
+            .into_iter()
+            .map(|(di, l)| l.into_iter().map(move |(dj, m)| ((di.clone(), dj), m)))
+            .flatten()
+    }
 
     pub fn iter(&self) -> impl Iterator<Item = (RectangleRef<T>, &V)> {
         self.map
@@ -116,23 +120,27 @@ impl<T: Ord + Copy, V> RectangleMap<T, V> {
             .flatten()
     }
 
-    pub fn query_rect<'a>(
-        &'a self,
-        rect: RectangleRef<'a, T>) -> impl Iterator<Item = (RectangleRef<'a, T>, &'a V)> {
+    pub fn query_rect<I>(
+        &self,
+        space: I) -> impl Iterator<Item = (RectangleRef<T>, &V)>
+    where
+        I: Into<Rectangle<T>>
+    {
+        let rect = space.into();
         self.query_bounds(rect.0, rect.1)
     }
 
-    pub fn query_bounds<'a, R, S>(
-        &'a self,
-        r: &'a R,
-        s: &'a S) -> impl Iterator<Item = (RectangleRef<'a, T>, &'a V)>
+    pub fn query_bounds<R, S>(
+        &self,
+        r: R,
+        s: S) -> impl Iterator<Item = (RectangleRef<T>, &V)>
     where
-        R: RangeBounds<T>,
-        S: RangeBounds<T>,
+        R: RangeBounds<T> + Clone,
+        S: RangeBounds<T> + Clone,
     {
         self.map
             .query_range(r)
-            .map(move |(di, l)| l.query_range(s).map(move |(dj, m)| ((di, dj), m)))
+            .map(move |(di, l)| l.query_range(s.clone()).map(move |(dj, m)| ((di, dj), m)))
             .flatten()
     }
 }
@@ -147,18 +155,18 @@ impl<T: Ord + Copy, V> Default for RectangleMap<T, V> {
     }
 }
 
-// impl<T: Ord + Copy, V> IntoIterator for RectangleMap<T, V> {
-//     type Item = (Rectangle<T>, V);
-//     type IntoIter = impl Iterator<Item = (Rectangle<T>, V)>;
+impl<T: Ord + Copy, V> IntoIterator for RectangleMap<T, V> {
+    type Item = (Rectangle<T>, V);
+    type IntoIter = impl Iterator<Item = Self::Item>;
 
-//     fn into_iter(self) -> Self::IntoIter {
-//         self.into_iter()
-//     }
-// }
+    fn into_iter(self) -> Self::IntoIter {
+        self.into_iter_internal()
+    }
+}
 
 impl<'a, T: Ord + Copy, V> IntoIterator for &'a RectangleMap<T, V> {
     type Item = (RectangleRef<'a, T>, &'a V);
-    type IntoIter = impl Iterator<Item = (RectangleRef<'a, T>, &'a V)>;
+    type IntoIter = impl Iterator<Item = Self::Item>;
 
     fn into_iter(self) -> Self::IntoIter {
         self.iter()
@@ -167,10 +175,32 @@ impl<'a, T: Ord + Copy, V> IntoIterator for &'a RectangleMap<T, V> {
 
 impl<'a, T: Ord + Copy, V> IntoIterator for &'a mut RectangleMap<T, V> {
     type Item = (RectangleRef<'a, T>, &'a mut V);
-    type IntoIter = impl Iterator<Item = (RectangleRef<'a, T>, &'a mut V)>;
+    type IntoIter = impl Iterator<Item = Self::Item>;
 
     fn into_iter(self) -> Self::IntoIter {
         self.iter_mut()
+    }
+}
+
+impl<'a, T: 'a + Ord + Copy, V> FromIterator<(RectangleRef<'a, T>, V)> for RectangleMap<T, V> {
+    fn from_iter<I: IntoIterator<Item = (RectangleRef<'a, T>, V)>>(iter: I) -> Self {
+        let mut result = Self::new();
+
+        for (rect, item) in iter {
+            result.insert((rect.0.clone(), rect.1.clone()), item);
+        }
+        result
+    }
+}
+
+impl<T: Ord + Copy, V> FromIterator<(Rectangle<T>, V)> for RectangleMap<T, V> {
+    fn from_iter<I: IntoIterator<Item = (Rectangle<T>, V)>>(iter: I) -> Self {
+        let mut result = Self::new();
+
+        for (rect, item) in iter {
+            result.insert(rect, item);
+        }
+        result
     }
 }
 

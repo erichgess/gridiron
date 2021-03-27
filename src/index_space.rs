@@ -12,6 +12,9 @@ pub struct IndexSpace2d {
 
 
 
+/**
+ * Describes a rectangular index space. The index type is signed 64-bit integer.
+ */
 impl IndexSpace2d {
 
 
@@ -62,14 +65,36 @@ impl IndexSpace2d {
     pub fn iter(&self) -> impl Iterator<Item = (i64, i64)> + '_ {
         self.di.clone().map(move |i| self.dj.clone().map(move |j| (i, j))).flatten()
     }
+
+
+    fn into_iter_internal(self) -> impl Iterator<Item = (i64, i64)> {
+        let Self { di, dj } = self;
+        di.map(move |i| dj.clone().map(move |j| (i, j))).flatten()
+    }
 }
 
 
 
 
+// ============================================================================
+impl IntoIterator for IndexSpace2d {
+    type Item = (i64, i64);
+    type IntoIter = impl Iterator<Item = Self::Item>;
+
+    fn into_iter(self) -> Self::IntoIter {
+        self.into_iter_internal()
+    }
+}
+
 impl From<(Range<i64>, Range<i64>)> for IndexSpace2d {
     fn from(range: (Range<i64>, Range<i64>)) -> Self {
         Self { di: range.0, dj: range.1 }
+    }
+}
+
+impl<'a> From<(&'a Range<i64>, &'a Range<i64>)> for IndexSpace2d {
+    fn from(range: (&'a Range<i64>, &'a Range<i64>)) -> Self {
+        Self { di: range.0.clone(), dj: range.1.clone() }
     }
 }
 

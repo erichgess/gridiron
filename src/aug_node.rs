@@ -633,11 +633,11 @@ impl<'a, T: Ord + Copy, V> Iterator for IterPointQuery<'a, T, V> {
  */
 pub (crate) struct IterRangeQuery<'a, T: Ord + Copy, V, R: RangeBounds<T>> {
     stack: Vec<&'a Node<T, V>>,
-    range: &'a R,
+    range: R,
 }
 
 impl<'a, T: Ord + Copy, V, R: RangeBounds<T>> IterRangeQuery<'a, T, V, R> {
-    pub(crate) fn new(node: &'a Option<Box<Node<T, V>>>, range: &'a R) -> Self {
+    pub(crate) fn new(node: &'a Option<Box<Node<T, V>>>, range: R) -> Self {
         Self {
             stack: node.iter().map(|n| &**n).collect(),
             range,

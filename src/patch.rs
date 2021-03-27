@@ -6,8 +6,8 @@ use crate::index_space::IndexSpace2d;
 
 /**
  * A patch is a mapping from a rectangular subset of a high-resolution index
- * space (HRIS), to associated field values. The mapping is backed by an array of
- * data, which is in general at a coarser level of granularity than the HRIS;
+ * space (HRIS), to associated field values. The mapping is backed by an array
+ * of data, which is in general at a coarser level of granularity than the HRIS;
  * each zone in the backing array stands for (2^level)^rank zones in the HRIS.
  * The HRIS is at level 0.
  *
@@ -120,37 +120,50 @@ impl Patch {
 
 
 
+use crate::rect_map::RectangleMap;
+use crate::rect_map::RectangleRef;
+
+pub fn finest_patch(map: &RectangleMap<i64, Patch>, index: (i64, i64)) -> Option<&Patch> {
+    map.query_point(index)
+       .map(|(_, p)| p)
+       .min_by_key(|p| p.level)
+}
+
+pub fn extend_patch(map: &RectangleMap<i64, Patch>, rect: RectangleRef<i64>) -> Patch {
+
+    let space: IndexSpace2d = rect.into();
+    let local_map: RectangleMap<_, _> = map.query_rect(space.extend_all(2)).collect();
+    let p = local_map.get(rect).unwrap();
+
+    let sample = |index| {
+        if p.space.contains(index) {
+            p.sample(p.level, index)
+        } else if let Some(n) = finest_patch(map, index) {
+            n.sample(p.level, index)
+        } else {
+            0.0
+        }
+    };
+    Patch::from_function(p.level, space.extend_all(2), sample)
+}
+
+
+
+
 // ============================================================================
 #[cfg(test)]
 mod test {
 
     use std::ops::Range;
+    use crate::index_space::IndexSpace2d;
     use crate::rect_map::RectangleMap;
-    use crate::rect_map::RectangleRef;
-    use super::Patch;
+    use super::{Patch, extend_patch};
 
-    fn range2d(di: Range<i64>, dj: Range<i64>) -> impl Iterator<Item = (i64, i64)> {
-        di.map(move |i| dj.clone().map(move |j| (i, j))).flatten()
+
+    fn range2d(di: Range<i64>, dj: Range<i64>) -> IndexSpace2d {
+        IndexSpace2d::new(di, dj)
     }
 
-    fn _extend_patch(space: RectangleRef<i64>, quilt: &RectangleMap<i64, Patch>) -> Patch {
-
-        // WIP...
-
-        let source_patch = quilt.get(space).unwrap();
-        let target_patch = Patch::from_function(source_patch.level, source_patch.space.extend_all(2), |index| {
-
-            if source_patch.space.contains(index) {
-                source_patch.sample(source_patch.level, index)
-            } else {
-                let neighbor_patch = quilt.query_point(index).next().unwrap().1;
-                neighbor_patch.sample(source_patch.level, index)
-            }
-
-        });
-
-        target_patch
-    }
 
     #[test]
     fn patch_sampling_works() {
@@ -167,21 +180,23 @@ mod test {
         assert_eq!(patch.sample(0, (10, 10)), 10.0);
     }
 
+
     #[test]
-    fn extend() {
+    fn can_extend_patch() {
 
         let mut quilt = RectangleMap::new();
 
         for (i, j) in range2d(0..4, 0..4) {
             let area = (i * 10 .. (i + 1) * 10, j * 10 .. (j + 1) * 10);
-            let patch = Patch::from_function(0, area, |(i, j)| i as f64 + j as f64);
-            quilt.insert(patch.high_resolution_space().into(), patch);
+            let patch = Patch::from_function(0, area, |ij| ij.0 as f64 + ij.1 as f64);
+            quilt.insert(patch.high_resolution_space(), patch);
         }
-        for (i, j) in range2d(0..4, 0..4) {
-            for index in range2d(i * 10 .. (i + 1) * 10, j * 10 .. (j + 1) * 10) {
-                assert_eq!(quilt.query_point(index).count(), 1);
-            }
+
+        for (rect, _) in &quilt {
+            let p = extend_patch(&quilt, rect);
+            assert_eq!(p.space.dim(), (14, 14));
         }
+
         assert_eq!(quilt.query_point((40, 40)).count(), 0);
     }
 }
