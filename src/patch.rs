@@ -103,7 +103,6 @@ impl Patch {
 
 
 
-
     fn validate_index(&self, index: (i64, i64)) {
         if !self.space.contains(index) {
             panic!("index ({} {}) out of range on patch ({}..{} {}..{})",
@@ -126,9 +125,9 @@ use crate::rect_map::{
     RectangleRef,
     RectangleMap};
 
-pub fn finest_patch(map: &RectangleMap<i64, Patch>, index: (i64, i64)) -> Option<&Patch> {
+pub fn finest_patch<'a>(map: &'a RectangleMap<i64, &'a Patch>, index: (i64, i64)) -> Option<&'a Patch> {
     map.query_point(index)
-       .map(|(_, p)| p)
+       .map(|(_, &p)| p)
        .min_by_key(|p| p.level)
 }
 
@@ -142,7 +141,7 @@ pub fn extend_patch(map: &RectangleMap<i64, Patch>, rect: RectangleRef<i64>) -> 
     let sample = |index| {
         if p.space.contains(index) {
             p.sample(p.level, index)
-        } else if let Some(n) = finest_patch(map, index) {
+        } else if let Some(n) = finest_patch(&local_map, index) {
             n.sample(p.level, index)
         } else {
             0.0
