@@ -1,4 +1,5 @@
-use std::ops::Range;
+use std::cmp::Ordering::*;
+use crate::index_space::IndexSpace2d;
 
 
 
@@ -25,7 +26,7 @@ pub struct Patch {
 
     /// The region of index space covered by this patch. The indexes are with
     /// respect to the ticks at this patch's granularity level.
-    area: (Range<i64>, Range<i64>),
+    space: IndexSpace2d,
 
     /// The array backing for the data on this patch.
     data: Vec<f64>,
@@ -40,18 +41,19 @@ impl Patch {
 
 
     /**
-     * Generate a patch at a given level, covering the given area, with values
+     * Generate a patch at a given level, covering the given space, with values
      * defined from a closure.
      */
-    pub fn from_function<F>(level: u32, area: (Range<i64>, Range<i64>), f: F) -> Self
+    pub fn from_function<I, F>(level: u32, space: I, f: F) -> Self
     where
-        F: Copy + Fn(i64, i64) -> f64
+        I: Into<IndexSpace2d>,
+        F: Copy + Fn((i64, i64)) -> f64
     {
-        let (di, dj) = area.clone();
+        let space: IndexSpace2d = space.into();
         Self {
             level,
-            area,
-            data: di.map(|i| dj.clone().map(move |j| f(i, j))).flatten().collect()
+            data: space.iter().map(f).collect(),
+            space,
         }
     }
 
@@ -59,25 +61,10 @@ impl Patch {
 
 
     /**
-     * Return the number of HRIS ticks covered by this
+     * Return the index space at the high-resolution level below this patch.
      */
-    pub fn high_resolution_area(&self) -> (Range<i64>, Range<i64>) {
-        let i0 = self.area.0.start * (1 << self.level);
-        let j0 = self.area.1.start * (1 << self.level);
-        let i1 = self.area.0.end * (1 << self.level);
-        let j1 = self.area.1.end * (1 << self.level);
-        (i0..i1, j0..j1)
-    }
-
-
-
-
-    /**
-     * Return the logical dimensions (the memory extent) of the backing array.
-     */
-    pub fn dim(&self) -> (usize, usize) {
-        ((self.area.0.end - self.area.0.start) as usize,
-         (self.area.1.end - self.area.1.start) as usize)
+    pub fn high_resolution_space(&self) -> IndexSpace2d {
+        self.space.scale(1 << self.level)
     }
 
 
@@ -89,35 +76,43 @@ impl Patch {
      */
     pub fn sample(&self, level: u32, index: (i64, i64)) -> f64 {
 
-        if level == self.level {
-            self.validate_index(index);
+        match level.cmp(&self.level) {
+            Equal => {
+                self.validate_index(index);
 
-            let i = (index.0 - self.area.0.start) as usize;
-            let j = (index.1 - self.area.1.start) as usize;
-            let (_m, n) = self.dim();
-            self.data[i * n + j]
+                let (i0, j0) = self.space.start();
+                let i = (index.0 - i0) as usize;
+                let j = (index.1 - j0) as usize;
 
-        } else if level < self.level {
-            self.sample(level + 1, (index.0 / 2, index.1 / 2))
-
-        } else {
-            let y00 = self.sample(level - 1, (index.0 * 2 + 0, index.1 * 2 + 0));
-            let y01 = self.sample(level - 1, (index.0 * 2 + 0, index.1 * 2 + 1));
-            let y10 = self.sample(level - 1, (index.0 * 2 + 1, index.1 * 2 + 0));
-            let y11 = self.sample(level - 1, (index.0 * 2 + 1, index.1 * 2 + 1));
-            0.25 * (y00 + y01 + y10 + y11)
+                let (_m, n) = self.space.dim();
+                self.data[i * n + j]
+            }
+            Less => {
+                self.sample(level + 1, (index.0 / 2, index.1 / 2))
+            }
+            Greater => {
+                let y00 = self.sample(level - 1, (index.0 * 2, index.1 * 2));
+                let y01 = self.sample(level - 1, (index.0 * 2, index.1 * 2 + 1));
+                let y10 = self.sample(level - 1, (index.0 * 2 + 1, index.1 * 2));
+                let y11 = self.sample(level - 1, (index.0 * 2 + 1, index.1 * 2 + 1));
+                0.25 * (y00 + y01 + y10 + y11)
+            }
         }
     }
 
+
+
+
+
     fn validate_index(&self, index: (i64, i64)) {
-        if !(self.area.0.contains(&index.0) && self.area.1.contains(&index.1)) {
+        if !self.space.contains(index) {
             panic!("index ({} {}) out of range on patch ({}..{} {}..{})",
                 index.0,
                 index.1,
-                self.area.0.start,
-                self.area.0.end,
-                self.area.1.start,
-                self.area.1.start);
+                self.space.start().0,
+                self.space.end().0,
+                self.space.start().1,
+                self.space.end().1);
         }
     }
 }
@@ -138,13 +133,20 @@ mod test {
         di.map(move |i| dj.clone().map(move |j| (i, j))).flatten()
     }
 
-    fn _extend_patch(area: RectangleRef<i64>, quilt: &RectangleMap<i64, Patch>) -> Patch {
+    fn _extend_patch(space: RectangleRef<i64>, quilt: &RectangleMap<i64, Patch>) -> Patch {
 
         // WIP...
 
-        let source_patch = quilt.get(area).unwrap();
-        let target_patch = Patch::from_function(source_patch.level, source_patch.area.clone(), |i, j| {
-            source_patch.sample(source_patch.level, (i, j))
+        let source_patch = quilt.get(space).unwrap();
+        let target_patch = Patch::from_function(source_patch.level, source_patch.space.extend_all(2), |index| {
+
+            if source_patch.space.contains(index) {
+                source_patch.sample(source_patch.level, index)
+            } else {
+                let neighbor_patch = quilt.query_point(index).next().unwrap().1;
+                neighbor_patch.sample(source_patch.level, index)
+            }
+
         });
 
         target_patch
@@ -152,7 +154,7 @@ mod test {
 
     #[test]
     fn patch_sampling_works() {
-        let patch = Patch::from_function(1, (4..10, 4..10), |i, j| i as f64 + j as f64);
+        let patch = Patch::from_function(1, (4..10, 4..10), |(i, j)| i as f64 + j as f64);
         assert_eq!(patch.sample(1, (5, 5)), 10.0);
         assert_eq!(patch.sample(1, (6, 8)), 14.0);
         assert_eq!(patch.sample(2, (2, 2)), 0.25 * (8.0 + 9.0 + 9.0 + 10.0));
@@ -172,8 +174,8 @@ mod test {
 
         for (i, j) in range2d(0..4, 0..4) {
             let area = (i * 10 .. (i + 1) * 10, j * 10 .. (j + 1) * 10);
-            let patch = Patch::from_function(0, area, |i, j| i as f64 + j as f64);
-            quilt.insert(patch.high_resolution_area(), patch);
+            let patch = Patch::from_function(0, area, |(i, j)| i as f64 + j as f64);
+            quilt.insert(patch.high_resolution_space().into(), patch);
         }
         for (i, j) in range2d(0..4, 0..4) {
             for index in range2d(i * 10 .. (i + 1) * 10, j * 10 .. (j + 1) * 10) {

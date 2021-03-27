@@ -1,6 +1,5 @@
 use core::ops::{Range, RangeBounds};
 use crate::interval_map::IntervalMap;
-use crate::index_space::IndexSpace2d;
 
 
 
@@ -172,18 +171,6 @@ impl<'a, T: Ord + Copy, V> IntoIterator for &'a mut RectangleMap<T, V> {
 
     fn into_iter(self) -> Self::IntoIter {
         self.iter_mut()
-    }
-}
-
-impl From<Rectangle<i64>> for IndexSpace2d {
-    fn from(rect: Rectangle<i64>) -> Self {
-        IndexSpace2d::new(rect.0, rect.1)
-    }
-}
-
-impl From<RectangleRef<'_, i64>> for IndexSpace2d {
-    fn from(rect: RectangleRef<i64>) -> Self {
-        IndexSpace2d::new(rect.0.clone(), rect.1.clone())
     }
 }
 
