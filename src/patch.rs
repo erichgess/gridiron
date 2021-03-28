@@ -5,6 +5,40 @@ use crate::index_space::IndexSpace2d;
 
 
 /**
+ * Identifies the part of the mesh where patch data resides. An `n`-dimensional
+ * cartesian array has `n` of these parameters, one per axis. `Cell` regions are
+ * the spaces between `Node` points. For example in a 3D array, the tuple
+ * `(Cell, Cell, Cell)` refers to 3D cell volumes, `(Node, Cell, Cell)` refers
+ * to the 2D, `i`-directed cell faces, and `(Node, Node, Cell)` refers to the 1D
+ * `k`-directed cell edges. (`Node`, `Node`, `Node`) are the point-like vertices
+ * of the dual mesh.
+ *
+ * Different mesh locations have different sampling policies. For example,
+ * sampling data in 3D finite volumes at a coarser granularity level involves
+ * averaging over 8 smaller volumes, whereas down-sampling the data residing on
+ * 2D faces involves averaging over 4 smaller faces and down-sampling edge-like
+ * data averages over 2 smaller edges. Data can only be sampled up and down on
+ * its cell-like axes. For example, up-sampling a 3D array of faces only splits
+ * each "window" into four smaller ones; it does not add new "panes" between the
+ * existing ones.
+ *
+ * A patch's index space is the same regardless of the mesh location: it always
+ * refers to the patch's index extent on the primary grid. However the array
+ * size is one larger on the node-like axes.
+ *
+ * The flux correction on a patch P at level n procedes by identifying all
+ * patches which overlap P at a higher granularity, and sampling those patches
+ * at level n wherever they intersect this one.
+ */
+pub enum MeshLocation {
+    Cell,
+    Node,
+}
+
+
+
+
+/**
  * A patch is a mapping from a rectangular subset of a high-resolution index
  * space (HRIS), to associated field values. The mapping is backed by an array
  * of data, which is in general at a coarser level of granularity than the HRIS;
@@ -21,20 +55,22 @@ use crate::index_space::IndexSpace2d;
 #[derive(Clone)]
 pub struct Patch {
 
-    /// The granularity level of this patch. Level 0 is the highest resolution
+    /// The granularity level of this patch. Level 0 is the highest
+    /// resolution.
     level: u32,
 
     /// The region of index space covered by this patch. The indexes are with
     /// respect to the ticks at this patch's granularity level.
     space: IndexSpace2d,
 
-    /// The array backing for the data on this patch.
+    /// The backing array of data on this patch.
     data: Vec<f64>,
 }
 
 
 
 
+// ============================================================================
 impl Patch {
 
 
