@@ -1,5 +1,5 @@
 use std::cmp::Ordering::*;
-use crate::index_space::IndexSpace2d;
+use crate::index_space::IndexSpace;
 
 
 
@@ -61,7 +61,7 @@ pub struct Patch {
 
     /// The region of index space covered by this patch. The indexes are with
     /// respect to the ticks at this patch's granularity level.
-    space: IndexSpace2d,
+    space: IndexSpace,
 
     /// The backing array of data on this patch.
     data: Vec<f64>,
@@ -82,10 +82,10 @@ impl Patch {
      */
     pub fn from_function<I, F>(level: u32, space: I, f: F) -> Self
     where
-        I: Into<IndexSpace2d>,
+        I: Into<IndexSpace>,
         F: Copy + Fn((i64, i64)) -> f64
     {
-        let space: IndexSpace2d = space.into();
+        let space: IndexSpace = space.into();
         Self {
             level,
             data: space.iter().map(f).collect(),
@@ -99,7 +99,7 @@ impl Patch {
     /**
      * Return the index space at the high-resolution level below this patch.
      */
-    pub fn high_resolution_space(&self) -> IndexSpace2d {
+    pub fn high_resolution_space(&self) -> IndexSpace {
         self.space.scale(1 << self.level)
     }
 
@@ -169,7 +169,7 @@ pub fn finest_patch<'a>(map: &'a RectangleMap<i64, &'a Patch>, index: (i64, i64)
 
 pub fn extend_patch(map: &RectangleMap<i64, Patch>, rect: RectangleRef<i64>) -> (Rectangle<i64>, Patch) {
 
-    let space: IndexSpace2d = rect.into();
+    let space: IndexSpace = rect.into();
     let extended = space.extend_all(2);
     let local_map: RectangleMap<_, _> = map.query_rect(extended.clone()).collect();
     let p = local_map.get(rect).unwrap();

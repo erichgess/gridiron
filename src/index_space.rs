@@ -4,7 +4,7 @@ use core::ops::Range;
 
 
 #[derive(Clone)]
-pub struct IndexSpace2d {
+pub struct IndexSpace {
     di: Range<i64>,
     dj: Range<i64>,
 }
@@ -15,7 +15,7 @@ pub struct IndexSpace2d {
 /**
  * Describes a rectangular index space. The index type is signed 64-bit integer.
  */
-impl IndexSpace2d {
+impl IndexSpace {
 
 
 
@@ -76,7 +76,7 @@ impl IndexSpace2d {
 
 
 // ============================================================================
-impl IntoIterator for IndexSpace2d {
+impl IntoIterator for IndexSpace {
     type Item = (i64, i64);
     type IntoIter = impl Iterator<Item = Self::Item>;
 
@@ -86,20 +86,20 @@ impl IntoIterator for IndexSpace2d {
     }
 }
 
-impl From<(Range<i64>, Range<i64>)> for IndexSpace2d {
+impl From<(Range<i64>, Range<i64>)> for IndexSpace {
     fn from(range: (Range<i64>, Range<i64>)) -> Self {
         Self { di: range.0, dj: range.1 }
     }
 }
 
-impl<'a> From<(&'a Range<i64>, &'a Range<i64>)> for IndexSpace2d {
+impl<'a> From<(&'a Range<i64>, &'a Range<i64>)> for IndexSpace {
     fn from(range: (&'a Range<i64>, &'a Range<i64>)) -> Self {
         Self { di: range.0.clone(), dj: range.1.clone() }
     }
 }
 
-impl From<IndexSpace2d> for (Range<i64>, Range<i64>) {
-    fn from(space: IndexSpace2d) -> Self {
+impl From<IndexSpace> for (Range<i64>, Range<i64>) {
+    fn from(space: IndexSpace) -> Self {
         (space.di, space.dj)
     }
 }
@@ -108,8 +108,8 @@ impl From<IndexSpace2d> for (Range<i64>, Range<i64>) {
 
 
 /**
- * Less imposing factory function to construct an IndexSpace2d object.
+ * Less imposing factory function to construct an IndexSpace object.
  */
-pub fn range2d(di: Range<i64>, dj: Range<i64>) -> IndexSpace2d {
-    IndexSpace2d::new(di, dj)
+pub fn range2d(di: Range<i64>, dj: Range<i64>) -> IndexSpace {
+    IndexSpace::new(di, dj)
 }
