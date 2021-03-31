@@ -28,7 +28,7 @@ use crate::index_space::IndexSpace2d;
  *
  * The flux correction on a patch P at level n procedes by identifying all
  * patches which overlap P at a higher granularity, and sampling those patches
- * at level n wherever they intersect this one.
+ * at level n wherever they intersect P.
  */
 pub enum MeshLocation {
     Cell,
