@@ -1,5 +1,104 @@
 use core::hash::Hash;
 use std::collections::HashMap;
+use rayon::prelude::*;
+
+
+
+
+trait ComputeStage {
+
+    type Key;
+
+    type Value;
+
+    fn key(&self) -> Self::Key;
+
+    fn peer_keys(&self) -> &[Self::Key];
+
+    fn run(&self, peers: Vec<&Self>) -> Self::Value;
+}
+
+
+
+
+fn get_all<'a, K, V>(map: &'a HashMap<K, V>, keys: &[K]) -> Option<Vec<&'a V>>
+where
+    K: Hash + Eq,
+{
+    keys.iter()
+        .map(|k| map.get(k))
+        .collect()
+}
+
+
+
+
+fn execute_one_stage_par<C, K, V>(stage: HashMap<K, C>) -> HashMap<K, V>
+where
+    C: Sync + ComputeStage<Key = K, Value = V>,
+    K: Send + Sync + Hash + Eq + Clone,
+    V: Send
+{
+    stage.par_iter().map(|(k, compute)| {
+        (k.clone(), compute.run(get_all(&stage, compute.peer_keys()).expect("missing peers")))
+    }).collect()
+}
+
+
+
+
+fn execute_two_stage_par<C, D, K, V>(stage_a: HashMap<K, C>) -> HashMap<K, V>
+where
+    C: Sync + ComputeStage<Key = K, Value = D>,
+    D: Sync + ComputeStage<Key = K, Value = V> + Send,
+    K: Send + Sync + Hash + Eq + Clone,
+    V: Send
+{
+    let stage_b = execute_one_stage_par(stage_a);
+    let stage_c = execute_one_stage_par(stage_b);
+    stage_c
+}
+
+
+
+
+fn execute_one_stage<C, K, V>(stage: HashMap<K, C>) -> HashMap<K, V>
+where
+    C: ComputeStage<Key = K, Value = V>,
+    K: Hash + Eq + Clone,
+{
+    stage.iter().map(|(k, compute)| {
+        (k.clone(), compute.run(get_all(&stage, compute.peer_keys()).expect("missing peers")))
+    }).collect()
+}
+
+
+
+
+fn execute_two_stage<C, D, K, V>(stage_a: HashMap<K, C>) -> HashMap<K, V>
+where
+    C: ComputeStage<Key = K, Value = D>,
+    D: ComputeStage<Key = K, Value = V>,
+    K: Hash + Eq + Clone,
+{
+    let stage_b = execute_one_stage(stage_a);
+    let stage_c = execute_one_stage(stage_b);
+    stage_c
+}
+
+
+
+
+
+
+
+
+
+
+
+
+
+
 
 
 
