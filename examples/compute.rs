@@ -7,7 +7,7 @@ use std::collections::HashMap;
 /**
  * A custom coroutine proof-of-concept
  */
-trait Compute {
+trait Compute: Sized {
 
     /// Associated type to uniquely identify this compute task to its peers.
     type Key;
@@ -24,21 +24,29 @@ trait Compute {
 
     /// Upload the peer values associated with the upstream keys. Note that
     /// the upstream keys can change after a call to `advance`.
-    fn upload(&mut self, upstream: Vec<Self>) where Self: Sized;
+    fn upload(&mut self, upstream: Vec<Self>);
+
+    /// Return this compute tasks's state, containing the result if it's ready.
+    fn state(&mut self) -> Option<Self::Value>;
 
     /// Advance this compute task's internal state by performing an expensive
     /// calculation. The result of `upstream` can change each time this method
     /// is invoked.
-    fn advance(self) -> Self;
+    fn advance(&mut self);
 
-    /// Return this compute tasks's result, if it's ready.
-    fn poll(&mut self) -> Option<Self::Value>;
+    /// Convenience provided method to consume this compute, advance and return
+    /// it.
+    fn into_advance(mut self) -> Self {
+        self.advance();
+        self
+    }
 }
 
 
 
 
 #[derive(Clone)]
+
 
 /**
  * An example compute object. It's a crude state machine.
@@ -86,14 +94,13 @@ impl Compute for MyCompute {
         self.upstream = Some(upstream.into_iter().map(|peer| peer.value).collect())
     }
 
-    fn advance(mut self) -> Self {
+    fn advance(&mut self) {
         if let Some(upstream) = self.upstream.take() {
             self.result = Some((upstream[0] + self.value + upstream[1]) / 3.0)
         }
-        self
     }
 
-    fn poll(&mut self) -> Option<Self::Value> {
+    fn state(&mut self) -> Option<Self::Value> {
         self.result
     }
 }
@@ -102,34 +109,55 @@ impl Compute for MyCompute {
 
 
 /**
- * Drive a collection of interdependent state machines. Currently this only
- * works for uniform state machines that complete after a single stage.
+ * Drive a collection of interdependent state machines.
  */
 fn execute<C, K>(computes: Vec<C>) -> Vec<(C::Key, C::Value)>
 where
     C: Compute<Key = K> + Send + Clone,
     K: Hash + Eq + Send,
 {
-    let stage1: HashMap<_, _> = computes
+    let num_tasks = computes.len();
+    let mut results = Vec::new();
+
+    let mut stage_a : HashMap<C::Key, C>;
+    let mut stage_b = HashMap::new();
+
+    stage_a = computes
         .into_iter()
-        .map(|c| (c.key(), c.advance()))
+        .map(|c| (c.key(), c.into_advance()))
         .collect();
 
-    let stage2 = stage1.iter().map(|(_, compute)| {
+    loop {
+        let mut progress = false;
 
-        let upstream: Option<Vec<_>> = compute
-            .upstream()
-            .iter()
-            .map(|key| stage1.get(key).cloned())
-            .collect();
+        for (_, compute) in &stage_a {
 
-        let mut this_compute = compute.clone();
+            let upstream: Option<Vec<_>> = compute
+                .upstream()
+                .iter()
+                .map(|key| stage_a.get(key).cloned())
+                .collect();
 
-        this_compute.upload(upstream.expect("missing upstream keys!"));
-        this_compute.advance()
-    });
+            let mut next = compute.clone();
 
-    stage2.map(|mut c| (c.key(), c.poll().unwrap())).collect()
+            next.upload(upstream.expect("missing upstream keys!"));
+            next.advance();
+
+            if let Some(result) = next.state() {
+                progress = true;
+                results.push((next.key(), result))
+            }
+            stage_b.insert(next.key(), next);
+        }
+
+        if stage_b.len() == num_tasks {
+            return results
+        }
+        if !progress {
+            panic!("computation stage did not make progress")
+        }
+        std::mem::swap(&mut stage_a, &mut stage_b);
+    }
 }
 
 
