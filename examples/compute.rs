@@ -54,8 +54,10 @@ where
     let (send, source) = mpsc::channel();
     let (sink, output) = mpsc::channel();
 
+    let mut seen: HashMap<K, C> = HashMap::new();
+    let mut hold = Vec::new();
 
-    std::thread::spawn(move || {
+    rayon::spawn(move || {
         source
         .into_iter()
         .par_bridge()
@@ -63,11 +65,6 @@ where
             sink.send((key.clone(), item.run(peers.iter().collect()))).unwrap();
         });
     });
-
-
-    let mut seen: HashMap<K, C> = HashMap::new();
-    let mut hold = Vec::new();
-
 
     for (key, item) in stage {
         seen.insert(key.clone(), item);
@@ -82,7 +79,6 @@ where
             }
         });
     }
-
 
     assert!(hold.is_empty(), "there were {} unevaluated computes", hold.len());
     output
