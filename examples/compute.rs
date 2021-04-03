@@ -36,9 +36,7 @@ fn get_all<'a, K, V>(map: &'a HashMap<K, V>, keys: Vec<K>) -> Option<Vec<&'a V>>
 where
     K: Hash + Eq,
 {
-    keys.iter()
-        .map(|k| map.get(k))
-        .collect()
+    keys.iter().map(|k| map.get(k)).collect()
 }
 
 
@@ -46,7 +44,7 @@ where
 
 // ============================================================================
 fn execute_one_stage_par_channel_internal<'a, C, K, V>(
-    scope: &rayon::Scope<'a>,
+    scope: &rayon::ScopeFifo<'a>,
     stage: mpsc::Receiver<(K, C)>) -> mpsc::Receiver<(K, V)>
 where
     C: 'a + Sync + Send + Clone + Compute<Key = K, Value = V>,
@@ -59,7 +57,7 @@ where
     let mut seen: HashMap<K, C> = HashMap::new();
     let mut hold = Vec::new();
 
-    scope.spawn(|_| {
+    scope.spawn_fifo(|_| {
         source
         .into_iter()
         .par_bridge()
@@ -96,7 +94,7 @@ where
     K: Sync + Send + Clone + Hash + Eq + std::fmt::Debug,
     V: Send
 {
-    rayon::scope(|scope| {
+    rayon::scope_fifo(|scope| {
         let (s, r) = mpsc::channel();
 
         for kv in stage {
