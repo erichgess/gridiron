@@ -15,7 +15,7 @@ use rayon::prelude::*;
  * Interface for a task which can be performed in parallel with a group of
  * peers. Each task may require a subset of its peers to be evaluated.
  */
-trait Compute {
+trait Compute: Sized {
 
     type Key;
 
@@ -25,7 +25,7 @@ trait Compute {
 
     fn peer_keys(&self) -> Vec<Self::Key>;
 
-    fn run(&self, peers: Vec<&Self>) -> Self::Value;
+    fn run(&self, peers: &[&Self]) -> Self::Value;
 }
 
 
@@ -39,6 +39,26 @@ where
     keys.iter().map(|k| map.get(k)).collect()
 }
 
+fn get_all_cloned<K, V>(map: &HashMap<K, V>, keys: Vec<K>) -> Option<Vec<V>>
+where
+    K: Hash + Eq,
+    V: Clone
+{
+    keys.iter().map(|k| map.get(k).cloned()).collect()
+}
+
+fn into_channel<A, T>(container: A) -> mpsc::Receiver<T>
+where
+    A: IntoIterator<Item = T>
+{
+    let (s, r) = mpsc::channel();
+
+    for x in container {
+        s.send(x).unwrap();
+    }
+    r
+}
+
 
 
 
@@ -47,8 +67,8 @@ fn execute_one_stage_par_channel_internal<'a, C, K, V>(
     scope: &rayon::ScopeFifo<'a>,
     stage: mpsc::Receiver<(K, C)>) -> mpsc::Receiver<(K, V)>
 where
-    C: 'a + Sync + Send + Clone + Compute<Key = K, Value = V>,
-    K: 'a + Sync + Send + Clone + Hash + Eq + std::fmt::Debug,
+    C: 'a + Send + Sync + Clone + Compute<Key = K, Value = V>,
+    K: 'a + Send + Sync + Clone + Hash + Eq,
     V: 'a + Send
 {
     let (send, source) = mpsc::channel();
@@ -62,7 +82,8 @@ where
         .into_iter()
         .par_bridge()
         .for_each_with(sink, |sink, (key, item, peers): (K, C, Vec<C>)| {
-            sink.send((key.clone(), item.run(peers.iter().collect()))).unwrap();
+            let peers: Vec<_> = peers.iter().collect();
+            sink.send((key.clone(), item.run(&peers))).unwrap();
         });
     });
 
@@ -70,9 +91,9 @@ where
         seen.insert(key.clone(), item);
         hold.push(key);
         hold.drain_filter(|key| {
-            let held_item = seen.get(key).unwrap();
-            if let Some(peers) = get_all(&seen, held_item.peer_keys()) {
-                send.send((key.clone(), held_item.clone(), peers.into_iter().cloned().collect())).unwrap();
+            let held = seen.get(key).unwrap();
+            if let Some(peers) = get_all_cloned(&seen, held.peer_keys()) {
+                send.send((key.clone(), held.clone(), peers)).unwrap();
                 true
             } else {
                 false
@@ -90,19 +111,26 @@ where
 // ============================================================================
 fn execute_one_stage_channel<C, K, V>(stage: HashMap<K, C>) -> HashMap<K, V>
 where
-    C: Sync + Send + Clone + Compute<Key = K, Value = V>,
-    K: Sync + Send + Clone + Hash + Eq + std::fmt::Debug,
+    C: Send + Sync + Clone + Compute<Key = K, Value = V>,
+    K: Send + Sync + Clone + Hash + Eq + std::fmt::Debug,
     V: Send
 {
     rayon::scope_fifo(|scope| {
-        let (s, r) = mpsc::channel();
+        execute_one_stage_par_channel_internal(scope, into_channel(stage)).into_iter().collect()
+    })
+}
 
-        for kv in stage {
-            s.send(kv).unwrap();
-        }
-        drop(s);
-
-        execute_one_stage_par_channel_internal(scope, r).into_iter().collect()
+fn execute_two_stage_channel<C, D, K, V>(stage: HashMap<K, C>) -> HashMap<K, V>
+where
+    C: Send + Sync + Clone + Compute<Key = K, Value = D>,
+    D: Send + Sync + Clone + Compute<Key = K, Value = V>,
+    K: Send + Sync + Clone + Hash + Eq + std::fmt::Debug,
+    V: Send
+{
+    rayon::scope_fifo(|scope| {
+        let stage_b = execute_one_stage_par_channel_internal(scope, into_channel(stage));
+        let stage_c = execute_one_stage_par_channel_internal(scope, stage_b);
+        stage_c.iter().collect()
     })
 }
 
@@ -114,7 +142,7 @@ where
     V: Send
 {
     stage.par_iter().map(|(k, compute)| {
-        (k.clone(), compute.run(get_all(&stage, compute.peer_keys()).expect("missing peers")))
+        (k.clone(), compute.run(&get_all(&stage, compute.peer_keys()).expect("missing peers")))
     }).collect()
 }
 
@@ -125,7 +153,7 @@ where
     K: Hash + Eq + Clone,
 {
     stage.iter().map(|(k, compute)| {
-        (k.clone(), compute.run(get_all(&stage, compute.peer_keys()).expect("missing peers")))
+        (k.clone(), compute.run(&get_all(&stage, compute.peer_keys()).expect("missing peers")))
     }).collect()
 }
 
@@ -156,7 +184,7 @@ impl Compute for StringConvolve {
         vec![(self.index + self.group_size - 1) % self.group_size, (self.index + 1) % self.group_size]
     }
 
-    fn run(&self, peers: Vec<&Self>) -> Self::Value {
+    fn run(&self, peers: &[&Self]) -> Self::Value {
         format!("{} {} {}", peers[0].index, self.index, peers[1].index)
     }
 }
