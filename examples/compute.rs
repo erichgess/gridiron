@@ -63,7 +63,7 @@ where
 
 
 // ============================================================================
-fn execute_one_stage_par_channel_internal<'a, C, K, V>(
+fn execute_one_stage_channel_internal<'a, C, K, V>(
     scope: &rayon::ScopeFifo<'a>,
     stage: mpsc::Receiver<(K, C)>) -> mpsc::Receiver<(K, V)>
 where
@@ -109,30 +109,50 @@ where
 
 
 // ============================================================================
-fn execute_one_stage_channel<C, K, V>(stage: HashMap<K, C>) -> HashMap<K, V>
+fn execute_one_stage_channel<I, C, K, V>(stage: I) -> impl Iterator<Item = (K, V)>
 where
+    I: Send + IntoIterator<Item = (K, C)>,
     C: Send + Sync + Clone + Compute<Key = K, Value = V>,
-    K: Send + Sync + Clone + Hash + Eq + std::fmt::Debug,
-    V: Send
+    K: Send + Sync + Clone + Hash + Eq,
+    V: Send,
 {
     rayon::scope_fifo(|scope| {
-        execute_one_stage_par_channel_internal(scope, into_channel(stage)).into_iter().collect()
+        execute_one_stage_channel_internal(scope, into_channel(stage)).into_iter()
     })
 }
 
-fn execute_two_stage_channel<C, D, K, V>(stage: HashMap<K, C>) -> HashMap<K, V>
+fn _execute_two_stage_channel<I, C, D, K, V>(stage: I) -> impl Iterator<Item = (K, V)>
 where
+    I: Send + IntoIterator<Item = (K, C)>,
     C: Send + Sync + Clone + Compute<Key = K, Value = D>,
     D: Send + Sync + Clone + Compute<Key = K, Value = V>,
-    K: Send + Sync + Clone + Hash + Eq + std::fmt::Debug,
+    K: Send + Sync + Clone + Hash + Eq,
     V: Send
 {
     rayon::scope_fifo(|scope| {
-        let stage_b = execute_one_stage_par_channel_internal(scope, into_channel(stage));
-        let stage_c = execute_one_stage_par_channel_internal(scope, stage_b);
-        stage_c.iter().collect()
+        let stage_b = execute_one_stage_channel_internal(scope, into_channel(stage));
+        let stage_c = execute_one_stage_channel_internal(scope, stage_b);
+        stage_c.into_iter()
     })
 }
+
+fn _execute_n_stage_channel<I, C, K>(stage: I, num_stages: usize) -> impl Iterator<Item = (K, C)>
+where
+    I: Send + IntoIterator<Item = (K, C)>,
+    C: Send + Sync + Clone + Compute<Key = K, Value = C>,
+    K: Send + Sync + Clone + Hash + Eq,
+{
+    rayon::scope_fifo(|scope| {
+        let mut stage = into_channel(stage);
+        for _ in 0..num_stages {
+            stage = execute_one_stage_channel_internal(scope, stage);
+        }
+        stage.into_iter()
+    })
+}
+
+
+
 
 // ============================================================================
 fn execute_one_stage_par<C, K, V>(stage: HashMap<K, C>) -> HashMap<K, V>
@@ -145,6 +165,9 @@ where
         (k.clone(), compute.run(&get_all(&stage, compute.peer_keys()).expect("missing peers")))
     }).collect()
 }
+
+
+
 
 // ============================================================================
 fn execute_one_stage_ser<C, K, V>(stage: HashMap<K, C>) -> HashMap<K, V>
