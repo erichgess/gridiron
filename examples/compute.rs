@@ -5,7 +5,9 @@
 
 use core::hash::Hash;
 use std::collections::HashMap;
+use std::sync::Arc;
 use std::sync::mpsc;
+use crossbeam::channel;
 use rayon::prelude::*;
 
 
@@ -13,7 +15,7 @@ use rayon::prelude::*;
 
 /**
  * Interface for a task which can be performed in parallel with a group of
- * peers. Each task may require a subset of its peers to be evaluated.
+ * peers. Each task may require a subset of its peers to be executed.
  */
 trait Compute: Sized {
 
@@ -26,6 +28,8 @@ trait Compute: Sized {
     fn peer_keys(&self) -> Vec<Self::Key>;
 
     fn run(&self, peers: &[&Self]) -> Self::Value;
+
+    fn run_owned(&self, peers: Vec<Self>) -> Self::Value;
 }
 
 
@@ -59,12 +63,24 @@ where
     r
 }
 
+fn into_crossbeam_channel<A, T>(container: A) -> channel::Receiver<T>
+where
+    A: IntoIterator<Item = T>
+{
+    let (s, r) = channel::unbounded();
+
+    for x in container {
+        s.send(x).unwrap();
+    }
+    r
+}
+
 
 
 
 // ============================================================================
 fn execute_one_stage_channel_internal<'a, C, K, V>(
-    scope: &rayon::ScopeFifo<'a>,
+    scope: &rayon::Scope<'a>,
     stage: mpsc::Receiver<(K, C)>) -> mpsc::Receiver<(K, V)>
 where
     C: 'a + Send + Sync + Clone + Compute<Key = K, Value = V>,
@@ -77,13 +93,12 @@ where
     let mut seen: HashMap<K, C> = HashMap::new();
     let mut hold = Vec::new();
 
-    scope.spawn_fifo(|_| {
+    scope.spawn(|_| {
         source
         .into_iter()
         .par_bridge()
         .for_each_with(sink, |sink, (key, item, peers): (K, C, Vec<C>)| {
-            let peers: Vec<_> = peers.iter().collect();
-            sink.send((key.clone(), item.run(&peers))).unwrap();
+            sink.send((key.clone(), item.run_owned(peers))).unwrap();
         });
     });
 
@@ -91,7 +106,48 @@ where
         seen.insert(key.clone(), item);
         hold.push(key);
         hold.drain_filter(|key| {
-            let held = seen.get(key).unwrap();
+            let held = &seen[key];
+            if let Some(peers) = get_all_cloned(&seen, held.peer_keys()) {
+                send.send((key.clone(), held.clone(), peers)).unwrap();
+                true
+            } else {
+                false
+            }
+        });
+    }
+
+    assert!(hold.is_empty(), "there were {} unevaluated computes", hold.len());
+    output
+}
+
+fn execute_one_stage_crossbeam_channel_internal<'a, C, K, V>(
+    scope: &rayon::Scope<'a>,
+    stage: channel::Receiver<(K, C)>) -> channel::Receiver<(K, V)>
+where
+    C: 'a + Send + Sync + Clone + Compute<Key = K, Value = V>,
+    K: 'a + Send + Sync + Clone + Hash + Eq,
+    V: 'a + Send
+{
+    let (send, source) = channel::unbounded();
+    let (sink, output) = channel::unbounded();
+
+    let mut seen: HashMap<K, C> = HashMap::new();
+    let mut hold = Vec::new();
+
+    scope.spawn(|_| {
+        source
+        .into_iter()
+        .par_bridge()
+        .for_each_with(sink, |sink, (key, item, peers): (K, C, Vec<C>)| {
+            sink.send((key.clone(), item.run_owned(peers))).unwrap();
+        });
+    });
+
+    for (key, item) in stage {
+        seen.insert(key.clone(), item);
+        hold.push(key);
+        hold.drain_filter(|key| {
+            let held = &seen[key];
             if let Some(peers) = get_all_cloned(&seen, held.peer_keys()) {
                 send.send((key.clone(), held.clone(), peers)).unwrap();
                 true
@@ -116,9 +172,22 @@ where
     K: Send + Sync + Clone + Hash + Eq,
     V: Send,
 {
-    rayon::scope_fifo(|scope| {
+    rayon::scope(|scope| {
         let stage = into_channel(stage.into_iter().map(|c| (c.key(), c)));
         execute_one_stage_channel_internal(scope, stage).into_iter()
+    })
+}
+
+fn execute_one_stage_crossbeam_channel<I, C, K, V>(stage: I) -> impl Iterator<Item = (K, V)>
+where
+    I: Send + IntoIterator<Item = C>,
+    C: Send + Sync + Clone + Compute<Key = K, Value = V>,
+    K: Send + Sync + Clone + Hash + Eq,
+    V: Send,
+{
+    rayon::scope(|scope| {
+        let stage = into_crossbeam_channel(stage.into_iter().map(|c| (c.key(), c)));
+        execute_one_stage_crossbeam_channel_internal(scope, stage).into_iter()
     })
 }
 
@@ -220,6 +289,10 @@ impl Compute for StringConvolve {
     fn run(&self, peers: &[&Self]) -> Self::Value {
         format!("{} {} {}", peers[0].index, self.index, peers[1].index)
     }
+
+    fn run_owned(&self, peers: Vec<Self>) -> Self::Value {
+        format!("{} {} {}", peers[0].index, self.index, peers[1].index)
+    }
 }
 
 
@@ -229,32 +302,67 @@ impl Compute for StringConvolve {
 fn main() {
 
     let group_size = 10;
-    let stage_a = (0..group_size).map(|index| StringConvolve { index, group_size });
+    let stage = (0..group_size).map(|index| StringConvolve { index, group_size });
 
     println!("\n--------------------------------------------");
-    {
-        let stage_b = execute_one_stage_channel(stage_a.clone());
-
-        for (key, result) in stage_b {
-            println!("{} -> {}", key, result);
-        }
+    for (key, result) in execute_one_stage_channel(stage.clone()) {
+        println!("{} -> {}", key, result);
     }
+
     println!("\n--------------------------------------------");
-
-    {
-        let stage_b = execute_one_stage_ser(stage_a.clone());
-
-        for (key, result) in stage_b {
-            println!("{} -> {}", key, result);
-        }
+    for (key, result) in execute_one_stage_ser(stage.clone()) {
+        println!("{} -> {}", key, result);
     }
+
     println!("\n--------------------------------------------");
+    for (key, result) in execute_one_stage_par(stage.clone()) {
+        println!("{} -> {}", key, result);
+    }
 
-    {
-        let stage_b = execute_one_stage_par(stage_a.clone());
+    divergence_example();
+    divergence_example();
+    divergence_example();
+    divergence_example();
+}
 
-        for (key, result) in stage_b {
-            println!("{} -> {}", key, result);
+
+
+
+// ============================================================================
+fn divergence_example() {
+    use gridiron::index_space::range2d;
+
+    let num_blocks = (64, 64);
+    let block_size = (64, 64);
+
+    let blocks = range2d(0..num_blocks.0 as i64, 0..num_blocks.1 as i64);
+    let peers: Vec<_> = blocks.into_iter().map(|ij| DivergenceStencil::new(block_size, num_blocks, ij)).collect();
+
+    let start = std::time::Instant::now();
+
+    for (_key, _result) in execute_one_stage_crossbeam_channel(peers) {
+    }        
+    println!("elapsed: {:.4}s", start.elapsed().as_secs_f64());
+}
+
+
+
+
+#[derive(Clone)]
+struct DivergenceStencil {
+    data: Arc<Vec<f64>>,
+    shape: (usize, usize),
+    block: (usize, usize),
+    index: (i64, i64),
+}
+
+impl DivergenceStencil {
+    fn new(shape: (usize, usize), block: (usize, usize), index: (i64, i64)) -> Self {
+        Self {
+            data: Arc::new(vec![0.0; shape.0 * shape.1]),
+            shape,
+            block,
+            index,
         }
     }
 }
@@ -262,58 +370,83 @@ fn main() {
 
 
 
+// ============================================================================
+impl Compute for DivergenceStencil {
 
+    type Key = (i64, i64);
 
+    type Value = Vec<f64>;
 
+    fn key(&self) -> Self::Key {
+        self.index
+    }
 
+    fn peer_keys(&self) -> Vec<Self::Key> {
+        let (i, j) = self.index;
+        let (l, m) = self.block;
+        let (l, m) = (l as i64, m as i64);
 
+        vec![
+            ((i + l - 1) % l, (j + m) % m),
+            ((i + l + 1) % l, (j + m) % m),
+            ((i + l) % l, (j + m - 1) % m),
+            ((i + l) % l, (j + m + 1) % m),
+        ]
+    }
 
+    fn run(&self, peers: &[&Self]) -> Self::Value {
+        let b00 = &self.data;
+        let bxl = &peers[0].data;
+        let bxr = &peers[1].data;
+        let byl = &peers[2].data;
+        let byr = &peers[3].data;
 
+        let (l, m) = self.shape;
 
+        let ind = |i, j| {
+            i * m + j
+        };
+        let mut result = vec![0.0; self.data.len()];
 
+        for i in 0..l {
+            for j in 0..m {
+                for _ in 0..5000 {
+                    let cxl = if i == 0 { bxl[ind(l - 1, j)] } else { b00[ind(i, j)] };
+                    let cxr = if i == l - 1 { bxr[ind(0, j)] } else { b00[ind(i, j)] };
+                    let cyl = if j == 0 { byl[ind(i, m - 1)] } else { b00[ind(i, j)] };
+                    let cyr = if j == m - 1 { byr[ind(i, 0)] } else { b00[ind(i, j)] };
+                    result[ind(i, j)] = (cxr - cxl) + (cyr - cyl);
+                }
+            }
+        }
+        result
+    }
 
+    fn run_owned(&self, peers: Vec<Self>) -> Self::Value {
+        let b00 = &self.data;
+        let bxl = &peers[0].data;
+        let bxr = &peers[1].data;
+        let byl = &peers[2].data;
+        let byr = &peers[3].data;
 
+        let (l, m) = self.shape;
 
+        let ind = |i, j| {
+            i * m + j
+        };
+        let mut result = vec![0.0; self.data.len()];
 
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-// fn execute_two_stage<C, D, K, V>(stage_a: HashMap<K, C>) -> HashMap<K, V>
-// where
-//     C: Compute<Key = K, Value = D>,
-//     D: Compute<Key = K, Value = V>,
-//     K: Hash + Eq + Clone,
-// {
-//     let stage_b = execute_one_stage(stage_a);
-//     let stage_c = execute_one_stage(stage_b);
-//     stage_c
-// }
-
-
-
-
-// fn execute_two_stage_par<C, D, K, V>(stage_a: HashMap<K, C>) -> HashMap<K, V>
-// where
-//     C: Compute<Key = K, Value = D> + Sync,
-//     D: Compute<Key = K, Value = V> + Sync + Send,
-//     K: Sync + Send + Hash + Eq + Clone,
-//     V: Send
-// {
-//     let stage_b = execute_one_stage_par(stage_a);
-//     let stage_c = execute_one_stage_par(stage_b);
-//     stage_c
-// }
+        for i in 0..l {
+            for j in 0..m {
+                for _ in 0..5000 {
+                    let cxl = if i == 0 { bxl[ind(l - 1, j)] } else { b00[ind(i, j)] };
+                    let cxr = if i == l - 1 { bxr[ind(0, j)] } else { b00[ind(i, j)] };
+                    let cyl = if j == 0 { byl[ind(i, m - 1)] } else { b00[ind(i, j)] };
+                    let cyr = if j == m - 1 { byr[ind(i, 0)] } else { b00[ind(i, j)] };
+                    result[ind(i, j)] = (cxr - cxl) + (cyr - cyl);
+                }
+            }
+        }
+        result
+    }
+}
