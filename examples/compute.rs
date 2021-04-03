@@ -45,11 +45,13 @@ where
 
 
 // ============================================================================
-fn execute_one_stage_par_channel_internal<C, K, V>(stage: mpsc::Receiver<(K, C)>) -> mpsc::Receiver<(K, V)>
+fn execute_one_stage_par_channel_internal<'a, C, K, V>(
+    scope: &rayon::Scope<'a>,
+    stage: mpsc::Receiver<(K, C)>) -> mpsc::Receiver<(K, V)>
 where
-    C: 'static + Sync + Send + Clone + Compute<Key = K, Value = V>,
-    K: 'static + Sync + Send + Clone + Hash + Eq + std::fmt::Debug,
-    V: 'static + Send
+    C: 'a + Sync + Send + Clone + Compute<Key = K, Value = V>,
+    K: 'a + Sync + Send + Clone + Hash + Eq + std::fmt::Debug,
+    V: 'a + Send
 {
     let (send, source) = mpsc::channel();
     let (sink, output) = mpsc::channel();
@@ -57,7 +59,7 @@ where
     let mut seen: HashMap<K, C> = HashMap::new();
     let mut hold = Vec::new();
 
-    rayon::spawn(move || {
+    scope.spawn(|_| {
         source
         .into_iter()
         .par_bridge()
@@ -90,17 +92,20 @@ where
 // ============================================================================
 fn execute_one_stage_channel<C, K, V>(stage: HashMap<K, C>) -> HashMap<K, V>
 where
-    C: 'static + Sync + Send + Clone + Compute<Key = K, Value = V>,
-    K: 'static + Sync + Send + Clone + Hash + Eq + std::fmt::Debug,
-    V: 'static + Send
+    C: Sync + Send + Clone + Compute<Key = K, Value = V>,
+    K: Sync + Send + Clone + Hash + Eq + std::fmt::Debug,
+    V: Send
 {
-    let (s, r) = mpsc::channel();
+    rayon::scope(|scope| {
+        let (s, r) = mpsc::channel();
 
-    for kv in stage {
-        s.send(kv).unwrap();
-    }
-    drop(s);
-    execute_one_stage_par_channel_internal(r).into_iter().collect()
+        for kv in stage {
+            s.send(kv).unwrap();
+        }
+        drop(s);
+
+        execute_one_stage_par_channel_internal(scope, r).into_iter().collect()
+    })
 }
 
 // ============================================================================
