@@ -1,7 +1,7 @@
 use core::hash::Hash;
 use std::collections::HashMap;
 use std::sync::mpsc;
-use crossbeam::channel;
+use crossbeam_channel;
 use rayon::prelude::*;
 
 
@@ -155,11 +155,11 @@ where
     r
 }
 
-fn into_crossbeam_channel<A, T>(container: A) -> channel::Receiver<T>
+fn into_crossbeam_channel<A, T>(container: A) -> crossbeam_channel::Receiver<T>
 where
     A: IntoIterator<Item = T>
 {
-    let (s, r) = channel::unbounded();
+    let (s, r) = crossbeam_channel::unbounded();
 
     for x in container {
         s.send(x).unwrap();
@@ -220,14 +220,14 @@ where
 // ============================================================================
 fn exec_with_crossbeam_channel_internal<'a, C, K, V>(
     scope: &rayon::Scope<'a>,
-    stage: channel::Receiver<(K, C)>) -> channel::Receiver<(K, V)>
+    stage: crossbeam_channel::Receiver<(K, C)>) -> crossbeam_channel::Receiver<(K, V)>
 where
     C: 'a + Send + Clone + Compute<Key = K, Value = V>,
     K: 'a + Send + Clone + Hash + Eq,
     V: 'a + Send
 {
-    let (send, source) = channel::unbounded();
-    let (sink, output) = channel::unbounded();
+    let (send, source) = crossbeam_channel::unbounded();
+    let (sink, output) = crossbeam_channel::unbounded();
 
     let mut seen: HashMap<K, C> = HashMap::new();
     let mut hold = Vec::new();
