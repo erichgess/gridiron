@@ -105,8 +105,8 @@ impl Patch {
         I: Into<IndexSpace>,
         F: Copy + Fn((i64, i64)) -> [f64; NUM_FIELDS]
     {
-        let mut data = Vec::new();
         let space: IndexSpace = space.into();
+        let mut data = Vec::with_capacity(space.len() * NUM_FIELDS);
 
         for index in space.iter() {
             data.extend(f(index).iter());
@@ -136,29 +136,26 @@ impl Patch {
      * Sample the field at the given level and index. The index measures
      * ticks at the target sampling level, not the HRIS.
      */
-    pub fn sample(&self, level: u32, index: (i64, i64)) -> f64 {
-
-        // TODO: generalize this to which field is sampled
-
+    pub fn sample(&self, level: u32, index: (i64, i64), field: usize) -> f64 {
         match level.cmp(&self.level) {
             Equal => {
-                self.validate_index(index);
+                self.validate_index(index, field);
 
                 let (i0, j0) = self.space.start();
                 let i = (index.0 - i0) as usize;
                 let j = (index.1 - j0) as usize;
 
                 let (_m, n) = self.space.dim();
-                self.data[i * n + j]
+                self.data[(i * n + j) * self.num_fields + field]
             }
             Less => {
-                self.sample(level + 1, (index.0 / 2, index.1 / 2))
+                self.sample(level + 1, (index.0 / 2, index.1 / 2), field)
             }
             Greater => {
-                let y00 = self.sample(level - 1, (index.0 * 2, index.1 * 2));
-                let y01 = self.sample(level - 1, (index.0 * 2, index.1 * 2 + 1));
-                let y10 = self.sample(level - 1, (index.0 * 2 + 1, index.1 * 2));
-                let y11 = self.sample(level - 1, (index.0 * 2 + 1, index.1 * 2 + 1));
+                let y00 = self.sample(level - 1, (index.0 * 2, index.1 * 2), field);
+                let y01 = self.sample(level - 1, (index.0 * 2, index.1 * 2 + 1), field);
+                let y10 = self.sample(level - 1, (index.0 * 2 + 1, index.1 * 2), field);
+                let y11 = self.sample(level - 1, (index.0 * 2 + 1, index.1 * 2 + 1), field);
                 0.25 * (y00 + y01 + y10 + y11)
             }
         }
@@ -167,16 +164,39 @@ impl Patch {
 
 
 
-    fn validate_index(&self, index: (i64, i64)) {
-        if !self.space.contains(index) {
-            panic!("index ({} {}) out of range on patch ({}..{} {}..{})",
-                index.0,
-                index.1,
-                self.space.start().0,
-                self.space.end().0,
-                self.space.start().1,
-                self.space.end().1);
+    pub fn sample_vector<const NUM_FIELDS: usize>(&self, level: u32, index: (i64, i64)) -> [f64; NUM_FIELDS] {
+        let mut result = [0.0; NUM_FIELDS];
+        self.sample_slice(level, index, &mut result);
+        result
+    }
+
+
+
+
+    pub fn sample_slice(&self, level: u32, index: (i64, i64), result: &mut [f64]) {
+        for field in 0..self.num_fields {
+            result[field] = self.sample(level, index, field)
         }
+    }
+
+
+
+
+    fn validate_index(&self, index: (i64, i64), field: usize) {
+
+        assert!(field < self.num_fields,
+            "field index {} out of range on patch with {} fields",
+            field,
+            self.num_fields);
+
+        assert!(self.space.contains(index),
+            "index ({} {}) out of range on patch ({}..{} {}..{})",
+            index.0,
+            index.1,
+            self.space.start().0,
+            self.space.end().0,
+            self.space.start().1,
+            self.space.end().1);
     }
 }
 
@@ -204,9 +224,9 @@ pub fn extend_patch(map: &RectangleMap<i64, Patch>, rect: RectangleRef<i64>) -> 
 
     let sample = |index| {
         if p.space.contains(index) {
-            p.sample(p.level, index)
+            p.sample(p.level, index, 0)
         } else if let Some(n) = finest_patch(&local_map, index) {
-            n.sample(p.level, index)
+            n.sample(p.level, index, 0)
         } else {
             0.0
         }
@@ -230,16 +250,16 @@ mod test {
     #[test]
     fn patch_sampling_works() {
         let patch = Patch::from_scalar_function(1, (4..10, 4..10), |(i, j)| i as f64 + j as f64);
-        assert_eq!(patch.sample(1, (5, 5)), 10.0);
-        assert_eq!(patch.sample(1, (6, 8)), 14.0);
-        assert_eq!(patch.sample(2, (2, 2)), 0.25 * (8.0 + 9.0 + 9.0 + 10.0));
+        assert_eq!(patch.sample(1, (5, 5), 0), 10.0);
+        assert_eq!(patch.sample(1, (6, 8), 0), 14.0);
+        assert_eq!(patch.sample(2, (2, 2), 0), 0.25 * (8.0 + 9.0 + 9.0 + 10.0));
 
         // Piecewise constant sampling
-        assert_eq!(patch.sample(0, (8, 8)), 8.0);
-        assert_eq!(patch.sample(0, (9, 8)), 8.0);
-        assert_eq!(patch.sample(0, (8, 9)), 8.0);
-        assert_eq!(patch.sample(0, (9, 9)), 8.0);
-        assert_eq!(patch.sample(0, (10, 10)), 10.0);
+        assert_eq!(patch.sample(0, (8, 8), 0), 8.0);
+        assert_eq!(patch.sample(0, (9, 8), 0), 8.0);
+        assert_eq!(patch.sample(0, (8, 9), 0), 8.0);
+        assert_eq!(patch.sample(0, (9, 9), 0), 8.0);
+        assert_eq!(patch.sample(0, (10, 10), 0), 10.0);
     }
 
 
@@ -262,6 +282,6 @@ mod test {
         let p12 = extended_quilt.get((&(10 - 2..20 + 2), &(20 - 2..30 + 2))).unwrap();
         let p21 = extended_quilt.get((&(20 - 2..30 + 2), &(10 - 2..20 + 2))).unwrap();
 
-        assert_eq!(p12.sample(0, (20, 20)), p21.sample(0, (20, 20)));
+        assert_eq!(p12.sample(0, (20, 20), 0), p21.sample(0, (20, 20), 0));
     }
 }

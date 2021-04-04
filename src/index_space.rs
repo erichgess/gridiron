@@ -33,6 +33,15 @@ impl IndexSpace {
     }
 
 
+    /**
+     * Return the total number of elements in this index space.
+     */
+    pub fn len(&self) -> usize {
+        let (l, m) = self.dim();
+        l * m
+    }
+
+
     pub fn start(&self) -> (i64, i64) {
         (self.di.start, self.dj.start)
     }
