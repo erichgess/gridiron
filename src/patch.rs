@@ -42,7 +42,7 @@ pub enum MeshLocation {
  * A patch is a mapping from a rectangular subset of a high-resolution index
  * space (HRIS), to associated field values. The mapping is backed by an array
  * of data, which is in general at a coarser level of granularity than the HRIS;
- * each zone in the backing array stands for (2^level)^rank zones in the HRIS.
+ * each cell in the backing array stands for (2^level)^rank cells in the HRIS.
  * The HRIS is at level 0.
  *
  * The patch can be sampled at different granularity levels. If the sampling
@@ -63,6 +63,9 @@ pub struct Patch {
     /// respect to the ticks at this patch's granularity level.
     space: IndexSpace,
 
+    /// The number of fields stored at each zone.
+    num_fields: usize,
+
     /// The backing array of data on this patch.
     data: Vec<f64>,
 }
@@ -80,16 +83,39 @@ impl Patch {
      * Generate a patch at a given level, covering the given space, with values
      * defined from a closure.
      */
-    pub fn from_function<I, F>(level: u32, space: I, f: F) -> Self
+    pub fn from_scalar_function<I, F>(level: u32, space: I, f: F) -> Self
     where
         I: Into<IndexSpace>,
         F: Copy + Fn((i64, i64)) -> f64
     {
+        Self::from_vector_function(level, space, |index| [f(index)])
+    }
+
+
+
+
+    /**
+     * Generate a patch at a given level, covering the given space, with values
+     * defined from a closure which returns a fixed-length array. The number of
+     * fields in the patch is inferred from the size of the fixed length array
+     * returned by the closure.
+     */
+    pub fn from_vector_function<I, F, const NUM_FIELDS: usize>(level: u32, space: I, f: F) -> Self
+    where
+        I: Into<IndexSpace>,
+        F: Copy + Fn((i64, i64)) -> [f64; NUM_FIELDS]
+    {
+        let mut data = Vec::new();
         let space: IndexSpace = space.into();
+
+        for index in space.iter() {
+            data.extend(f(index).iter());
+        }
         Self {
             level,
-            data: space.iter().map(f).collect(),
+            data,
             space,
+            num_fields: NUM_FIELDS,
         }
     }
 
@@ -111,6 +137,8 @@ impl Patch {
      * ticks at the target sampling level, not the HRIS.
      */
     pub fn sample(&self, level: u32, index: (i64, i64)) -> f64 {
+
+        // TODO: generalize this to which field is sampled
 
         match level.cmp(&self.level) {
             Equal => {
@@ -183,7 +211,7 @@ pub fn extend_patch(map: &RectangleMap<i64, Patch>, rect: RectangleRef<i64>) -> 
             0.0
         }
     };
-    (extended.clone().into(), Patch::from_function(p.level, extended, sample))
+    (extended.clone().into(), Patch::from_scalar_function(p.level, extended, sample))
 }
 
 
@@ -201,7 +229,7 @@ mod test {
 
     #[test]
     fn patch_sampling_works() {
-        let patch = Patch::from_function(1, (4..10, 4..10), |(i, j)| i as f64 + j as f64);
+        let patch = Patch::from_scalar_function(1, (4..10, 4..10), |(i, j)| i as f64 + j as f64);
         assert_eq!(patch.sample(1, (5, 5)), 10.0);
         assert_eq!(patch.sample(1, (6, 8)), 14.0);
         assert_eq!(patch.sample(2, (2, 2)), 0.25 * (8.0 + 9.0 + 9.0 + 10.0));
@@ -222,7 +250,7 @@ mod test {
 
         for (i, j) in range2d(0..4, 0..4) {
             let area = (i * 10 .. (i + 1) * 10, j * 10 .. (j + 1) * 10);
-            let patch = Patch::from_function(0, area, |ij| ij.0 as f64 + ij.1 as f64);
+            let patch = Patch::from_scalar_function(0, area, |ij| ij.0 as f64 + ij.1 as f64);
             quilt.insert(patch.high_resolution_space(), patch);
         }
 
