@@ -1,5 +1,6 @@
 use std::sync::Arc;
 use gridiron::compute;
+use gridiron::index_space::range2d;
 
 
 
@@ -8,7 +9,7 @@ use gridiron::compute;
 fn main() {
 
     let group_size = 10;
-    let stage = (0..group_size).map(|index| StringConvolve { index, group_size });
+    let stage = (0..group_size).map(|index| StringConcat { index, group_size });
 
     println!("\n--------------------------------------------");
     for (key, result) in compute::exec_with_mpsc_channel(stage.clone()) {
@@ -36,27 +37,27 @@ fn main() {
 
 // ============================================================================
 fn divergence_example() {
-    use gridiron::index_space::range2d;
-
     let num_blocks = (64, 64);
     let block_size = (64, 64);
-
     let blocks = range2d(0..num_blocks.0 as i64, 0..num_blocks.1 as i64);
     let peers: Vec<_> = blocks.into_iter().map(|ij| DivergenceStencil::new(block_size, num_blocks, ij)).collect();
-
     let start = std::time::Instant::now();
 
-    for (_key, _result) in compute::exec_with_serial_iterator(peers) {
-    }        
+    for (_key, _result) in compute::exec_with_crossbeam_channel(peers) {
+
+    }
     println!("elapsed: {:.4}s", start.elapsed().as_secs_f64());
 }
 
 
 
 
-// ============================================================================
 #[derive(Clone)]
-struct StringConvolve {
+
+/**
+ * Example to concatenate nearest neighbor strings in a 1D grid of strings.
+ */
+struct StringConcat {
     index: usize,
     group_size: usize,
 }
@@ -65,7 +66,7 @@ struct StringConvolve {
 
 
 // ============================================================================
-impl compute::Compute for StringConvolve {
+impl compute::Compute for StringConcat {
 
     type Key = usize;
     type Value = String;
@@ -87,6 +88,11 @@ impl compute::Compute for StringConvolve {
 
 
 #[derive(Clone)]
+
+/**
+ * Example to compute the divergence of a 2D field, using the '+' stencil, so
+ * based on four neighbors.
+ */
 struct DivergenceStencil {
     data: Arc<Vec<f64>>,
     shape: (usize, usize),

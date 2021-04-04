@@ -274,7 +274,6 @@ impl<T: Ord + Copy, V> Node<T, V> {
 
 
 
-
     /**
      * Consume this node and return a list of nodes forming a path from this
      * node to its leftmost node. This function is to facilitate consuming
