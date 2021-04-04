@@ -6,7 +6,7 @@ use crate::overlap::Overlap;
 
 
 /**
- * A node in a binary search tree
+ * A node in an augmented binary search tree
  */
 #[derive(Clone)]
 pub struct Node<T: Ord + Copy, V> {
@@ -58,7 +58,7 @@ impl<T: Ord + Copy, V> Node<T, V> {
 
 
     /**
-     * Create a balanced sub-tree from an unsorted iterator.
+     * Create a balanced sub-tree from a possibly unsorted iterator.
      */
     pub(crate) fn from_iter<I: IntoIterator<Item = (Range<T>, V)>>(iter: I) -> Option<Box<Self>> {
         let mut values: Vec<_> = iter.into_iter().map(Some).collect();
@@ -94,7 +94,7 @@ impl<T: Ord + Copy, V> Node<T, V> {
 
 
     /**
-     * Return true of the given key exists in this sub-tree.
+     * Return true if the given key exists in this sub-tree.
      */
     pub(crate) fn contains(&self, key: &Range<T>) -> bool {
         self.get(key).is_some()
@@ -389,7 +389,7 @@ impl<T: Ord + Copy, V> Node<T, V> {
 
     /**
      * Utility function enabling in-order consuming traversals, for use by
-     * the sonsuming in-order traversal iterator.
+     * the consuming in-order traversal iterator.
      */
     fn next(stack: &mut Vec<Self>) -> Option<Self> {
 
