@@ -8,12 +8,26 @@ use rayon::prelude::*;
 
 
 /**
- * Interface to enable parallel execution of directed acyclic graphs (DAGs) that
- * have a "layered" topology: meaning the DAG is decomposed into generations,
- * and edges only exist between adjacent generations. In other words, any task
- * in a group of tasks can be executed given a subset of its peers. Execution of
- * a task group is accompished by any of several executor functions, some
- * examples of which are given below.
+ * Interface to enable parallel execution of a group of compute tasks with
+ * stencil-like interdependencies: advancing a task `G[i,n]` from stage `n` to
+ * `n+1` may require a subset of the other tasks in the group, e.g. `G[i,n+1] =
+ * f(G[i-1,n], G[i,n] G[i+1,n])`. The data type of the compute task may change
+ * from one stage to the next. Each task in the group is uniquely identifed by a
+ * key with associated type `Key`, and it can return the keys of a subset of its
+ * peer tasks that it depends on.
+ *
+ * There is no compile-time guarantee the task graph is valid: executor
+ * functions will panic if a tasks identifies a dependency which does not exist
+ * in the group.
+ *
+ * Parallel execution of a group of compute tasks can be easily accomplished
+ * with a parallel iterator, e.g. using Rayon, and a reference to a hash map
+ * containing all members of the group. However, as the execution winds down,
+ * some threads will become idle if the executor blocks waiting for stragglers.
+ * Such under-utilization of compute resources can be avoided by overlapping the
+ * execution of subsequent generations. Evaluation of a stage `n+1` task can
+ * begin as soon as its dependent peers have arrived. This technique is
+ * implemented in the channel-based executor functions from this module.
  *
  * The compute task is likely to be cloned by its executor, so it is wise to put
  * any heavyweight data members under `Rc` or `Arc` (to enable multi-threaded
@@ -28,12 +42,12 @@ pub trait Compute: Sized {
     type Key;
 
     /// The type of the value yielded when this task is run. This can be any
-    /// type of single-stage evaluation. For a two-stage evaluation, this type
-    /// must also be Compute. For an n-stage evaluation, this type must be
-    /// Self.
+    /// type for single-stage evaluations. For a two-stage evaluation, this
+    /// type must also be `Compute`. For an n-stage evaluation, this type must
+    /// be `Self`.
     type Value;
 
-    /// Return the keys of other members of the execution group which are
+    /// Return the keys of other members of the execution group that are
     /// required for this compute task to be evaluated.
     fn peer_keys(&self) -> Vec<Self::Key>;
 
@@ -69,7 +83,7 @@ where
 
 
 /**
- * Execute a group of compute tasks using a parallel iterator from rayon.
+ * Execute a group of compute tasks using a parallel iterator from Rayon.
  */
 pub fn exec_with_parallel_iterator<I, C, K, V>(stage: I) -> impl Iterator<Item = (K, V)>
 where
@@ -89,8 +103,8 @@ where
 
 
 /**
- * Execute a group of compute tasks using parallel iterators from rayon and mpsc
- * channels. The tasks execute in the rayon global thread pool. If the task
+ * Execute a group of compute tasks using parallel iterators from Rayon and mpsc
+ * channels. The tasks execute in the Rayon global thread pool. If the task
  * group requires multiple stages to be fully evaluated, this function may be
  * invoked repeatedly with the output channel from the previous invocation,
  * potentially minimizing the number of idle threads.
@@ -112,8 +126,8 @@ where
 
 
 /**
- * Execute a group of compute tasks using parallel iterators from rayon and
- * crossbeam channels. The tasks execute in the rayon global thread pool. If the
+ * Execute a group of compute tasks using parallel iterators from Rayon and
+ * crossbeam channels. The tasks execute in the Rayon global thread pool. If the
  * task group requires multiple stages to be fully evaluated, this function may
  * be invoked repeatedly with the output channel from the previous invocation,
  * potentially minimizing the number of idle threads.
