@@ -1,4 +1,5 @@
 use std::cmp::Ordering::*;
+use crate::rect_map::Rectangle;
 use crate::index_space::IndexSpace;
 
 
@@ -53,6 +54,7 @@ pub enum MeshLocation {
  * cell.  
  */
 #[derive(Clone)]
+#[derive(serde::Serialize)]
 pub struct Patch {
 
     /// The granularity level of this patch. Level 0 is the highest
@@ -61,7 +63,7 @@ pub struct Patch {
 
     /// The region of index space covered by this patch. The indexes are with
     /// respect to the ticks at this patch's granularity level.
-    space: IndexSpace,
+    area: Rectangle<i64>,
 
     /// The number of fields stored at each zone.
     num_fields: usize,
@@ -114,9 +116,19 @@ impl Patch {
         Self {
             level,
             data,
-            space,
+            area: space.into(),
             num_fields: NUM_FIELDS,
         }
+    }
+
+
+
+
+    /**
+     * Return the index space of this patch.
+     */
+    pub fn index_space(&self) -> IndexSpace {
+        self.area.clone().into()
     }
 
 
@@ -126,7 +138,7 @@ impl Patch {
      * Return the index space at the high-resolution level below this patch.
      */
     pub fn high_resolution_space(&self) -> IndexSpace {
-        self.space.scale(1 << self.level)
+        self.index_space().scale(1 << self.level)
     }
 
 
@@ -141,11 +153,11 @@ impl Patch {
             Equal => {
                 self.validate_index(index, field);
 
-                let (i0, j0) = self.space.start();
+                let (i0, j0) = self.index_space().start();
                 let i = (index.0 - i0) as usize;
                 let j = (index.1 - j0) as usize;
 
-                let (_m, n) = self.space.dim();
+                let (_m, n) = self.index_space().dim();
                 self.data[(i * n + j) * self.num_fields + field]
             }
             Less => {
@@ -183,55 +195,24 @@ impl Patch {
 
 
     fn validate_index(&self, index: (i64, i64), field: usize) {
+        let space = self.index_space();
 
-        assert!(field < self.num_fields,
+        assert!(
+            field < self.num_fields,
             "field index {} out of range on patch with {} fields",
             field,
             self.num_fields);
 
-        assert!(self.space.contains(index),
+        assert!(
+            space.contains(index),
             "index ({} {}) out of range on patch ({}..{} {}..{})",
             index.0,
             index.1,
-            self.space.start().0,
-            self.space.end().0,
-            self.space.start().1,
-            self.space.end().1);
+            space.start().0,
+            space.end().0,
+            space.start().1,
+            space.end().1);
     }
-}
-
-
-
-
-// ============================================================================
-use crate::rect_map::{
-    Rectangle,
-    RectangleRef,
-    RectangleMap};
-
-pub fn finest_patch<'a>(map: &'a RectangleMap<i64, &'a Patch>, index: (i64, i64)) -> Option<&'a Patch> {
-    map.query_point(index)
-       .map(|(_, &p)| p)
-       .min_by_key(|p| p.level)
-}
-
-pub fn extend_patch(map: &RectangleMap<i64, Patch>, rect: RectangleRef<i64>) -> (Rectangle<i64>, Patch) {
-
-    let space: IndexSpace = rect.into();
-    let extended = space.extend_all(2);
-    let local_map: RectangleMap<_, _> = map.query_rect(extended.clone()).collect();
-    let p = local_map.get(rect).unwrap();
-
-    let sample = |index| {
-        if p.space.contains(index) {
-            p.sample(p.level, index, 0)
-        } else if let Some(n) = finest_patch(&local_map, index) {
-            n.sample(p.level, index, 0)
-        } else {
-            0.0
-        }
-    };
-    (extended.clone().into(), Patch::from_scalar_function(p.level, extended, sample))
 }
 
 
@@ -241,10 +222,42 @@ pub fn extend_patch(map: &RectangleMap<i64, Patch>, rect: RectangleRef<i64>) -> 
 #[cfg(test)]
 mod test {
 
+    use crate::index_space::{
+        IndexSpace,
+        range2d};
+    use crate::rect_map::{
+        Rectangle,
+        RectangleRef,
+        RectangleMap};
+    use super::Patch;
 
-    use crate::index_space::range2d;
-    use crate::rect_map::RectangleMap;
-    use super::{Patch, extend_patch};
+
+    // ============================================================================
+    fn finest_patch<'a>(map: &'a RectangleMap<i64, &'a Patch>, index: (i64, i64)) -> Option<&'a Patch> {
+        map.query_point(index)
+           .map(|(_, &p)| p)
+           .min_by_key(|p| p.level)
+    }
+
+
+    fn extend_patch(map: &RectangleMap<i64, Patch>, rect: RectangleRef<i64>) -> (Rectangle<i64>, Patch) {
+
+        let space: IndexSpace = rect.into();
+        let extended = space.extend_all(2);
+        let local_map: RectangleMap<_, _> = map.query_rect(extended.clone()).collect();
+        let p = local_map.get(rect).unwrap();
+
+        let sample = |index| {
+            if p.index_space().contains(index) {
+                p.sample(p.level, index, 0)
+            } else if let Some(n) = finest_patch(&local_map, index) {
+                n.sample(p.level, index, 0)
+            } else {
+                0.0
+            }
+        };
+        (extended.clone().into(), Patch::from_scalar_function(p.level, extended, sample))
+    }
 
 
     #[test]

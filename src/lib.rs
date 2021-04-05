@@ -1,4 +1,3 @@
-#![feature(drain_filter)]
 #![feature(min_type_alias_impl_trait)]
 #![feature(test)]
 
