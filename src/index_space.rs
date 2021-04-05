@@ -3,7 +3,7 @@ use core::ops::Range;
 
 
 
-#[derive(Clone)]
+#[derive(Clone, Debug)]
 pub struct IndexSpace {
     di: Range<i64>,
     dj: Range<i64>,
@@ -19,6 +19,11 @@ impl IndexSpace {
 
 
     pub fn new(di: Range<i64>, dj: Range<i64>) -> Self {
+
+        assert!(
+            !di.is_empty() && !dj.is_empty(),
+            "try to construct an empty index space");
+
         Self { di, dj }
     }
 
@@ -33,7 +38,7 @@ impl IndexSpace {
 
 
     /**
-     * Return the total number of elements in this index space.
+     * Return the number of elements in this index space.
      */
     pub fn len(&self) -> usize {
         let (l, m) = self.dim();
@@ -81,6 +86,14 @@ impl IndexSpace {
         Self::new(
             self.di.start - delta .. self.di.end + delta,
             self.dj.start - delta .. self.dj.end + delta)
+    }
+
+
+    /**
+     * Trim this index space by the given number of elements on each axis.
+     */
+    pub fn trim_all(&self, delta: i64) -> Self {
+        self.extend_all(-delta)
     }
 
 

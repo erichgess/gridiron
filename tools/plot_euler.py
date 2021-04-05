@@ -8,10 +8,10 @@ ax1 = fig.add_subplot(1, 1, 1)
 state = cbor2.load(open('state.cbor', 'rb'))
 
 for patch in state['patches']:
-    i0 = patch['area'][0]['start']
-    j0 = patch['area'][1]['start']
-    i1 = patch['area'][0]['end']
-    j1 = patch['area'][1]['end']
+    i0 = patch['rect'][0]['start']
+    j0 = patch['rect'][1]['start']
+    i1 = patch['rect'][0]['end']
+    j1 = patch['rect'][1]['end']
     x, y = np.meshgrid(range(i0, i1 + 1), range(j0, j1 + 1))
     data = np.array(patch['data']).reshape([i1 - i0, j1 - j0, patch['num_fields']])
     cm = ax1.pcolormesh(x, y, data[:,:,0].T, vmin=1.0, vmax=3.0)

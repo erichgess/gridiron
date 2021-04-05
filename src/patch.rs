@@ -63,7 +63,7 @@ pub struct Patch {
 
     /// The region of index space covered by this patch. The indexes are with
     /// respect to the ticks at this patch's granularity level.
-    area: Rectangle<i64>,
+    rect: Rectangle<i64>,
 
     /// The number of fields stored at each zone.
     num_fields: usize,
@@ -79,8 +79,6 @@ pub struct Patch {
 impl Patch {
 
 
-
-
     /**
      * Generate a patch at a given level, covering the given space, with values
      * defined from a closure.
@@ -88,12 +86,10 @@ impl Patch {
     pub fn from_scalar_function<I, F>(level: u32, space: I, f: F) -> Self
     where
         I: Into<IndexSpace>,
-        F: Copy + Fn((i64, i64)) -> f64
+        F: Fn((i64, i64)) -> f64
     {
         Self::from_vector_function(level, space, |index| [f(index)])
     }
-
-
 
 
     /**
@@ -105,7 +101,7 @@ impl Patch {
     pub fn from_vector_function<I, F, const NUM_FIELDS: usize>(level: u32, space: I, f: F) -> Self
     where
         I: Into<IndexSpace>,
-        F: Copy + Fn((i64, i64)) -> [f64; NUM_FIELDS]
+        F: Fn((i64, i64)) -> [f64; NUM_FIELDS]
     {
         let space: IndexSpace = space.into();
         let mut data = Vec::with_capacity(space.len() * NUM_FIELDS);
@@ -116,22 +112,58 @@ impl Patch {
         Self {
             level,
             data,
-            area: space.into(),
+            rect: space.into(),
             num_fields: NUM_FIELDS,
         }
     }
 
 
+    /**
+     * Generate a patch at a given level, covering the given space, with values
+     * defined from a closure which operates on mutable slices.
+     */
+    pub fn from_slice_function<I, F>(level: u32, space: I, num_fields: usize, f: F) -> Self
+    where
+        I: Into<IndexSpace>,
+        F: Fn((i64, i64), &mut [f64])
+    {
+        let space: IndexSpace = space.into();
+        let mut data = vec![0.0; space.len() * num_fields];
+
+        for (index, slice) in space.iter().zip(data.chunks_exact_mut(num_fields)) {
+            f(index, slice)
+        }
+        Self {
+            level,
+            data,
+            rect: space.into(),
+            num_fields,
+        }
+    }
+
+
+    /**
+     * Return this patch's refinement level.
+     */
+    pub fn level(&self) -> u32 {
+        self.level
+    }
+
+
+    /**
+     * Return this patch's rectangle.
+     */
+    pub fn rect(&self) -> Rectangle<i64> {
+        self.rect.clone()
+    }
 
 
     /**
      * Return the index space of this patch.
      */
     pub fn index_space(&self) -> IndexSpace {
-        self.area.clone().into()
+        self.rect.clone().into()
     }
-
-
 
 
     /**
@@ -140,8 +172,6 @@ impl Patch {
     pub fn high_resolution_space(&self) -> IndexSpace {
         self.index_space().scale(1 << self.level)
     }
-
-
 
 
     /**
@@ -174,17 +204,28 @@ impl Patch {
     }
 
 
-
-
+    /**
+     * Sample all the fields in this patch at the given index and return the
+     * result as a fixed-length array. The array size must be less than or equal
+     * to the number of fields.
+     */
     pub fn sample_vector<const NUM_FIELDS: usize>(&self, level: u32, index: (i64, i64)) -> [f64; NUM_FIELDS] {
+
+        assert!(
+            NUM_FIELDS <= self.num_fields,
+            "attempt to sample {} fields from a patch with {} fields", NUM_FIELDS, self.num_fields);
+
         let mut result = [0.0; NUM_FIELDS];
         self.sample_slice(level, index, &mut result);
         result
     }
 
 
-
-
+    /**
+     * Sample all the fields in this patch at the given index and write the
+     * result into the given slice. The slice must be at least as large as the
+     * number of fields.
+     */
     pub fn sample_slice(&self, level: u32, index: (i64, i64), result: &mut [f64]) {
         for field in 0..self.num_fields {
             result[field] = self.sample(level, index, field)
@@ -192,8 +233,27 @@ impl Patch {
     }
 
 
+    /**
+     * Extract a subset of this patch and return it.
+     */
+    pub fn extract<I: Into<IndexSpace>>(&self, space: I) -> Self {
+        Self::from_slice_function(self.level, space, self.num_fields, |index, slice| {
+            self.sample_slice(self.level, index, slice)
+        })
+    }
 
 
+    /**
+     * Convert this patch into a subset of itself.
+     */
+    pub fn extract_mut<I: Into<IndexSpace>>(&mut self, space: I) {
+        *self = self.extract(space)
+    }
+
+
+
+
+    // ========================================================================
     fn validate_index(&self, index: (i64, i64), field: usize) {
         let space = self.index_space();
 
@@ -282,8 +342,8 @@ mod test {
         let mut quilt = RectangleMap::new();
 
         for (i, j) in range2d(0..4, 0..4) {
-            let area = (i * 10 .. (i + 1) * 10, j * 10 .. (j + 1) * 10);
-            let patch = Patch::from_scalar_function(0, area, |ij| ij.0 as f64 + ij.1 as f64);
+            let rect = (i * 10 .. (i + 1) * 10, j * 10 .. (j + 1) * 10);
+            let patch = Patch::from_scalar_function(0, rect, |ij| ij.0 as f64 + ij.1 as f64);
             quilt.insert(patch.high_resolution_space(), patch);
         }
 

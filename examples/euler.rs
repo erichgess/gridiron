@@ -1,12 +1,17 @@
 use gridiron::patch::Patch;
-use gridiron::rect_map::Rectangle;
-use gridiron::index_space::range2d;
+use gridiron::rect_map::{Rectangle, RectangleRef, RectangleMap};
+use gridiron::index_space::{IndexSpace, range2d};
 use gridiron::hydro::euler;
 
 
 
 
 #[derive(serde::Serialize)]
+
+
+/**
+ * The mesh
+ */
 struct Mesh {
     area: Rectangle<f64>,
     size: (usize, usize),
@@ -52,7 +57,14 @@ impl Model {
 
 
 #[derive(serde::Serialize)]
+
+
+/**
+ * The simulation solution state
+ */
 struct State {
+    iteration: u64,
+    time: f64,
     patches: Vec<Patch>
 }
 
@@ -61,10 +73,10 @@ struct State {
 
 // ============================================================================
 impl State {
-    fn new() -> Self {
 
-        let block_size = 25;
-        let mesh = Mesh { area: (0.0 .. 1.0, 0.0 .. 1.0), size: (100, 100) };
+    fn new() -> Self {
+        let block_size = 10;
+        let mesh = Mesh { area: (0.0 .. 1.0, 0.0 .. 1.0), size: (40, 40) };
         let model = Model{};
         let primitive = |index| model.primitive_at(mesh.cell_center(index)).as_array();
         let patches = range2d(0..4, 0..4)
@@ -77,7 +89,9 @@ impl State {
             .collect();
 
         Self {
-            patches
+            iteration: 0,
+            time: 0.0,
+            patches,
         }
     }
 }
@@ -85,8 +99,74 @@ impl State {
 
 
 
+// ============================================================================
+fn finest_patch<'a>(map: &'a RectangleMap<i64, &'a Patch>, index: (i64, i64)) -> Option<&'a Patch> {
+    map.query_point(index)
+       .map(|(_, &p)| p)
+       .min_by_key(|p| p.level())
+}
+
+fn extend_patch(map: &RectangleMap<i64, Patch>, rect: RectangleRef<i64>) -> (Rectangle<i64>, Patch) {
+
+    let space: IndexSpace = rect.into();
+    let extended = space.extend_all(2);
+    let local_map: RectangleMap<_, _> = map.query_rect(extended.clone()).collect();
+    let p = local_map.get(rect).unwrap();
+
+    let sample = |index, slice: &mut [f64]| {
+        if p.index_space().contains(index) {
+            p.sample_slice(p.level(), index, slice)
+        } else if let Some(n) = finest_patch(&local_map, index) {
+            n.sample_slice(p.level(), index, slice)
+        }
+    };
+    let extended_patch = Patch::from_slice_function(p.level(), extended.clone(), 5, sample);
+    (extended.into(), extended_patch)
+}
+
+
+
+
+// ============================================================================
+fn advance(state: State) -> State {
+
+    let State { mut iteration, mut time, patches } = state;
+
+    let mesh: RectangleMap<_, _> = patches.into_iter().map(|p| (p.rect(), p)).collect();
+
+    let extended_mesh: RectangleMap<i64, Patch> = mesh
+        .keys()
+        .map(|rect| extend_patch(&mesh, rect))
+        .collect();
+
+    let mut patches: Vec<_> = extended_mesh.into_iter().map(|(_, p)| p).collect();
+
+    for patch in &mut patches {
+        patch.extract_mut(patch.index_space().trim_all(2));
+    }
+
+    iteration += 1;
+    time += 0.01;
+
+    State {
+        time,
+        iteration,
+        patches,
+    }
+}
+
+
+
+
+// ============================================================================
 fn main() {
-    let state = State::new();
+    let mut state = State::new();
+
+    while state.time < 1.0 {
+        state = advance(state);
+        println!("[{}] t={:.4}", state.iteration, state.time);
+    }
+
     let file = std::fs::File::create("state.cbor").unwrap();
     let mut buffer = std::io::BufWriter::new(file);
     ciborium::ser::into_writer(&state, &mut buffer).unwrap();
