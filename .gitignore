@@ -2,3 +2,4 @@
 /trash
 /Cargo.lock
 *.dat
+*.cbor

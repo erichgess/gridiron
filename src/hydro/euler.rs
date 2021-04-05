@@ -45,6 +45,10 @@ impl Conserved {
         cons[4] = self.4;
     }
 
+    pub fn as_array(&self) -> [f64; 5] {
+        [self.0, self.1, self.2, self.3, self.4]
+    }
+
     pub fn mass_density(&self) -> f64 {
         self.0
     }
@@ -115,6 +119,14 @@ impl Primitive {
         prim[2] = self.2;
         prim[3] = self.3;
         prim[4] = self.4;
+    }
+
+    pub fn new(d: f64, u: f64, v: f64, w: f64, e: f64) -> Self {
+        Self(d, u, v, w, e)
+    }
+
+    pub fn as_array(&self) -> [f64; 5] {
+        [self.0, self.1, self.2, self.3, self.4]
     }
 
     pub fn mass_density(&self) -> f64 {
