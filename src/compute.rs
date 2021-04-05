@@ -13,12 +13,8 @@ use rayon::prelude::*;
  * `n+1` may require a subset of the other tasks in the group, e.g. `G[i,n+1] =
  * f(G[i-1,n], G[i,n] G[i+1,n])`. The data type of the compute task may change
  * from one stage to the next. Each task in the group is uniquely identifed by a
- * key with associated type `Key`, and it can return the keys of a subset of its
- * peer tasks that it depends on.
- *
- * There is no compile-time guarantee the task graph is valid: executor
- * functions will panic if a tasks identifies a dependency which does not exist
- * in the group.
+ * key with associated type `Key` (by implementing Compute::key`). Keys of the
+ * upstream compute tasks are defined by implementing `Compute::peer_keys`.
  *
  * Parallel execution of a group of compute tasks can be easily accomplished
  * with a parallel iterator, e.g. using Rayon, and a reference to a hash map
@@ -29,9 +25,11 @@ use rayon::prelude::*;
  * begin as soon as its dependent peers have arrived. This technique is
  * implemented in the channel-based executor functions from this module.
  *
- * The compute task is likely to be cloned by its executor, so it is wise to put
- * any heavyweight data members under `Rc` or `Arc` (to enable multi-threaded
- * execution).
+ * There is no compile-time guarantee the task graph is valid: executor
+ * functions will panic if a task identifies a dependency which does not exist
+ * in the group. Compute tasks are likely to be cloned by executor functions, so
+ * it is wise to put any heavyweight data members under `Rc` (for single) or
+ * `Arc` (for multi-threaded execution).
  */
 pub trait Compute: Sized {
 

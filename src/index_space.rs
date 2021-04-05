@@ -18,7 +18,6 @@ pub struct IndexSpace {
 impl IndexSpace {
 
 
-
     pub fn new(di: Range<i64>, dj: Range<i64>) -> Self {
         Self { di, dj }
     }
@@ -42,26 +41,42 @@ impl IndexSpace {
     }
 
 
+    /**
+     * Return the minimum index (inclusive).
+     */
     pub fn start(&self) -> (i64, i64) {
         (self.di.start, self.dj.start)
     }
 
 
+    /**
+     * Return the maximum index (exclusive).
+     */
     pub fn end(&self) -> (i64, i64) {
         (self.di.end, self.dj.end)
     }
 
 
+    /**
+     * Return the index space as a rectangle reference (a tuple of `Range`
+     * references).
+     */
     pub fn as_rect_ref(&self) -> (&Range<i64>, &Range<i64>) {
         (&self.di, &self.dj)
     }
 
 
+    /**
+     * Determine whether this index space contains the given index.
+     */
     pub fn contains(&self, index: (i64, i64)) -> bool {
         self.di.contains(&index.0) && self.dj.contains(&index.1)
     }
 
 
+    /**
+     * Expand this index space by the given number of elements on each axis.
+     */
     pub fn extend_all(&self, delta: i64) -> Self {
         Self::new(
             self.di.start - delta .. self.di.end + delta,
@@ -69,6 +84,9 @@ impl IndexSpace {
     }
 
 
+    /**
+     * Increase the size of this index space by the given factor.
+     */
     pub fn scale(&self, factor: i64) -> Self {
         Self::new(
             self.di.start * factor .. self.di.end * factor,
@@ -76,6 +94,10 @@ impl IndexSpace {
     }
 
 
+    /**
+     * Return an iterator which traverses the index space in row-major order
+     * (C-like; the final index increases fastest).
+     */
     pub fn iter(&self) -> impl Iterator<Item = (i64, i64)> + '_ {
         self.di.clone().map(move |i| self.dj.clone().map(move |j| (i, j))).flatten()
     }
@@ -92,6 +114,15 @@ impl IntoIterator for IndexSpace {
     fn into_iter(self) -> Self::IntoIter {
         let Self { di, dj } = self;
         di.map(move |i| dj.clone().map(move |j| (i, j))).flatten()
+    }
+}
+
+impl IntoIterator for &IndexSpace {
+    type Item = (i64, i64);
+    type IntoIter = impl Iterator<Item = Self::Item>;
+
+    fn into_iter(self) -> Self::IntoIter {
+        self.iter()
     }
 }
 

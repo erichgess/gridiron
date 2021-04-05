@@ -40,11 +40,10 @@ fn divergence_example() {
     let num_blocks = (64, 64);
     let block_size = (64, 64);
     let blocks = range2d(0..num_blocks.0 as i64, 0..num_blocks.1 as i64);
-    let peers: Vec<_> = blocks.into_iter().map(|ij| DivergenceStencil::new(block_size, num_blocks, ij)).collect();
+    let peers: Vec<_> = blocks.iter().map(|ij| DivergenceStencil::new(block_size, num_blocks, ij)).collect();
     let start = std::time::Instant::now();
 
     for (_key, _result) in compute::exec_with_crossbeam_channel(peers) {
-
     }
     println!("elapsed: {:.4}s", start.elapsed().as_secs_f64());
 }
