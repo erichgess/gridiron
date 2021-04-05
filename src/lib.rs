@@ -4,6 +4,7 @@
 
 pub mod aug_node;
 pub mod compute;
+pub mod hydro;
 pub mod index_space;
 pub mod interval_map;
 pub mod interval_set;
