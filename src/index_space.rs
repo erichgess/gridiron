@@ -160,24 +160,24 @@ impl IndexSpace {
 
 
 // ============================================================================
-impl IntoIterator for IndexSpace {
-    type Item = (i64, i64);
-    type IntoIter = impl Iterator<Item = Self::Item>;
+// impl IntoIterator for IndexSpace {
+//     type Item = (i64, i64);
+//     type IntoIter = impl Iterator<Item = Self::Item>;
 
-    fn into_iter(self) -> Self::IntoIter {
-        let Self { di, dj } = self;
-        di.map(move |i| dj.clone().map(move |j| (i, j))).flatten()
-    }
-}
+//     fn into_iter(self) -> Self::IntoIter {
+//         let Self { di, dj } = self;
+//         di.map(move |i| dj.clone().map(move |j| (i, j))).flatten()
+//     }
+// }
 
-impl IntoIterator for &IndexSpace {
-    type Item = (i64, i64);
-    type IntoIter = impl Iterator<Item = Self::Item>;
+// impl IntoIterator for &IndexSpace {
+//     type Item = (i64, i64);
+//     type IntoIter = impl Iterator<Item = Self::Item>;
 
-    fn into_iter(self) -> Self::IntoIter {
-        self.iter()
-    }
-}
+//     fn into_iter(self) -> Self::IntoIter {
+//         self.iter()
+//     }
+// }
 
 impl From<(Range<i64>, Range<i64>)> for IndexSpace {
     fn from(range: (Range<i64>, Range<i64>)) -> Self {
@@ -211,11 +211,40 @@ pub fn range2d(di: Range<i64>, dj: Range<i64>) -> IndexSpace {
 
 
 /**
- * This is an access pattern iterator for a 3D hyperslab selection. It uses
- * nested chunks to achieve performance only slightly worse than a linear slice
- * traversal. It is ~25% faster than a triple-nested for loop.
+ * This is an access pattern iterator for a 3D hyperslab selection.
  */
-pub fn iter_slice_3d<'a>(
+pub fn iter_slice_3d_v1<'a>(
+    slice: &'a [f64],
+    start: (usize, usize, usize),
+    count: (usize, usize, usize),
+    shape: (usize, usize, usize),
+    chunk: usize) -> impl Iterator<Item = &'a [f64]>
+{
+    assert!(slice.len() == shape.0 * shape.1 * shape.2 * chunk);
+
+    slice
+    .chunks_exact(shape.1 * shape.2 * chunk)
+    .skip(start.0)
+    .take(count.0)
+    .flat_map(move |j| j
+        .chunks_exact(shape.1 * chunk)
+        .skip(start.1)
+        .take(count.1)
+        .flat_map(move |k| k
+            .chunks_exact(chunk)
+            .skip(start.2)
+            .take(count.2)))
+}
+
+
+
+
+/**
+ * This is an access pattern iterator for a 3D hyperslab selection, equivalent
+ * to the one above but faster. Most benchmarks suggest neither is faster than
+ * a triple for-loop.
+ */
+pub fn iter_slice_3d_v2<'a>(
     slice: &'a [f64],
     start: (usize, usize, usize),
     count: (usize, usize, usize),
@@ -240,64 +269,21 @@ pub fn iter_slice_3d<'a>(
 // ============================================================================
 #[cfg(test)]
 mod test {
-    extern crate test;
-    use test::Bencher;
 
     const NI: usize = 100;
     const NJ: usize = 100;
     const NK: usize = 100;
     const NUM_FIELDS: usize = 5;
 
-    #[bench]
-    fn traversal_with_linear_iteration(b: &mut Bencher) {
+    #[test]
+    fn traversal_with_nested_iter_has_correct_length_v1() {
         let data = vec![1.0; NI * NJ * NK * NUM_FIELDS];
-        b.iter(|| {
-            let mut total = [0.0; 5];
-            data.chunks_exact(NUM_FIELDS).for_each(|x| {
-                for i in 0..NUM_FIELDS {
-                    total[i] += x[i]
-                }
-            });
-            assert_eq!(total[0], (NI * NJ * NK) as f64);
-        });
+        assert_eq!(super::iter_slice_3d_v1(&data, (5, 10, 15), (10, 10, 10), (NI, NJ, NK), NUM_FIELDS).count(), 1000);
     }
 
-    #[bench]
-    fn traversal_with_triple_for_loop(b: &mut Bencher) {
+    #[test]
+    fn traversal_with_nested_iter_has_correct_length_v2() {
         let data = vec![1.0; NI * NJ * NK * NUM_FIELDS];
-        b.iter(|| {
-            let mut total = [0.0; 5];
-            for i in 0..NI {
-                for j in 0..NJ {
-                    for k in 0..NK {
-                        let n = ((i * NJ + j) * NK + k) * NUM_FIELDS;
-                        for s in 0..NUM_FIELDS {
-                            total[s] += data[n + s];
-                        }
-                    }
-                }
-            }
-            assert_eq!(total[0], (NI * NJ * NK) as f64);
-        });
+        assert_eq!(super::iter_slice_3d_v2(&data, (5, 10, 15), (10, 10, 10), (NI, NJ, NK), NUM_FIELDS).count(), 1000);
     }
-
-    #[bench]
-    fn traversal_with_nested_iter(b: &mut Bencher) {
-        let data = vec![1.0; NI * NJ * NK * NUM_FIELDS];
-        b.iter(|| {
-            let mut total = [0.0; 5];
-            for x in super::iter_slice_3d(&data, (0, 0, 0), (NI, NJ, NK), (NI, NJ, NK), NUM_FIELDS) {
-                for s in 0..NUM_FIELDS {
-                    total[s] += x[s];
-                }
-            }
-            assert_eq!(total[0], (NI * NJ * NK) as f64);
-        });
-    }
-
-    // #[test]
-    // fn traversal_with_nested_iter_has_correct_length() {
-    //     let data = vec![1.0; NI * NJ * NK * NUM_FIELDS];
-    //     assert_eq!(super::iter_slice_3d(&data, (5, 10, 15), (10, 10, 10), (NI, NJ, NK), NUM_FIELDS).count(), 1000);
-    // }
 }

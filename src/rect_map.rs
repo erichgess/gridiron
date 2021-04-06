@@ -92,6 +92,13 @@ impl<T: Ord + Copy, V> RectangleMap<T, V> {
         }
     }
 
+    pub fn into_iter(self) -> impl Iterator<Item = (Rectangle<T>, V)> {
+        self.map
+            .into_iter()
+            .map(|(di, l)| l.into_iter().map(move |(dj, m)| ((di.clone(), dj), m)))
+            .flatten()
+    }
+
     pub fn iter(&self) -> impl Iterator<Item = (RectangleRef<T>, &V)> {
         self.map
             .iter()
@@ -157,36 +164,6 @@ impl<T: Ord + Copy, V> Default for RectangleMap<T, V> {
     }
 }
 
-impl<T: Ord + Copy, V> IntoIterator for RectangleMap<T, V> {
-    type Item = (Rectangle<T>, V);
-    type IntoIter = impl Iterator<Item = Self::Item>;
-
-    fn into_iter(self) -> Self::IntoIter {
-        self.map
-            .into_iter()
-            .map(|(di, l)| l.into_iter().map(move |(dj, m)| ((di.clone(), dj), m)))
-            .flatten()
-    }
-}
-
-impl<'a, T: Ord + Copy, V> IntoIterator for &'a RectangleMap<T, V> {
-    type Item = (RectangleRef<'a, T>, &'a V);
-    type IntoIter = impl Iterator<Item = Self::Item>;
-
-    fn into_iter(self) -> Self::IntoIter {
-        self.iter()
-    }
-}
-
-impl<'a, T: Ord + Copy, V> IntoIterator for &'a mut RectangleMap<T, V> {
-    type Item = (RectangleRef<'a, T>, &'a mut V);
-    type IntoIter = impl Iterator<Item = Self::Item>;
-
-    fn into_iter(self) -> Self::IntoIter {
-        self.iter_mut()
-    }
-}
-
 impl<'a, T: 'a + Ord + Copy, V> FromIterator<(RectangleRef<'a, T>, V)> for RectangleMap<T, V> {
     fn from_iter<I: IntoIterator<Item = (RectangleRef<'a, T>, V)>>(iter: I) -> Self {
         let mut result = Self::new();
@@ -208,6 +185,46 @@ impl<T: Ord + Copy, V> FromIterator<(Rectangle<T>, V)> for RectangleMap<T, V> {
         result
     }
 }
+
+
+
+
+// The impl's below enable syntactic sugar for iteration, but since the
+// iterators use combinators and closures, the iterator type cannt be written
+// explicitly for the `Item` associated type. The `min_type_alias_impl_trait`
+// feature on nightly allows the syntax below.
+
+
+// ============================================================================
+// impl<T: Ord + Copy, V> IntoIterator for RectangleMap<T, V> {
+//     type Item = (Rectangle<T>, V);
+//     type IntoIter = impl Iterator<Item = Self::Item>;
+
+//     fn into_iter(self) -> Self::IntoIter {
+//         self.map
+//             .into_iter()
+//             .map(|(di, l)| l.into_iter().map(move |(dj, m)| ((di.clone(), dj), m)))
+//             .flatten()
+//     }
+// }
+
+// impl<'a, T: Ord + Copy, V> IntoIterator for &'a RectangleMap<T, V> {
+//     type Item = (RectangleRef<'a, T>, &'a V);
+//     type IntoIter = impl Iterator<Item = Self::Item>;
+
+//     fn into_iter(self) -> Self::IntoIter {
+//         self.iter()
+//     }
+// }
+
+// impl<'a, T: Ord + Copy, V> IntoIterator for &'a mut RectangleMap<T, V> {
+//     type Item = (RectangleRef<'a, T>, &'a mut V);
+//     type IntoIter = impl Iterator<Item = Self::Item>;
+
+//     fn into_iter(self) -> Self::IntoIter {
+//         self.iter_mut()
+//     }
+// }
 
 
 

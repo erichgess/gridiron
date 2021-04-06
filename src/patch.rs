@@ -370,7 +370,7 @@ mod test {
 
         let mut quilt = RectangleMap::new();
 
-        for (i, j) in range2d(0..4, 0..4) {
+        for (i, j) in range2d(0..4, 0..4).iter() {
             let rect = (i * 10 .. (i + 1) * 10, j * 10 .. (j + 1) * 10);
             let patch = Patch::from_scalar_function(0, rect, |ij| ij.0 as f64 + ij.1 as f64);
             quilt.insert(patch.high_resolution_space(), patch);
