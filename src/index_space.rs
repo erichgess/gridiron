@@ -211,43 +211,10 @@ pub fn range2d(di: Range<i64>, dj: Range<i64>) -> IndexSpace {
 
 
 /**
- * These are untested, and yet-unused accessor pattern iterators for 1D, 2D, and
- * 3D hyperslab selections.
+ * This is an access pattern iterator for a 3D hyperslab selection. It uses
+ * nested chunks to achieve performance only slightly worse than a linear slice
+ * traversal. It is ~25% faster than a triple-nested for loop.
  */
-pub fn iter_slice_1d<'a>(
-    slice: &'a [f64],
-    start: usize,
-    count: usize,
-    shape: usize,
-    chunk: usize) -> impl Iterator<Item = &'a [f64]>
-{
-    assert!(slice.len() == count);
-
-    slice
-    .chunks_exact(shape * chunk)
-    .skip(start)
-    .take(count)
-}
-
-pub fn iter_slice_2d<'a>(
-    slice: &'a [f64],
-    start: (usize, usize),
-    count: (usize, usize),
-    shape: (usize, usize),
-    chunk: usize) -> impl Iterator<Item = &'a [f64]>
-{
-    assert!(slice.len() == count.0 * count.1);
-
-    slice
-    .chunks_exact(shape.1 * chunk)
-    .skip(start.0)
-    .take(count.0)
-    .flat_map(move |j| j
-        .chunks_exact(chunk)
-        .skip(start.1)
-        .take(count.1))
-}
-
 pub fn iter_slice_3d<'a>(
     slice: &'a [f64],
     start: (usize, usize, usize),
@@ -255,18 +222,82 @@ pub fn iter_slice_3d<'a>(
     shape: (usize, usize, usize),
     chunk: usize) -> impl Iterator<Item = &'a [f64]>
 {
-    assert!(slice.len() == count.0 * count.1 * count.2);
+    assert!(slice.len() == shape.0 * shape.1 * shape.2 * chunk);
 
-    slice
-    .chunks_exact(shape.1 * shape.2 * chunk)
-    .skip(start.0)
-    .take(count.0)
-    .flat_map(move |j| j
-        .chunks_exact(shape.1 * chunk)
-        .skip(start.1)
-        .take(count.1)
-        .flat_map(move |k| k
-            .chunks_exact(chunk)
-            .skip(start.2)
-            .take(count.2)))
+    let s = chunk;
+    let r = shape.2 * s;
+    let q = shape.1 * r;
+
+    slice[start.0 * q .. (start.0 + count.0) * q]
+    .chunks_exact(q).flat_map(move |j| j[start.1 * r .. (start.1 + count.1) * r]
+    .chunks_exact(r).flat_map(move |k| k[start.2 * s .. (start.2 + count.2) * s]
+    .chunks_exact(s)))
+}
+
+
+
+
+// ============================================================================
+#[cfg(test)]
+mod test {
+    extern crate test;
+    use test::Bencher;
+
+    const NI: usize = 100;
+    const NJ: usize = 100;
+    const NK: usize = 100;
+    const NUM_FIELDS: usize = 5;
+
+    #[bench]
+    fn traversal_with_linear_iteration(b: &mut Bencher) {
+        let data = vec![1.0; NI * NJ * NK * NUM_FIELDS];
+        b.iter(|| {
+            let mut total = [0.0; 5];
+            data.chunks_exact(NUM_FIELDS).for_each(|x| {
+                for i in 0..NUM_FIELDS {
+                    total[i] += x[i]
+                }
+            });
+            assert_eq!(total[0], (NI * NJ * NK) as f64);
+        });
+    }
+
+    #[bench]
+    fn traversal_with_triple_for_loop(b: &mut Bencher) {
+        let data = vec![1.0; NI * NJ * NK * NUM_FIELDS];
+        b.iter(|| {
+            let mut total = [0.0; 5];
+            for i in 0..NI {
+                for j in 0..NJ {
+                    for k in 0..NK {
+                        let n = ((i * NJ + j) * NK + k) * NUM_FIELDS;
+                        for s in 0..NUM_FIELDS {
+                            total[s] += data[n + s];
+                        }
+                    }
+                }
+            }
+            assert_eq!(total[0], (NI * NJ * NK) as f64);
+        });
+    }
+
+    #[bench]
+    fn traversal_with_nested_iter(b: &mut Bencher) {
+        let data = vec![1.0; NI * NJ * NK * NUM_FIELDS];
+        b.iter(|| {
+            let mut total = [0.0; 5];
+            for x in super::iter_slice_3d(&data, (0, 0, 0), (NI, NJ, NK), (NI, NJ, NK), NUM_FIELDS) {
+                for s in 0..NUM_FIELDS {
+                    total[s] += x[s];
+                }
+            }
+            assert_eq!(total[0], (NI * NJ * NK) as f64);
+        });
+    }
+
+    // #[test]
+    // fn traversal_with_nested_iter_has_correct_length() {
+    //     let data = vec![1.0; NI * NJ * NK * NUM_FIELDS];
+    //     assert_eq!(super::iter_slice_3d(&data, (5, 10, 15), (10, 10, 10), (NI, NJ, NK), NUM_FIELDS).count(), 1000);
+    // }
 }
