@@ -37,7 +37,7 @@ impl Conserved {
         Self(cons[0], cons[1], cons[2], cons[3], cons[4])
     }
 
-    fn write_to_slice(&self, cons: &mut [f64]) {
+    pub fn write_to_slice(&self, cons: &mut [f64]) {
         cons[0] = self.0;
         cons[1] = self.1;
         cons[2] = self.2;
@@ -113,7 +113,7 @@ impl Primitive {
         Self(prim[0], prim[1], prim[2], prim[3], prim[4])
     }
 
-    fn write_to_slice(&self, prim: &mut [f64]) {
+    pub fn write_to_slice(&self, prim: &mut [f64]) {
         prim[0] = self.0;
         prim[1] = self.1;
         prim[2] = self.2;
@@ -220,6 +220,16 @@ impl Primitive {
             Direction::Y => Primitive(self.0, self.1, -self.2, self.3, self.4),
             Direction::Z => Primitive(self.0, self.1, self.2, -self.3, self.4),
         }
+    }
+}
+
+
+
+
+// ============================================================================
+impl From<&[f64]> for Primitive {
+    fn from(prim: &[f64]) -> Self {
+        Self::from_slice(prim)
     }
 }
 

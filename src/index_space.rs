@@ -3,7 +3,23 @@ use core::ops::Range;
 
 
 
+/**
+ * Identifier for a Cartesian axis
+ */
+pub enum Axis {
+    I,
+    J,
+}
+
+
+
+
 #[derive(Clone, Debug)]
+
+
+/**
+ * Represents a rectangular region in a discrete index space
+ */
 pub struct IndexSpace {
     di: Range<i64>,
     dj: Range<i64>,
@@ -21,8 +37,8 @@ impl IndexSpace {
     pub fn new(di: Range<i64>, dj: Range<i64>) -> Self {
 
         assert!(
-            !di.is_empty() && !dj.is_empty(),
-            "try to construct an empty index space");
+            di.start <= di.end && dj.start < dj.end,
+            "index space has negative volume");
 
         Self { di, dj }
     }
@@ -98,12 +114,36 @@ impl IndexSpace {
 
 
     /**
+     * Trim just the lower elements of this index space by a certain amount on
+     * the given axis.
+     */
+    pub fn trim_lower(&self, delta: i64, axis: Axis) -> Self {
+        match axis {
+            Axis::I => Self::new(self.di.start + delta .. self.di.end, self.dj.clone()),
+            Axis::J => Self::new(self.di.clone(), self.dj.start + delta .. self.dj.end),
+        }
+    }
+
+
+    /**
      * Increase the size of this index space by the given factor.
      */
     pub fn scale(&self, factor: i64) -> Self {
         Self::new(
             self.di.start * factor .. self.di.end * factor,
             self.dj.start * factor .. self.dj.end * factor)
+    }
+
+
+    /**
+     * Return the linear offset for te given index, in a row-major memory buffer
+     * aligned with the start of this index space. 
+     */
+    pub fn row_major_offset(&self, index: (i64, i64)) -> usize {
+        let i = (index.0 - self.di.start) as usize;
+        let j = (index.1 - self.dj.start) as usize;
+        let m = (self.dj.end - self.dj.start) as usize;
+        i * m + j
     }
 
 

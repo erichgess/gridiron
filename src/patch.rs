@@ -80,6 +80,19 @@ impl Patch {
 
 
     /**
+     * Generate an empty patch.
+     */
+    pub fn new() -> Self {
+        Self {
+            level: 0,
+            rect: (0..0, 0..0),
+            num_fields: 0,
+            data: Vec::new(),
+        }
+    }
+
+
+    /**
      * Generate a patch at a given level, covering the given space, with values
      * defined from a closure.
      */
@@ -88,7 +101,7 @@ impl Patch {
         I: Into<IndexSpace>,
         F: Fn((i64, i64)) -> f64
     {
-        Self::from_vector_function(level, space, |index| [f(index)])
+        Self::from_vector_function(level, space, |i| [f(i)])
     }
 
 
@@ -103,18 +116,7 @@ impl Patch {
         I: Into<IndexSpace>,
         F: Fn((i64, i64)) -> [f64; NUM_FIELDS]
     {
-        let space: IndexSpace = space.into();
-        let mut data = Vec::with_capacity(space.len() * NUM_FIELDS);
-
-        for index in space.iter() {
-            data.extend(f(index).iter());
-        }
-        Self {
-            level,
-            data,
-            rect: space.into(),
-            num_fields: NUM_FIELDS,
-        }
+        Self::from_slice_function(level, space, NUM_FIELDS, |i, s| s.clone_from_slice(&f(i)))
     }
 
 
@@ -139,6 +141,14 @@ impl Patch {
             rect: space.into(),
             num_fields,
         }
+    }
+
+
+    /**
+     * Return the number of scalar fields per element.
+     */
+    pub fn num_fields(&self) -> usize {
+        self.num_fields
     }
 
 
@@ -234,6 +244,16 @@ impl Patch {
 
 
     /**
+     * Return a slice of all data fields at the given index.
+     */
+    pub fn get_slice(&self, index: (i64, i64)) -> &[f64] {
+        self.validate_index(index, 0);
+        let s = self.index_space().row_major_offset(index);
+        &self.data[s .. s + self.num_fields]
+    }
+
+
+    /**
      * Extract a subset of this patch and return it.
      */
     pub fn extract<I: Into<IndexSpace>>(&self, space: I) -> Self {
@@ -272,6 +292,15 @@ impl Patch {
             space.end().0,
             space.start().1,
             space.end().1);
+    }
+}
+
+
+
+
+impl Default for Patch {
+    fn default() -> Self {
+        Self::new()
     }
 }
 

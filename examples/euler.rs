@@ -1,7 +1,7 @@
 use gridiron::patch::Patch;
 use gridiron::rect_map::{Rectangle, RectangleRef, RectangleMap};
-use gridiron::index_space::{IndexSpace, range2d};
-use gridiron::hydro::euler;
+use gridiron::index_space::{IndexSpace, Axis, range2d};
+use gridiron::hydro::{self, euler};
 
 
 
@@ -109,7 +109,7 @@ fn finest_patch<'a>(map: &'a RectangleMap<i64, &'a Patch>, index: (i64, i64)) ->
 fn extend_patch(map: &RectangleMap<i64, Patch>, rect: RectangleRef<i64>) -> (Rectangle<i64>, Patch) {
 
     let space: IndexSpace = rect.into();
-    let extended = space.extend_all(2);
+    let extended = space.extend_all(1);
     let local_map: RectangleMap<_, _> = map.query_rect(extended.clone()).collect();
     let p = local_map.get(rect).unwrap();
 
@@ -127,6 +127,42 @@ fn extend_patch(map: &RectangleMap<i64, Patch>, rect: RectangleRef<i64>) -> (Rec
 
 
 
+#[allow(unused)]
+struct SchemeScratch {
+    extended_primitive: Patch,
+    flux_i: Patch,
+    flux_j: Patch,
+}
+
+
+
+
+fn compute_flux(pe: &Patch, axis: Axis) -> Patch {
+    match axis {
+        Axis::I => Patch::from_slice_function(
+            pe.level(),
+            pe.index_space().trim_lower(1, Axis::I),
+            pe.num_fields(), |(i, j), f| {
+                let pl: euler::Primitive = pe.get_slice((i - 1, j)).into();
+                let pr: euler::Primitive = pe.get_slice((i, j)).into();
+                euler::riemann_hlle(pl, pr, hydro::geometry::Direction::X, 5.0 / 3.0).write_to_slice(f);
+            }
+        ),
+        Axis::J => Patch::from_slice_function(
+            pe.level(),
+            pe.index_space().trim_lower(1, Axis::J),
+            pe.num_fields(), |(i, j), f| {
+                let pl: euler::Primitive = pe.get_slice((i, j - 1)).into();
+                let pr: euler::Primitive = pe.get_slice((i, j)).into();
+                euler::riemann_hlle(pl, pr, hydro::geometry::Direction::Y, 5.0 / 3.0).write_to_slice(f);
+            }
+        ),
+    }
+}
+
+
+
+
 // ============================================================================
 fn advance(state: State) -> State {
 
@@ -139,10 +175,26 @@ fn advance(state: State) -> State {
         .map(|rect| extend_patch(&mesh, rect))
         .collect();
 
+    let mut scheme_scratch: Vec<_> = extended_mesh
+    .clone()
+    .into_iter()
+    .map(|(_, p)|
+        SchemeScratch {
+            extended_primitive: p,
+            flux_i: Patch::default(),
+            flux_j: Patch::default(),
+        })
+    .collect();
+
+    for scratch in &mut scheme_scratch {
+        scratch.flux_i = compute_flux(&scratch.extended_primitive, Axis::I);
+        scratch.flux_j = compute_flux(&scratch.extended_primitive, Axis::J);
+    }
+
     let mut patches: Vec<_> = extended_mesh.into_iter().map(|(_, p)| p).collect();
 
     for patch in &mut patches {
-        patch.extract_mut(patch.index_space().trim_all(2));
+        patch.extract_mut(patch.index_space().trim_all(1));
     }
 
     iteration += 1;

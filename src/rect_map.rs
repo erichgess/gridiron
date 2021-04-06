@@ -17,6 +17,8 @@ pub type RectangleRef<'a, T> = (&'a Range<T>, &'a Range<T>);
 
 
 
+#[derive(Clone)]
+
 /**
  * An associative map where the keys are `Rectangle` objects. Supports point,
  * rectangle, generic 2d range-based queries to iterate over key-value pairs.
