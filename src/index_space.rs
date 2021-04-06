@@ -136,8 +136,8 @@ impl IndexSpace {
 
 
     /**
-     * Return the linear offset for te given index, in a row-major memory buffer
-     * aligned with the start of this index space. 
+     * Return the linear offset for the given index, in a row-major memory
+     * buffer aligned with the start of this index space. 
      */
     pub fn row_major_offset(&self, index: (i64, i64)) -> usize {
         let i = (index.0 - self.di.start) as usize;
@@ -205,4 +205,68 @@ impl From<IndexSpace> for (Range<i64>, Range<i64>) {
  */
 pub fn range2d(di: Range<i64>, dj: Range<i64>) -> IndexSpace {
     IndexSpace::new(di, dj)
+}
+
+
+
+
+/**
+ * These are untested, and yet-unused accessor pattern iterators for 1D, 2D, and
+ * 3D hyperslab selections.
+ */
+pub fn iter_slice_1d<'a>(
+    slice: &'a [f64],
+    start: usize,
+    count: usize,
+    shape: usize,
+    chunk: usize) -> impl Iterator<Item = &'a [f64]>
+{
+    assert!(slice.len() == count);
+
+    slice
+    .chunks_exact(shape * chunk)
+    .skip(start)
+    .take(count)
+}
+
+pub fn iter_slice_2d<'a>(
+    slice: &'a [f64],
+    start: (usize, usize),
+    count: (usize, usize),
+    shape: (usize, usize),
+    chunk: usize) -> impl Iterator<Item = &'a [f64]>
+{
+    assert!(slice.len() == count.0 * count.1);
+
+    slice
+    .chunks_exact(shape.1 * chunk)
+    .skip(start.0)
+    .take(count.0)
+    .flat_map(move |j| j
+        .chunks_exact(chunk)
+        .skip(start.1)
+        .take(count.1))
+}
+
+pub fn iter_slice_3d<'a>(
+    slice: &'a [f64],
+    start: (usize, usize, usize),
+    count: (usize, usize, usize),
+    shape: (usize, usize, usize),
+    chunk: usize) -> impl Iterator<Item = &'a [f64]>
+{
+    assert!(slice.len() == count.0 * count.1 * count.2);
+
+    slice
+    .chunks_exact(shape.1 * shape.2 * chunk)
+    .skip(start.0)
+    .take(count.0)
+    .flat_map(move |j| j
+        .chunks_exact(shape.1 * chunk)
+        .skip(start.1)
+        .take(count.1)
+        .flat_map(move |k| k
+            .chunks_exact(chunk)
+            .skip(start.2)
+            .take(count.2)))
 }
