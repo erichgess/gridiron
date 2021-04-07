@@ -3,12 +3,24 @@ use core::ops::Range;
 
 
 
+#[derive(Clone, Copy)]
+
+
 /**
  * Identifier for a Cartesian axis
  */
 pub enum Axis {
     I,
     J,
+}
+
+impl Axis {
+    pub fn dual(&self) -> Self {
+        match self {
+            Self::I => Self::J,
+            Self::J => Self::I,
+        }
+    }
 }
 
 
@@ -105,7 +117,8 @@ impl IndexSpace {
 
 
     /**
-     * Expand this index space by the given number of elements on each axis.
+     * Extend this index space by the given number of elements on both sides of
+     * each axis.
      */
     pub fn extend_all(&self, delta: i64) -> Self {
         Self::new(
@@ -113,12 +126,56 @@ impl IndexSpace {
             self.dj.start - delta .. self.dj.end + delta)
     }
 
+ 
+    /**
+     * Extend the elements at both ends of the given axis by a certain amount.
+     */
+    pub fn extend(&self, delta: i64, axis: Axis) -> Self {
+        match axis {
+            Axis::I => Self::new(self.di.start - delta .. self.di.end + delta, self.dj.clone()),
+            Axis::J => Self::new(self.di.clone(), self.dj.start - delta .. self.dj.end + delta),
+        }
+    }
+
 
     /**
-     * Trim this index space by the given number of elements on each axis.
+     * Extend just the lower elements of this index space by a certain amount on
+     * the given axis.
+     */
+    pub fn extend_lower(&self, delta: i64, axis: Axis) -> Self {
+        match axis {
+            Axis::I => Self::new(self.di.start - delta .. self.di.end, self.dj.clone()),
+            Axis::J => Self::new(self.di.clone(), self.dj.start - delta .. self.dj.end),
+        }
+    }
+
+
+    /**
+     * Extend just the upper elements of this index space by a certain amount on
+     * the given axis.
+     */
+    pub fn extend_upper(&self, delta: i64, axis: Axis) -> Self {
+        match axis {
+            Axis::I => Self::new(self.di.start .. self.di.end + delta, self.dj.clone()),
+            Axis::J => Self::new(self.di.clone(), self.dj.start .. self.dj.end + delta),
+        }
+    }
+
+
+    /**
+     * Trim this index space by the given number of elements on both sides of
+     * each axis.
      */
     pub fn trim_all(&self, delta: i64) -> Self {
         self.extend_all(-delta)
+    }
+
+
+    /**
+     * Trim the elements at both ends of the given axis by a certain amount.
+     */
+    pub fn trim(&self, delta: i64, axis: Axis) -> Self {
+        self.extend(-delta, axis)
     }
 
 
@@ -127,10 +184,16 @@ impl IndexSpace {
      * the given axis.
      */
     pub fn trim_lower(&self, delta: i64, axis: Axis) -> Self {
-        match axis {
-            Axis::I => Self::new(self.di.start + delta .. self.di.end, self.dj.clone()),
-            Axis::J => Self::new(self.di.clone(), self.dj.start + delta .. self.dj.end),
-        }
+        self.extend_lower(-delta, axis)
+    }
+
+
+    /**
+     * Trim just the upper elements of this index space by a certain amount on
+     * the given axis.
+     */
+    pub fn trim_upper(&self, delta: i64, axis: Axis) -> Self {
+        self.extend_upper(-delta, axis)
     }
 
 
@@ -153,6 +216,17 @@ impl IndexSpace {
         let j = (index.1 - self.dj.start) as usize;
         let m = (self.dj.end - self.dj.start) as usize;
         i * m + j
+    }
+
+
+    /**
+     * Return a memory region object for a buffer mapped to this index space.
+     */
+    pub fn memory_region(&self) -> MemoryRegion {
+        let start = (0, 0);
+        let count = self.dim();
+        let shape = self.dim();
+        MemoryRegion { start, count, shape }
     }
 
 
@@ -180,6 +254,12 @@ impl IndexSpace {
 }
 
 
+
+
+// The impl's below enable syntactic sugar for iteration, but since the
+// iterators use combinators and closures, the iterator type cannt be written
+// explicitly for the `IntoIter` associated type. The
+// `min_type_alias_impl_trait` feature on nightly allows the syntax below.
 
 
 // ============================================================================
@@ -336,6 +416,10 @@ pub fn iter_slice_3d_v2<'a>(
 
 
 
+/**
+ * This is yet another version of the hyperslab traversal. Benchmarks suggest
+ * it's the slowest.
+ */
 pub fn iter_slice_3d_v3<'a>(
     slice: &'a [f64],
     start: (usize, usize, usize),
