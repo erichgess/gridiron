@@ -197,9 +197,12 @@ impl Patch {
      */
     pub fn sample_vector<const NUM_FIELDS: usize>(&self, level: u32, index: (i64, i64)) -> [f64; NUM_FIELDS] {
 
-        assert!(
+        assert!{
             NUM_FIELDS <= self.num_fields,
-            "attempt to sample {} fields from a patch with {} fields", NUM_FIELDS, self.num_fields);
+            "attempt to sample {} fields from a patch with {} fields",
+            NUM_FIELDS,
+            self.num_fields
+        };
 
         let mut result = [0.0; NUM_FIELDS];
         self.sample_slice(level, index, &mut result);
@@ -256,13 +259,14 @@ impl Patch {
     fn validate_index(&self, index: (i64, i64), field: usize) {
         let space = self.index_space();
 
-        assert!(
+        assert!{
             field < self.num_fields,
             "field index {} out of range on patch with {} fields",
             field,
-            self.num_fields);
+            self.num_fields
+        };
 
-        assert!(
+        assert!{
             space.contains(index),
             "index ({} {}) out of range on patch ({}..{} {}..{})",
             index.0,
@@ -270,7 +274,8 @@ impl Patch {
             space.start().0,
             space.end().0,
             space.start().1,
-            space.end().1);
+            space.end().1
+        };
     }
 }
 
@@ -365,11 +370,12 @@ pub trait PatchOperator {
 // ============================================================================
 impl<'a> PatchView<'a> {
     fn new(patch: &'a Patch, selection: IndexSpace) -> Self {
-        assert!(
+        assert!{
             patch.index_space().contains_space(&selection),
             "{:?} is not contained inside the {:?}",
             selection,
-            patch.index_space());
+            patch.index_space()
+        };
         PatchView { patch, selection: selection.into() }
     }
 }
