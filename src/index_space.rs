@@ -336,6 +336,30 @@ pub fn iter_slice_3d_v2<'a>(
 
 
 
+pub fn iter_slice_3d_v3<'a>(
+    slice: &'a [f64],
+    start: (usize, usize, usize),
+    count: (usize, usize, usize),
+    shape: (usize, usize, usize),
+    chunk: usize) -> impl Iterator<Item = &'a [f64]>
+{
+    let s = chunk;
+    let r = shape.2 * s;
+    let q = shape.1 * r;
+
+    (start.0 .. start.0 + count.0).map(move |i| {
+        (start.1 .. start.1 + count.1).map(move |j| {
+            (start.2 .. start.2 + count.2).map(move |k| {
+                let n = i * q + j * r + k * s;
+                &slice[n .. n + chunk]
+            })
+        }).flatten()
+    }).flatten()
+}
+
+
+
+
 // ============================================================================
 #[cfg(test)]
 mod test {

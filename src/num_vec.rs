@@ -104,8 +104,8 @@ impl<T, const DIM: usize> Index<usize> for Vector<T, DIM> {
 
 
 // ============================================================================
-#[cfg(test)]
-mod test {
+// #[cfg(test)]
+// mod test {
     // extern crate test;
     // use test::Bencher;
     // use super::Vector;
@@ -138,4 +138,4 @@ mod test {
     //         let _: Vec<_> = x.into_iter().zip(y).map(|(x, y)| x + y).collect();
     //     })
     // }
-}
+// }
