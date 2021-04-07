@@ -54,7 +54,7 @@ impl compute::Compute for StringConcat {
         vec![(self.index + self.group_size - 1) % self.group_size, (self.index + 1) % self.group_size]
     }
 
-    fn run(&self, peers: Vec<Self>) -> Self::Value {
+    fn run(self, peers: Vec<Self>) -> Self::Value {
         format!("{} {} {}", peers[0].index, self.index, peers[1].index)
     }
 }

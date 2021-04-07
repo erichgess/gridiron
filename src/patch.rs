@@ -93,6 +93,22 @@ impl Patch {
 
 
     /**
+     * Generate a patch of zeros over the given index space.
+     */
+    pub fn zeros<I: Into<IndexSpace>>(level: u32, num_fields: usize, space: I) -> Self {
+        let space: IndexSpace = space.into();
+        let data = vec![0.0; space.len() * num_fields];
+
+        Self {
+            rect: space.into(),
+            level,
+            num_fields,
+            data,
+        }
+    }
+
+
+    /**
      * Generate a patch at a given level, covering the given space, with values
      * defined from a closure.
      */
@@ -250,9 +266,20 @@ impl Patch {
     }
 
 
-    pub fn select<I: Into<IndexSpace>>(&self, selection: I) -> PatchView {
-        PatchView::new(self, selection.into())
+    pub fn for_each_mut<F>(&mut self, f: F)
+    where
+        F: Fn((i64, i64), &mut [f64])
+    {
+        let num_fields = self.num_fields();
+        let index_space = self.index_space();
+        let memory_region = index_space.memory_region();
+
+        index_space
+        .iter()
+        .zip(memory_region.iter_slice_mut(&mut self.data, num_fields))
+        .for_each(|(index, slice)| f(index, slice))
     }
+
 
 
     // ========================================================================
@@ -295,8 +322,24 @@ impl Default for Patch {
  * A view of a patch subset
  */
 pub struct PatchView<'a> {
-    patch: &'a Patch,
+
+    /// The level of the patch view
+    level: u32,
+
+    /// The region of index space covered by the underlying buffer. The
+    /// indexes are with respect to the ticks at this patch's granularity
+    /// level.
+    parent_space: IndexSpace,
+
+    /// The region of index space covered by the patch view. The indexes are
+    /// with respect to the ticks at this patch's granularity level.
     selection: IndexSpace,
+
+    /// The number of fields stored at each zone.
+    num_fields: usize,
+
+    /// The backing array of data on this patch.
+    data: &'a Vec<f64>,
 }
 
 
@@ -341,19 +384,36 @@ pub trait PatchOperator {
 
 
 
+    fn select(&self, selection: IndexSpace) -> PatchView {
+        assert!{
+            self.index_space().contains_space(&selection),
+            "selection {:?} is not contained inside the parent index space {:?}",
+            selection,
+            self.index_space()
+        };
+        PatchView {
+            level: self.level(),
+            parent_space: self.index_space(),
+            selection: selection.into(),
+            num_fields: self.num_fields(),
+            data: self.data(),
+        }
+    }
+
+
+
+
     fn map<F>(&self, f: F) -> Patch
     where
-        F: Fn(&[f64], &mut [f64])
+        F: Fn((&[f64], &mut [f64]))
     {
         let mut data = vec![0.0; self.selection().len() * self.num_fields()];
 
-        for (a, b) in self
-            .selection()
+        self.selection()
             .memory_region_in(&self.index_space())
             .iter_slice(self.data(), self.num_fields())
-            .zip(data.chunks_exact_mut(self.num_fields())) {
-            f(a, b)
-        }
+            .zip(data.chunks_exact_mut(self.num_fields()))
+            .for_each(f);
 
         Patch {
             level: self.level(),
@@ -362,23 +422,33 @@ pub trait PatchOperator {
             data,
         }
     }
-}
 
 
 
+    #[allow(unused)]
+    fn map_adjacent<F>(&self, f: F) -> Patch
+    where
+        F: Fn((&[f64], &[f64], &mut [f64]))
+    {
+        let mut data = vec![0.0; self.selection().len() * self.num_fields()];
 
-// ============================================================================
-impl<'a> PatchView<'a> {
-    fn new(patch: &'a Patch, selection: IndexSpace) -> Self {
-        assert!{
-            patch.index_space().contains_space(&selection),
-            "{:?} is not contained inside the {:?}",
-            selection,
-            patch.index_space()
-        };
-        PatchView { patch, selection: selection.into() }
+       /*
+        * Produce two source index spaces each smaller by one cell on the
+        * longitudinal axis: L = [:-1] and R = [1:]. If the source index spaces
+        * are cell-like then the target one is face-like.
+        *
+        * The target index space is logically the same as R. But it is
+        * physically shifted half an element to the right.
+        *
+        * Do an iter_slice over the two source index spaces and zip them
+        * together. Do a for-each on the closure to write into the data for the
+        * resulting patch.
+        */
+
+        Patch::new()
     }
 }
+
 
 
 
@@ -414,19 +484,19 @@ impl PatchOperator for Patch {
 impl<'a> PatchOperator for PatchView<'a> {
 
     fn level(&self) -> u32 {
-        self.patch.level
+        self.level
     }
 
     fn num_fields(&self) -> usize {
-        self.patch.num_fields
+        self.num_fields
     }
 
     fn data(&self) -> &Vec<f64> {
-        &self.patch.data
+        &self.data
     }
 
     fn index_space(&self) -> IndexSpace {
-        self.patch.index_space()
+        self.parent_space.clone()
     }
 
     fn selection(&self) -> IndexSpace {

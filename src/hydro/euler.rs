@@ -75,9 +75,9 @@ impl Conserved {
 
     pub fn momentum(&self, direction: Direction) -> f64 {
         match direction {
-            Direction::X => self.momentum_1(),
-            Direction::Y => self.momentum_2(),
-            Direction::Z => self.momentum_3(),
+            Direction::I => self.momentum_1(),
+            Direction::J => self.momentum_2(),
+            Direction::K => self.momentum_3(),
         }
     }
 
@@ -151,9 +151,9 @@ impl Primitive {
 
     pub fn velocity(&self, direction: Direction) -> f64 {
         match direction {
-            Direction::X => self.velocity_1(),
-            Direction::Y => self.velocity_2(),
-            Direction::Z => self.velocity_3(),
+            Direction::I => self.velocity_1(),
+            Direction::J => self.velocity_2(),
+            Direction::K => self.velocity_3(),
         }
     }
 
@@ -208,17 +208,17 @@ impl Primitive {
 
         Conserved(
              u.0 * vn,
-             u.1 * vn + pg * direction.along(Direction::X),
-             u.2 * vn + pg * direction.along(Direction::Y),
-             u.3 * vn + pg * direction.along(Direction::Z),
+             u.1 * vn + pg * direction.along(Direction::I),
+             u.2 * vn + pg * direction.along(Direction::J),
+             u.3 * vn + pg * direction.along(Direction::K),
              u.4 * vn + pg * vn)
     }
 
     pub fn reflect(&self, direction: Direction) -> Primitive {
         match direction {
-            Direction::X => Primitive(self.0, -self.1, self.2, self.3, self.4),
-            Direction::Y => Primitive(self.0, self.1, -self.2, self.3, self.4),
-            Direction::Z => Primitive(self.0, self.1, self.2, -self.3, self.4),
+            Direction::I => Primitive(self.0, -self.1, self.2, self.3, self.4),
+            Direction::J => Primitive(self.0, self.1, -self.2, self.3, self.4),
+            Direction::K => Primitive(self.0, self.1, self.2, -self.3, self.4),
         }
     }
 }

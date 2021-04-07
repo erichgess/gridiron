@@ -1,3 +1,6 @@
+#![feature(test)]
+extern crate test;
+
 use std::sync::Arc;
 use gridiron::compute;
 use gridiron::index_space::range2d;
@@ -5,16 +8,15 @@ use gridiron::index_space::range2d;
 
 
 
-fn main() {
-    let num_blocks = (64, 64);
-    let block_size = (64, 64);
-    let blocks = range2d(0..num_blocks.0 as i64, 0..num_blocks.1 as i64);
-    let peers: Vec<_> = blocks.iter().map(|ij| DivergenceStencil::new(block_size, num_blocks, ij)).collect();
-    let start = std::time::Instant::now();
-
-    for (_key, _result) in compute::exec_with_crossbeam_channel(peers) {
-    }
-    println!("elapsed: {:.4}s", start.elapsed().as_secs_f64());
+#[bench]
+fn compute_divergence_stencil_with_crossbeam_channel(b: &mut test::Bencher) {
+    b.iter(|| {
+        let num_blocks = (64, 64);
+        let block_size = (64, 64);
+        let blocks = range2d(0..num_blocks.0 as i64, 0..num_blocks.1 as i64);
+        let peers: Vec<_> = blocks.iter().map(|ij| DivergenceStencil::new(block_size, num_blocks, ij)).collect();
+        compute::exec_with_crossbeam_channel(peers).for_each(|_| {})
+    });
 }
 
 
@@ -71,7 +73,7 @@ impl compute::Compute for DivergenceStencil {
         ]
     }
 
-    fn run(&self, peers: Vec<Self>) -> Self::Value {
+    fn run(self, peers: Vec<Self>) -> Self::Value {
         let b00 = &self.data;
         let bxl = &peers[0].data;
         let bxr = &peers[1].data;
@@ -87,15 +89,18 @@ impl compute::Compute for DivergenceStencil {
 
         for i in 0..l {
             for j in 0..m {
-                // This amount of work seems to be the minimum to attain
-                // perfect scaling on the Mac Pro.
-                for _ in 0..500 {
+                // 500 iterations seems to be the minimum amount of work to
+                // attain perfect scaling on the Mac Pro. With #[bench] the
+                // time is too long, so for now we just run a single
+                // iteration.
+
+                // for _ in 0..500 {
                     let cxl = if i == 0 { bxl[ind(l - 1, j)] } else { b00[ind(i, j)] };
                     let cxr = if i == l - 1 { bxr[ind(0, j)] } else { b00[ind(i, j)] };
                     let cyl = if j == 0 { byl[ind(i, m - 1)] } else { b00[ind(i, j)] };
                     let cyr = if j == m - 1 { byr[ind(i, 0)] } else { b00[ind(i, j)] };
                     result[ind(i, j)] = (cxr - cxl) + (cyr - cyl);
-                }
+                // }
             }
         }
         result

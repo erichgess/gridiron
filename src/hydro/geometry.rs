@@ -24,7 +24,7 @@ impl Vector3d {
  * Enum to hold a unit vector in 3D space
  */
 #[derive(Clone, Copy)]
-pub enum Direction { X, Y, Z }
+pub enum Direction { I, J, K }
 
 
 
@@ -33,9 +33,9 @@ pub enum Direction { X, Y, Z }
 impl Direction {
     pub fn along(&self, other: Direction) -> f64 {
         match (self, other) {
-            (Direction::X, Direction::X) => 1.0,
-            (Direction::Y, Direction::Y) => 1.0,
-            (Direction::Z, Direction::Z) => 1.0,
+            (Direction::I, Direction::I) => 1.0,
+            (Direction::J, Direction::J) => 1.0,
+            (Direction::K, Direction::K) => 1.0,
             _ => 0.0,
         }
     }

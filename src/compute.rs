@@ -55,7 +55,7 @@ pub trait Compute: Sized {
     /// Run this task, given an owned vector of its peers. The executor is
     /// responsible for making sure the order of the peers is the same as the
     /// order of the `Vec` returned by the `peer_keys` method.
-    fn run(&self, peers: Vec<Self>) -> Self::Value;
+    fn run(self, peers: Vec<Self>) -> Self::Value;
 }
 
 
@@ -72,7 +72,7 @@ where
 {
     let stage: HashMap<_, _> = stage.into_iter().map(|c| (c.key(), c)).collect();
     let stage: HashMap<_, _> = stage.iter().map(|(k, compute)| {
-        (k.clone(), compute.run(get_all(&stage, compute.peer_keys()).expect("missing peers")))
+        (k.clone(), compute.clone().run(get_all(&stage, compute.peer_keys()).expect("missing peers")))
     }).collect();
     stage.into_iter()
 }
@@ -92,7 +92,7 @@ where
 {
     let stage: HashMap<_, _> = stage.into_iter().map(|c| (c.key(), c)).collect();
     let stage: HashMap<_, _> = stage.par_iter().map(|(k, compute)| {
-        (k.clone(), compute.run(get_all(&stage, compute.peer_keys()).expect("missing peers")))
+        (k.clone(), compute.clone().run(get_all(&stage, compute.peer_keys()).expect("missing peers")))
     }).collect();
     stage.into_iter()
 }

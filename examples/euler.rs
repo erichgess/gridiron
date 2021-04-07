@@ -1,7 +1,9 @@
+use std::sync::Arc;
 use gridiron::patch::{Patch, PatchOperator};
 use gridiron::rect_map::{Rectangle, RectangleRef, RectangleMap};
 use gridiron::index_space::{IndexSpace, Axis, range2d};
 use gridiron::hydro::{self, euler};
+use gridiron::compute::Compute;
 
 
 
@@ -141,9 +143,6 @@ fn compute_flux(pe: &Patch, axis: Axis) -> Patch {
     use hydro::geometry::Direction;
     use euler::Primitive;
 
-    // sort of an idea:
-    // pe.trim_lower_upper(1, Axis::J).map_adjacent(Axis::I, |pl, pr| [1.0, 2.0, 3.0]);
-
     match axis {
         Axis::I => Patch::from_slice_function(
             pe.level(),
@@ -151,7 +150,7 @@ fn compute_flux(pe: &Patch, axis: Axis) -> Patch {
             pe.num_fields(), |(i, j), f| {
                 let pl: Primitive = pe.get_slice((i - 1, j)).into();
                 let pr: Primitive = pe.get_slice((i, j)).into();
-                euler::riemann_hlle(pl, pr, Direction::X, 5.0 / 3.0).write_to_slice(f);
+                euler::riemann_hlle(pl, pr, Direction::I, 5.0 / 3.0).write_to_slice(f);
             }
         ),
         Axis::J => Patch::from_slice_function(
@@ -160,7 +159,7 @@ fn compute_flux(pe: &Patch, axis: Axis) -> Patch {
             pe.num_fields(), |(i, j), f| {
                 let pl: Primitive = pe.get_slice((i, j - 1)).into();
                 let pr: Primitive = pe.get_slice((i, j)).into();
-                euler::riemann_hlle(pl, pr, Direction::Y, 5.0 / 3.0).write_to_slice(f);
+                euler::riemann_hlle(pl, pr, Direction::J, 5.0 / 3.0).write_to_slice(f);
             }
         ),
     }
@@ -228,4 +227,78 @@ fn main() {
     let file = std::fs::File::create("state.cbor").unwrap();
     let mut buffer = std::io::BufWriter::new(file);
     ciborium::ser::into_writer(&state, &mut buffer).unwrap();
+}
+
+
+
+
+const NUM_GUARD: i64 = 2;
+
+
+
+
+#[derive(Clone)]
+
+struct PatchUpdate {
+    primitive: Arc<Patch>,
+    flux_i: Arc<Patch>,
+    flux_j: Arc<Patch>,
+}
+
+impl PatchUpdate {
+    fn new(index_space: IndexSpace) -> Self {
+        let extended_space = index_space.extend_all(NUM_GUARD);
+        let flux_i_indexes = index_space.extend_upper(1, Axis::I);
+        let flux_j_indexes = index_space.extend_upper(1, Axis::J);
+
+        panic!("")
+    }
+}
+
+
+
+
+// ============================================================================
+impl Compute for PatchUpdate {
+
+    type Key = Rectangle<i64>;
+    type Value = Self;
+
+    fn peer_keys(&self) -> Vec<Self::Key> {
+        vec![]
+    }
+
+    fn key(&self) -> Self::Key {
+        self.primitive.rect()
+    }
+
+    fn run(self, _peers: Vec<Self>) -> Self {
+        use hydro::geometry::Direction;
+
+        let pe = &self.primitive; // NOTE: not actually extended yet
+
+        let num_guard = 2;
+        let num_fields = pe.num_fields();
+        let level = pe.level();
+
+        let flux_i_indexes = pe.index_space().trim(num_guard, Axis::J).trim_lower(1, Axis::I);
+        let flux_j_indexes = pe.index_space().trim(num_guard, Axis::I).trim_lower(1, Axis::J);
+
+        let mut flux_i = Patch::zeros(level, num_fields, flux_i_indexes);
+        let mut flux_j = Patch::zeros(level, num_fields, flux_j_indexes);
+
+        flux_i.for_each_mut(|(i, j), flux| {
+            let pl = pe.get_slice((i - 1, j)).into();
+            let pr = pe.get_slice((i, j)).into();
+            euler::riemann_hlle(pl, pr, Direction::I, 5.0 / 3.0).write_to_slice(flux);
+        });
+
+        flux_j.for_each_mut(|(i, j), flux| {
+            let pl = pe.get_slice((i, j - 1)).into();
+            let pr = pe.get_slice((i, j)).into();
+            euler::riemann_hlle(pl, pr, Direction::J, 5.0 / 3.0).write_to_slice(flux);
+        });
+
+        self
+    }
 }

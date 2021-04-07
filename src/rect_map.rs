@@ -191,8 +191,8 @@ impl<T: Ord + Copy, V> FromIterator<(Rectangle<T>, V)> for RectangleMap<T, V> {
 
 // The impl's below enable syntactic sugar for iteration, but since the
 // iterators use combinators and closures, the iterator type cannt be written
-// explicitly for the `Item` associated type. The `min_type_alias_impl_trait`
-// feature on nightly allows the syntax below.
+// explicitly for the `IntoIter` associated type. The
+// `min_type_alias_impl_trait` feature on nightly allows the syntax below.
 
 
 // ============================================================================
