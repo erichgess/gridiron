@@ -1,4 +1,4 @@
-use gridiron::patch::Patch;
+use gridiron::patch::{Patch, PatchOperator};
 use gridiron::rect_map::{Rectangle, RectangleRef, RectangleMap};
 use gridiron::index_space::{IndexSpace, Axis, range2d};
 use gridiron::hydro::{self, euler};
@@ -138,23 +138,29 @@ struct SchemeScratch {
 
 
 fn compute_flux(pe: &Patch, axis: Axis) -> Patch {
+    use hydro::geometry::Direction;
+    use euler::Primitive;
+
+    // sort of an idea:
+    // pe.trim_lower_upper(1, Axis::J).map_adjacent(Axis::I, |pl, pr| [1.0, 2.0, 3.0]);
+
     match axis {
         Axis::I => Patch::from_slice_function(
             pe.level(),
             pe.index_space().trim_lower(1, Axis::I),
             pe.num_fields(), |(i, j), f| {
-                let pl: euler::Primitive = pe.get_slice((i - 1, j)).into();
-                let pr: euler::Primitive = pe.get_slice((i, j)).into();
-                euler::riemann_hlle(pl, pr, hydro::geometry::Direction::X, 5.0 / 3.0).write_to_slice(f);
+                let pl: Primitive = pe.get_slice((i - 1, j)).into();
+                let pr: Primitive = pe.get_slice((i, j)).into();
+                euler::riemann_hlle(pl, pr, Direction::X, 5.0 / 3.0).write_to_slice(f);
             }
         ),
         Axis::J => Patch::from_slice_function(
             pe.level(),
             pe.index_space().trim_lower(1, Axis::J),
             pe.num_fields(), |(i, j), f| {
-                let pl: euler::Primitive = pe.get_slice((i, j - 1)).into();
-                let pr: euler::Primitive = pe.get_slice((i, j)).into();
-                euler::riemann_hlle(pl, pr, hydro::geometry::Direction::Y, 5.0 / 3.0).write_to_slice(f);
+                let pl: Primitive = pe.get_slice((i, j - 1)).into();
+                let pr: Primitive = pe.get_slice((i, j)).into();
+                euler::riemann_hlle(pl, pr, Direction::Y, 5.0 / 3.0).write_to_slice(f);
             }
         ),
     }

@@ -145,34 +145,10 @@ impl Patch {
 
 
     /**
-     * Return the number of scalar fields per element.
-     */
-    pub fn num_fields(&self) -> usize {
-        self.num_fields
-    }
-
-
-    /**
-     * Return this patch's refinement level.
-     */
-    pub fn level(&self) -> u32 {
-        self.level
-    }
-
-
-    /**
      * Return this patch's rectangle.
      */
     pub fn rect(&self) -> Rectangle<i64> {
         self.rect.clone()
-    }
-
-
-    /**
-     * Return the index space of this patch.
-     */
-    pub fn index_space(&self) -> IndexSpace {
-        self.rect.clone().into()
     }
 
 
@@ -258,7 +234,7 @@ impl Patch {
      */
     pub fn extract<I: Into<IndexSpace>>(&self, space: I) -> Self {
         Self::from_slice_function(self.level, space, self.num_fields, |index, slice| {
-            self.sample_slice(self.level, index, slice)
+            slice.clone_from_slice(self.get_slice(index))
         })
     }
 
@@ -271,6 +247,9 @@ impl Patch {
     }
 
 
+    pub fn select<I: Into<IndexSpace>>(&self, selection: I) -> PatchView {
+        PatchView::new(self, selection.into())
+    }
 
 
     // ========================================================================
@@ -307,6 +286,151 @@ impl Default for Patch {
 
 
 
+/**
+ * A view of a patch subset
+ */
+pub struct PatchView<'a> {
+    patch: &'a Patch,
+    selection: IndexSpace,
+}
+
+
+
+
+/**
+ * A trait representing a `Patch` or a `PatchView`
+ */
+pub trait PatchOperator {
+
+
+    /**
+     * Return the number of scalar fields per element.
+     */
+    fn num_fields(&self) -> usize;
+
+
+    /**
+     * Return this patch's refinement level.
+     */
+    fn level(&self) -> u32;
+
+
+    /**
+     * Return a reference to this patch's data.
+     */
+    fn data(&self) -> &Vec<f64>;
+
+
+    /**
+     * Return the index space of this patch.
+     */
+    fn index_space(&self) -> IndexSpace;
+
+
+    /**
+     * Return this patch's selection, which is in general a subset of its index
+     * space.
+     */
+    fn selection(&self) -> IndexSpace;
+
+
+
+
+    fn map<F>(&self, f: F) -> Patch
+    where
+        F: Fn(&[f64], &mut [f64])
+    {
+        let mut data = vec![0.0; self.selection().len() * self.num_fields()];
+
+        for (a, b) in self
+            .selection()
+            .memory_region_in(&self.index_space())
+            .iter_slice(self.data(), self.num_fields())
+            .zip(data.chunks_exact_mut(self.num_fields())) {
+            f(a, b)
+        }
+
+        Patch {
+            level: self.level(),
+            rect: self.selection().into(),
+            num_fields: self.num_fields(),
+            data,
+        }
+    }
+}
+
+
+
+
+// ============================================================================
+impl<'a> PatchView<'a> {
+    fn new(patch: &'a Patch, selection: IndexSpace) -> Self {
+        assert!(
+            patch.index_space().contains_space(&selection),
+            "{:?} is not contained inside the {:?}",
+            selection,
+            patch.index_space());
+        PatchView { patch, selection: selection.into() }
+    }
+}
+
+
+
+
+// ============================================================================
+impl PatchOperator for Patch {
+
+    fn level(&self) -> u32 {
+        self.level
+    }
+
+    fn num_fields(&self) -> usize {
+        self.num_fields
+    }
+
+    fn data(&self) -> &Vec<f64> {
+        &self.data
+    }
+
+    fn index_space(&self) -> IndexSpace {
+        self.rect.clone().into()
+    }
+
+    fn selection(&self) -> IndexSpace {
+        self.rect.clone().into()
+    }
+}
+
+
+
+
+// ============================================================================
+impl<'a> PatchOperator for PatchView<'a> {
+
+    fn level(&self) -> u32 {
+        self.patch.level
+    }
+
+    fn num_fields(&self) -> usize {
+        self.patch.num_fields
+    }
+
+    fn data(&self) -> &Vec<f64> {
+        &self.patch.data
+    }
+
+    fn index_space(&self) -> IndexSpace {
+        self.patch.index_space()
+    }
+
+    fn selection(&self) -> IndexSpace {
+        self.selection.clone()
+    }
+}
+
+
+
+
 // ============================================================================
 #[cfg(test)]
 mod test {
@@ -318,7 +442,7 @@ mod test {
         Rectangle,
         RectangleRef,
         RectangleMap};
-    use super::Patch;
+    use super::{Patch, PatchOperator};
 
 
     // ============================================================================

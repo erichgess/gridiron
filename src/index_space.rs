@@ -96,6 +96,15 @@ impl IndexSpace {
 
 
     /**
+     * Determine whether another index space is a subset of this one.
+     */
+    pub fn contains_space(&self, other: &Self) -> bool {
+        other.di.start >= self.di.start && other.di.end <= self.di.end &&
+        other.dj.start >= self.dj.start && other.dj.end <= self.dj.end
+    }
+
+
+    /**
      * Expand this index space by the given number of elements on each axis.
      */
     pub fn extend_all(&self, delta: i64) -> Self {
@@ -144,6 +153,20 @@ impl IndexSpace {
         let j = (index.1 - self.dj.start) as usize;
         let m = (self.dj.end - self.dj.start) as usize;
         i * m + j
+    }
+
+
+    /**
+     * Return a memory region object corresponding to the selection of this
+     * index space in the buffer allocated for another one.
+     */
+    pub fn memory_region_in(&self, parent: &Self) -> MemoryRegion {
+        let start = (
+            (self.di.start - parent.di.start) as usize,
+            (self.dj.start - parent.dj.start) as usize);
+        let count = self.dim();
+        let shape = parent.dim();
+        MemoryRegion { start, count, shape }
     }
 
 
@@ -205,6 +228,53 @@ impl From<IndexSpace> for (Range<i64>, Range<i64>) {
  */
 pub fn range2d(di: Range<i64>, dj: Range<i64>) -> IndexSpace {
     IndexSpace::new(di, dj)
+}
+
+
+
+
+/**
+ * A 2D memory region within a contiguous buffer.
+ */
+pub struct MemoryRegion {
+    start: (usize, usize),
+    count: (usize, usize),
+    shape: (usize, usize),
+}
+
+
+
+
+// ============================================================================
+impl MemoryRegion {
+
+    pub fn iter_slice<'a>(&'a self, slice: &'a [f64], chunk: usize) -> impl Iterator<Item = &'a [f64]> {
+        let start = &self.start;
+        let shape = &self.shape;
+        let count = &self.count;
+        let r = chunk;
+        let q = shape.1 * r;
+
+        assert!(slice.len() == shape.0 * shape.1 * chunk);
+
+        slice[start.0 * q .. (start.0 + count.0) * q]
+        .chunks_exact(q).flat_map(move |j| j[start.1 * r .. (start.1 + count.1) * r]
+        .chunks_exact(r))
+    }
+
+    pub fn iter_slice_mut<'a>(&'a self, slice: &'a mut [f64], chunk: usize) -> impl Iterator<Item = &'a mut [f64]> {
+        let start = &self.start;
+        let shape = &self.shape;
+        let count = &self.count;
+        let r = chunk;
+        let q = shape.1 * r;
+
+        assert!(slice.len() == shape.0 * shape.1 * chunk);
+
+        slice[start.0 * q .. (start.0 + count.0) * q]
+        .chunks_exact_mut(q).flat_map(move |j| j[start.1 * r .. (start.1 + count.1) * r]
+        .chunks_exact_mut(r))
+    }
 }
 
 
