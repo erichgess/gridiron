@@ -5,6 +5,7 @@ use gridiron::index_space::{
     iter_slice_3d_v1,
     iter_slice_3d_v2,
     iter_slice_3d_v3,
+    iter_slice_3d_v4,
     range2d};
 
 const NI: usize = 100;
@@ -109,6 +110,26 @@ fn traversal_with_nested_iter_v3(b: &mut test::Bencher) {
     b.iter(|| {
         let mut total = [0.0; 5];
         for x in iter_slice_3d_v3(&data, (0, 0, 0), (NI, NJ, NK), (NI, NJ, NK), NUM_FIELDS) {
+            for s in 0..NUM_FIELDS {
+                total[s] += x[s];
+            }
+        }
+        assert_eq!(total[0], (NI * NJ * NK) as f64);
+    });
+}
+
+
+
+
+// ============================================================================
+#[bench]
+fn traversal_with_nested_iter_v4(b: &mut test::Bencher) {
+
+    let data = vec![1.0; NI * NJ * NK * NUM_FIELDS];
+    
+    b.iter(|| {
+        let mut total = [0.0; 5];
+        for x in iter_slice_3d_v4(&data, (0, 0, 0), (NI, NJ, NK), (NI, NJ, NK), NUM_FIELDS) {
             for s in 0..NUM_FIELDS {
                 total[s] += x[s];
             }

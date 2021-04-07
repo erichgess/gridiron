@@ -146,7 +146,7 @@ impl IndexSpace {
 
     /**
      * Return the linear offset for the given index, in a row-major memory
-     * buffer aligned with the start of this index space. 
+     * buffer aligned with the start of this index space.
      */
     pub fn row_major_offset(&self, index: (i64, i64)) -> usize {
         let i = (index.0 - self.di.start) as usize;
@@ -347,14 +347,79 @@ pub fn iter_slice_3d_v3<'a>(
     let r = shape.2 * s;
     let q = shape.1 * r;
 
-    (start.0 .. start.0 + count.0).map(move |i| {
-        (start.1 .. start.1 + count.1).map(move |j| {
+    (start.0 .. start.0 + count.0).flat_map(move |i| {
+        (start.1 .. start.1 + count.1).flat_map(move |j| {
             (start.2 .. start.2 + count.2).map(move |k| {
                 let n = i * q + j * r + k * s;
                 &slice[n .. n + chunk]
             })
-        }).flatten()
-    }).flatten()
+        })
+    })
+}
+
+
+
+
+pub fn iter_slice_3d_v4<'a>(
+    slice: &'a [f64],
+    start: (usize, usize, usize),
+    count: (usize, usize, usize),
+    shape: (usize, usize, usize),
+    chunk: usize) -> impl Iterator<Item = &'a [f64]>
+{
+    let s = chunk;
+    let r = shape.2 * s;
+    let q = shape.1 * r;
+
+    let iter = MemoryRegionIter {
+        start, count, index: start, done: false,
+    };
+
+    iter.map(move |(i, j, k)| {
+        let n = i * q + j * r + k * s;
+        &slice[n .. n + chunk]
+    })
+}
+
+
+
+
+struct MemoryRegionIter {
+    start: (usize, usize, usize),
+    count: (usize, usize, usize),
+    index: (usize, usize, usize),
+    done: bool,
+}
+
+impl Iterator for MemoryRegionIter {
+    type Item = (usize, usize, usize);
+
+    fn next(&mut self) -> Option<Self::Item> {
+
+        if self.done {
+            return None
+        }
+
+        let result = self.index;
+
+        self.index.2 += 1;
+
+        if self.index.2 == self.start.2 + self.count.2 {
+            self.index.2 = self.start.2;
+            self.index.1 += 1;
+
+            if self.index.1 == self.start.1 + self.count.1 {
+                self.index.1 = self.start.1;
+                self.index.0 += 1;
+
+                if self.index.0 == self.start.0 + self.count.0 {
+                    self.index.0 = self.start.0;
+                    self.done = true;
+                }
+            }
+        }
+        Some(result)
+    }
 }
 
 
