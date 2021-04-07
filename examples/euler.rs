@@ -1,3 +1,5 @@
+#![allow(unused)]
+
 use std::sync::Arc;
 use gridiron::patch::{Patch, PatchOperator};
 use gridiron::rect_map::{Rectangle, RectangleRef, RectangleMap};
@@ -129,78 +131,39 @@ fn extend_patch(map: &RectangleMap<i64, Patch>, rect: RectangleRef<i64>) -> (Rec
 
 
 
-#[allow(unused)]
-struct SchemeScratch {
-    extended_primitive: Patch,
-    flux_i: Patch,
-    flux_j: Patch,
-}
-
-
-
-
-fn compute_flux(pe: &Patch, axis: Axis) -> Patch {
-    use hydro::geometry::Direction;
-    use euler::Primitive;
-
-    match axis {
-        Axis::I => Patch::from_slice_function(
-            pe.level(),
-            pe.index_space().trim_lower(1, Axis::I),
-            pe.num_fields(), |(i, j), f| {
-                let pl: Primitive = pe.get_slice((i - 1, j)).into();
-                let pr: Primitive = pe.get_slice((i, j)).into();
-                euler::riemann_hlle(pl, pr, Direction::I, 5.0 / 3.0).write_to_slice(f);
-            }
-        ),
-        Axis::J => Patch::from_slice_function(
-            pe.level(),
-            pe.index_space().trim_lower(1, Axis::J),
-            pe.num_fields(), |(i, j), f| {
-                let pl: Primitive = pe.get_slice((i, j - 1)).into();
-                let pr: Primitive = pe.get_slice((i, j)).into();
-                euler::riemann_hlle(pl, pr, Direction::J, 5.0 / 3.0).write_to_slice(f);
-            }
-        ),
-    }
-}
-
-
-
-
 // ============================================================================
 fn advance(state: State) -> State {
 
     let State { mut iteration, mut time, patches } = state;
 
-    let mesh: RectangleMap<_, _> = patches.into_iter().map(|p| (p.rect(), p)).collect();
+    // let mesh: RectangleMap<_, _> = patches.into_iter().map(|p| (p.rect(), p)).collect();
 
-    let extended_mesh: RectangleMap<i64, Patch> = mesh
-        .keys()
-        .map(|rect| extend_patch(&mesh, rect))
-        .collect();
+    // let extended_mesh: RectangleMap<i64, Patch> = mesh
+    //     .keys()
+    //     .map(|rect| extend_patch(&mesh, rect))
+    //     .collect();
 
-    let mut scheme_scratch: Vec<_> = extended_mesh
-    .clone()
-    .into_iter()
-    .map(|(_, p)|
-        SchemeScratch {
-            extended_primitive: p,
-            flux_i: Patch::default(),
-            flux_j: Patch::default(),
-        })
-    .collect();
+    // let mut scheme_scratch: Vec<_> = extended_mesh
+    // .clone()
+    // .into_iter()
+    // .map(|(_, p)|
+    //     SchemeScratch {
+    //         extended_primitive: p,
+    //         flux_i: Patch::default(),
+    //         flux_j: Patch::default(),
+    //     })
+    // .collect();
 
-    for scratch in &mut scheme_scratch {
-        scratch.flux_i = compute_flux(&scratch.extended_primitive, Axis::I);
-        scratch.flux_j = compute_flux(&scratch.extended_primitive, Axis::J);
-    }
+    // for scratch in &mut scheme_scratch {
+    //     scratch.flux_i = compute_flux(&scratch.extended_primitive, Axis::I);
+    //     scratch.flux_j = compute_flux(&scratch.extended_primitive, Axis::J);
+    // }
 
-    let mut patches: Vec<_> = extended_mesh.into_iter().map(|(_, p)| p).collect();
+    // let mut patches: Vec<_> = extended_mesh.into_iter().map(|(_, p)| p).collect();
 
-    for patch in &mut patches {
-        patch.extract_mut(patch.index_space().trim_all(1));
-    }
+    // for patch in &mut patches {
+    //     patch.extract_mut(patch.index_space().trim_all(1));
+    // }
 
     iteration += 1;
     time += 0.01;
@@ -232,26 +195,22 @@ fn main() {
 
 
 
+// ============================================================================
 const NUM_GUARD: i64 = 2;
-
-
+const NUM_FIELDS: usize = 5;
 
 
 #[derive(Clone)]
 
 struct PatchUpdate {
     primitive: Arc<Patch>,
-    flux_i: Arc<Patch>,
-    flux_j: Arc<Patch>,
 }
 
 impl PatchUpdate {
     fn new(index_space: IndexSpace) -> Self {
-        let extended_space = index_space.extend_all(NUM_GUARD);
-        let flux_i_indexes = index_space.extend_upper(1, Axis::I);
-        let flux_j_indexes = index_space.extend_upper(1, Axis::J);
-
-        panic!("")
+        Self {
+            primitive: Arc::new(Patch::zeros(0, NUM_FIELDS, index_space)),
+        }
     }
 }
 
@@ -275,17 +234,13 @@ impl Compute for PatchUpdate {
     fn run(self, _peers: Vec<Self>) -> Self {
         use hydro::geometry::Direction;
 
+        let index_space = self.primitive.index_space();
+        let flux_i_indexes = index_space.extend_upper(1, Axis::I);
+        let flux_j_indexes = index_space.extend_upper(1, Axis::J);
+        let mut flux_i = Patch::zeros(0, 5, flux_i_indexes);
+        let mut flux_j = Patch::zeros(0, 5, flux_j_indexes);
+
         let pe = &self.primitive; // NOTE: not actually extended yet
-
-        let num_guard = 2;
-        let num_fields = pe.num_fields();
-        let level = pe.level();
-
-        let flux_i_indexes = pe.index_space().trim(num_guard, Axis::J).trim_lower(1, Axis::I);
-        let flux_j_indexes = pe.index_space().trim(num_guard, Axis::I).trim_lower(1, Axis::J);
-
-        let mut flux_i = Patch::zeros(level, num_fields, flux_i_indexes);
-        let mut flux_j = Patch::zeros(level, num_fields, flux_j_indexes);
 
         flux_i.for_each_mut(|(i, j), flux| {
             let pl = pe.get_slice((i - 1, j)).into();
