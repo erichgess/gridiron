@@ -45,70 +45,15 @@ where
     A: Automaton<Key = K, Value = V>,
     K: Hash + Eq,
 {
-    let mut seen: HashMap<K, A> = HashMap::new();
-    let mut undelivered = Vec::new();
-    let mut result_values = Vec::new();
+    let (eligible_sink, eligible_source) = crossbeam_channel::unbounded();
 
-    for mut a in stage {
+    coordinate(stage, eligible_sink);
 
-        /*
-         * For each of A's messages, either deliver it to the recipient peer, if
-         * the peer has already been seen, or otherwise put it in the
-         * undelivered box.
-         *
-         * If any of the recipient peers became eligible upon receiving a
-         * message, then execute those peers and collect the result.
-         */
-
-        for (dest, data) in a.messages() {
-            match seen.entry(dest) {
-                Entry::Occupied(entry) => {
-                    let (dest, mut peer) = entry.remove_entry();
-                    match peer.receive((dest, data)) {
-                        Receipt::Eligible => {
-                            result_values.push(peer.value());
-                        }
-                        Receipt::Ineligible(dest) => {
-                            seen.insert(dest, peer);
-                        }
-                    }
-                }
-                Entry::Vacant(none) => {
-                    undelivered.push((none.into_key(), data));
-                }
-            }
-        }
-
-        /*
-         * Deliver all of A's messages that have already arrived.
-         */
-
-        let dest = a.key();
-        let mut i = 0;
-        let mut is_eligible = false;
-        while i != undelivered.len() {
-            if undelivered[i].0 == dest {
-                if let Receipt::Eligible = a.receive(undelivered.remove(i)) {
-                    is_eligible = true;
-                    break;
-                }
-            } else {
-                i += 1;
-            }
-        }
-
-        /*
-         * If A is eligible after receiving its messages, then execute it.
-         * Otherwise mark it as seen and process the next automaton.
-         */
-
-        if is_eligible {
-            result_values.push(a.value());
-        } else {
-            seen.insert(dest, a);
-        }
-    }
-    result_values.into_iter()
+    eligible_source
+    .into_iter()
+    .map(|peer: A| {
+        peer.value()
+    })
 }
 
 
@@ -117,22 +62,17 @@ where
 /**
  * Execute a group of automata in parallel
  */
-pub fn execute_par<'a, I, A: 'a, K, V: 'a>(scope: &rayon::Scope<'a>, stage: I) -> impl Iterator<Item = V>
+pub fn execute_par<'a, I, A, K, V>(scope: &rayon::Scope<'a>, stage: I) -> impl Iterator<Item = V>
 where
     I: IntoIterator<Item = A>,
-    A: Send + Automaton<Key = K, Value = V>,
+    A: Send + Automaton<Key = K, Value = V> + 'a,
     K: Hash + Eq,
-    V: Send
+    V: Send + 'a
 {
     use rayon::prelude::*;
 
-    let mut seen: HashMap<K, A> = HashMap::new();
-    let mut undelivered = Vec::new();
-
-
     let (eligible_sink, eligible_source) = crossbeam_channel::unbounded();
     let (computed_sink, computed_source) = crossbeam_channel::unbounded();
-
 
     scope.spawn(move |_| {
         eligible_source
@@ -143,6 +83,22 @@ where
         });
     });
 
+    coordinate(stage, eligible_sink);
+    computed_source.into_iter()
+}
+
+
+
+
+// ============================================================================
+fn coordinate<I, A, K, V>(stage: I, eligible: crossbeam_channel::Sender<A>)
+where
+    I: IntoIterator<Item = A>,
+    A: Automaton<Key = K, Value = V>,
+    K: Hash + Eq,
+{
+    let mut seen: HashMap<K, A> = HashMap::new();
+    let mut undelivered = Vec::new();
 
     for mut a in stage {
 
@@ -154,14 +110,13 @@ where
          * If any of the recipient peers became eligible upon receiving a
          * message, then execute those peers and collect the result.
          */
-
         for (dest, data) in a.messages() {
             match seen.entry(dest) {
                 Entry::Occupied(entry) => {
                     let (dest, mut peer) = entry.remove_entry();
                     match peer.receive((dest, data)) {
                         Receipt::Eligible => {
-                            eligible_sink.send(peer).unwrap();
+                            eligible.send(peer).unwrap();
                         }
                         Receipt::Ineligible(dest) => {
                             seen.insert(dest, peer);
@@ -175,9 +130,8 @@ where
         }
 
         /*
-         * Deliver all of A's messages that have already arrived.
+         * Deliver any messages addressed to A that had arrived previously.
          */
-
         let dest = a.key();
         let mut i = 0;
         let mut is_eligible = false;
@@ -196,12 +150,10 @@ where
          * If A is eligible after receiving its messages, then execute it.
          * Otherwise mark it as seen and process the next automaton.
          */
-
         if is_eligible {
-            eligible_sink.send(a).unwrap();
+            eligible.send(a).unwrap();
         } else {
             seen.insert(dest, a);
         }
     }
-    computed_source.into_iter()
 }
