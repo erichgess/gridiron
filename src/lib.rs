@@ -1,5 +1,5 @@
 pub mod aug_node;
-pub mod automata;
+pub mod automaton;
 pub mod compute;
 pub mod hydro;
 pub mod index_space;
