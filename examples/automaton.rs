@@ -1,4 +1,4 @@
-use gridiron::automaton::{Automaton, Receipt, execute};
+use gridiron::automaton::{Automaton, Receipt, execute_par};
 
 
 
@@ -72,12 +72,15 @@ impl Automaton for ConcatenateNearestNeighbors {
 fn main() {
 
     let group_size = 10;
-    let group = (0..group_size).map(|n| ConcatenateNearestNeighbors::new(n, group_size));
 
-    assert_eq!{
-        group_size as usize,
-        execute(group)
-        .inspect(|result| println!("{}", result))
-        .count()
-    };
+    rayon::scope(|scope| {
+        let group = (0..group_size).map(|n| ConcatenateNearestNeighbors::new(n, group_size));
+
+        assert_eq!{
+            group_size as usize,
+            execute_par(scope, group)
+            .inspect(|result| println!("{}", result))
+            .count()
+        };
+    });
 }
