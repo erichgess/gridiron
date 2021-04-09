@@ -4,9 +4,9 @@ use core::hash::Hash;
 
 
 
-pub enum Receipt<K> {
+pub enum Status {
     Eligible,
-    Ineligible(K),
+    Ineligible,
 }
 
 
@@ -52,15 +52,14 @@ pub trait Automaton {
     fn messages(&self) -> Vec<(Self::Key, Self::Message)>;
 
 
-    /// This method must be implemented to receive a message. This task should
-    /// take ownership of the message and keep it until a call to
-    /// `Self::value` is made by the executor. This method returns a receipt
-    /// enum indicating either Eligible or Ineligible, depending on whether
-    /// all of the anticipated messages have now been received. The key is
-    /// returned so that the executor does not need to assume `Key: Clone`.
-    /// This method will be invoked once by the executor for each incoming
-    /// message.
-    fn receive(&mut self, message: (Self::Key, Self::Message)) -> Receipt<Self::Key>;
+    /// This method must be implemented to receive and store a message from
+    /// another task. The receiving task should take ownership of the message
+    /// and keep it until a call to `Self::value` is made by the executor.
+    /// This method returns a `Status` enum (`Eligible` or `Ineligible`)
+    /// indicating if it has now received all of its incoming messages and is
+    /// ready to compute a value. This method will be invoked once by the
+    /// executor for each incoming message.
+    fn receive(&mut self, message: Self::Message) -> Status;
 
 
     /// Run the task. CPU-intensive work should be done in this method only.
@@ -154,11 +153,11 @@ where
             match seen.entry(dest) {
                 Entry::Occupied(entry) => {
                     let (dest, mut peer) = entry.remove_entry();
-                    match peer.receive((dest, data)) {
-                        Receipt::Eligible => {
+                    match peer.receive(data) {
+                        Status::Eligible => {
                             eligible.send(peer).unwrap();
                         }
-                        Receipt::Ineligible(dest) => {
+                        Status::Ineligible => {
                             seen.insert(dest, peer);
                         }
                     }
@@ -177,7 +176,7 @@ where
         let mut is_eligible = false;
         while i != undelivered.len() {
             if undelivered[i].0 == dest {
-                if let Receipt::Eligible = a.receive(undelivered.remove(i)) {
+                if let Status::Eligible = a.receive(undelivered.remove(i).1) {
                     is_eligible = true;
                     break;
                 }

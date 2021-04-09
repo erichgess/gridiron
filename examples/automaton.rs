@@ -1,4 +1,4 @@
-use gridiron::automaton::{Automaton, Receipt, execute_par};
+use gridiron::automaton::{Automaton, Status, execute_par};
 
 
 
@@ -6,7 +6,7 @@ use gridiron::automaton::{Automaton, Receipt, execute_par};
 struct ConcatenateNearestNeighbors {
     key: u32,
     group_size: u32,
-    neighbors: Vec<(u32, String)>,
+    neighbors: Vec<String>,
 }
 
 
@@ -48,21 +48,20 @@ impl Automaton for ConcatenateNearestNeighbors {
             (ir, format!("{}", self.key))]
     }
 
-    fn receive(&mut self, message: (Self::Key, Self::Message)) -> Receipt<Self::Key> {
-        let (key, data) = message;
-        self.neighbors.push((key.clone(), data));
+    fn receive(&mut self, message: Self::Message) -> Status {
+        self.neighbors.push(message);
 
         if self.neighbors.len() == 2 {
-            Receipt::Eligible
+            Status::Eligible
         } else {
-            Receipt::Ineligible(key)
+            Status::Ineligible
         }
     }
 
     fn value(self) -> Self::Value {
         let Self { mut neighbors, .. } = self;
         neighbors.sort();
-        format!("{} {} {}", neighbors[0].1, self.key, neighbors[1].1)
+        format!("{} {} {}", neighbors[0], self.key, neighbors[1])
     }
 }
 
