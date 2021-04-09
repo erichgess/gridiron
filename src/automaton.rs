@@ -13,8 +13,13 @@ pub enum Receipt<K> {
 
 
 /**
- * An agent in a group of compute tasks that can generate a result value and
- * messages from its peers. 
+ * An agent in a group of compute tasks that can communicate with its peers, and
+ * yields a computationally intensive data product. The data product can be
+ * another `Automaton` to enable folding of parallel executions. The model
+ * minimizes shared resource ownership: tasks own their data, and messages work
+ * by transferring ownership of the memory buffer to the recipient. Since task
+ * data and messages don't need to be put under `Arc`, they can be reused in
+ * subsequent stages of the task lifetime, reducing dependence on the heap.
  */
 pub trait Automaton {
 
@@ -35,11 +40,11 @@ pub trait Automaton {
     /// yielded value is expected to be CPU-intensive, and may be carried on a
     /// worker thread at the discretion of the executor. For the computation
     /// to proceed requires the initial data on this task, and the messages it
-    /// recieved from its peers, 
+    /// recieved from its peers,
     type Value;
 
 
-    /// Return the key uniquely identify this automaton within the group.
+    /// Return the key to uniquely identify this automaton within the group.
     fn key(&self) -> Self::Key;
 
 
@@ -58,9 +63,9 @@ pub trait Automaton {
     fn receive(&mut self, message: (Self::Key, Self::Message)) -> Receipt<Self::Key>;
 
 
-    /// Run this task, given an owned vector of its peers. The executor is
-    /// responsible for making sure the order of the peers is the same as the
-    /// order of the `Vec` returned by the `peer_keys` method.
+    /// Run the task. CPU-intensive work should be done in this method only.
+    /// It is likely to be called on a worker thread, so it should also
+    /// minimize creating or dropping memory buffers.
     fn value(self) -> Self::Value;
 }
 
@@ -143,7 +148,7 @@ where
          * undelivered box.
          *
          * If any of the recipient peers became eligible upon receiving a
-         * message, then execute those peers and collect the result.
+         * message, then send those peers off to be executed.
          */
         for (dest, data) in a.messages() {
             match seen.entry(dest) {
@@ -182,8 +187,8 @@ where
         }
 
         /*
-         * If A is eligible after receiving its messages, then execute it.
-         * Otherwise mark it as seen and process the next automaton.
+         * If A is eligible after receiving its messages, then send it off to be
+         * executed. Otherwise mark it as seen and process the next automaton.
          */
         if is_eligible {
             eligible.send(a).unwrap();
