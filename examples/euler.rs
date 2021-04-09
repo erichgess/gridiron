@@ -183,14 +183,52 @@ struct Task {
     base_primitive: Patch,
 }
 
-impl Task {
 
+
+
+impl Task {
     fn new(base_primitive: Patch) -> Self {
         Self { outgoing_edges: Vec::new(), base_primitive }
     }
+}
 
-    fn push_outgoing_edge(&mut self, recipient: Rectangle<i64>) {
-        self.outgoing_edges.push(recipient)
+
+
+
+impl OutgoingEdge for Task {
+    type TargetVertex = Rectangle<i64>;
+    fn insert_outgoing_edge(&mut self, vertex: Self::TargetVertex) {
+        self.outgoing_edges.push(vertex)
+    }
+}
+
+
+
+
+trait OutgoingEdge {
+    type TargetVertex;
+    fn insert_outgoing_edge(&mut self, vertex: Self::TargetVertex);
+}
+
+
+
+
+fn connect_outgoing_edges<V>(graph: &mut RectangleMap<i64, V>)
+where
+    V: OutgoingEdge<TargetVertex = Rectangle<i64>>
+{
+    let mut edges = Vec::new();
+
+    for (s, _) in graph.iter() {
+        for (r, _) in graph.query_rect(IndexSpace::from(s).extend_all(2)) {
+            let r = IndexSpace::from(r).into_rect();
+            let s = IndexSpace::from(s).into_rect();
+            edges.push((r, s)) // (r, s) is a message from r -> s
+        }
+    }
+
+    for (r, s) in edges {
+        graph.get_mut((&r.0, &r.1)).unwrap().insert_outgoing_edge(s)
     }
 }
 
@@ -208,22 +246,9 @@ fn main() {
         .map(|p| (p.high_resolution_space().into_rect(), Task::new(p)))
         .collect();
 
-    let mut edges = Vec::new();
 
-    for (s, _) in automata.iter() {
-        for (r, _) in automata.query_rect(IndexSpace::from(s).extend_all(2)) {
-            let r = IndexSpace::from(r).into_rect();
-            let s = IndexSpace::from(s).into_rect();
-            edges.push((r, s)) // (r, s) is a message from r -> s
-        }
-    }
+    connect_outgoing_edges(&mut automata);
 
-    for (r, s) in edges {
-        automata
-            .get_mut((&r.0, &r.1))
-            .unwrap()
-            .push_outgoing_edge(s)
-    }
 
     for (r, p) in automata.iter() {
         println!("{:?}", p.outgoing_edges)
