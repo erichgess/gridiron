@@ -50,12 +50,7 @@ impl Automaton for ConcatenateNearestNeighbors {
 
     fn receive(&mut self, message: Self::Message) -> Status {
         self.neighbors.push(message);
-
-        if self.neighbors.len() == 2 {
-            Status::Eligible
-        } else {
-            Status::Ineligible
-        }
+        Status::eligible_if(self.neighbors.len() == 2)
     }
 
     fn value(self) -> Self::Value {

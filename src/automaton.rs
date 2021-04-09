@@ -9,6 +9,16 @@ pub enum Status {
     Ineligible,
 }
 
+impl Status {
+    pub fn eligible_if(condition: bool) -> Self {
+        if condition {
+            Self::Eligible
+        } else {
+            Self::Ineligible
+        }
+    }
+}
+
 
 
 

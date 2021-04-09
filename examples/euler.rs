@@ -69,7 +69,7 @@ impl Model {
 struct State {
     iteration: u64,
     time: f64,
-    patches: Vec<Patch>
+    primitive_patches: Vec<Patch>
 }
 
 
@@ -83,7 +83,7 @@ impl State {
         let mesh = Mesh { area: (0.0 .. 1.0, 0.0 .. 1.0), size: (40, 40) };
         let model = Model{};
         let primitive = |index| model.primitive_at(mesh.cell_center(index)).as_array();
-        let patches = range2d(0..4, 0..4)
+        let primitive_patches = range2d(0..4, 0..4)
             .iter()
             .map(|(i, j)| (
                 i * block_size .. (i + 1) * block_size, 
@@ -95,7 +95,7 @@ impl State {
         Self {
             iteration: 0,
             time: 0.0,
-            patches,
+            primitive_patches,
         }
     }
 }
@@ -134,7 +134,7 @@ fn extend_patch(map: &RectangleMap<i64, Patch>, rect: RectangleRef<i64>) -> (Rec
 // ============================================================================
 fn advance(state: State) -> State {
 
-    let State { mut iteration, mut time, patches } = state;
+    let State { mut iteration, mut time, primitive_patches } = state;
 
     // let mesh: RectangleMap<_, _> = patches.into_iter().map(|p| (p.rect(), p)).collect();
 
@@ -171,7 +171,26 @@ fn advance(state: State) -> State {
     State {
         time,
         iteration,
-        patches,
+        primitive_patches,
+    }
+}
+
+
+
+
+struct Task {
+    outgoing_edges: Vec<Rectangle<i64>>,
+    base_primitive: Patch,
+}
+
+impl Task {
+
+    fn new(base_primitive: Patch) -> Self {
+        Self { outgoing_edges: Vec::new(), base_primitive }
+    }
+
+    fn push_outgoing_edge(&mut self, recipient: Rectangle<i64>) {
+        self.outgoing_edges.push(recipient)
     }
 }
 
@@ -180,16 +199,45 @@ fn advance(state: State) -> State {
 
 // ============================================================================
 fn main() {
-    let mut state = State::new();
+    let state = State::new();
 
-    while state.time < 1.0 {
-        state = advance(state);
-        println!("[{}] t={:.4}", state.iteration, state.time);
+    let State { iteration: _, time: _, primitive_patches } = state;
+
+    let mut automata: RectangleMap<_, _> = primitive_patches
+        .into_iter()
+        .map(|p| (p.high_resolution_space().into_rect(), Task::new(p)))
+        .collect();
+
+    let mut edges = Vec::new();
+
+    for (s, _) in automata.iter() {
+        for (r, _) in automata.query_rect(IndexSpace::from(s).extend_all(2)) {
+            let r = IndexSpace::from(r).into_rect();
+            let s = IndexSpace::from(s).into_rect();
+            edges.push((r, s)) // (r, s) is a message from r -> s
+        }
     }
 
-    let file = std::fs::File::create("state.cbor").unwrap();
-    let mut buffer = std::io::BufWriter::new(file);
-    ciborium::ser::into_writer(&state, &mut buffer).unwrap();
+    for (r, s) in edges {
+        automata
+            .get_mut((&r.0, &r.1))
+            .unwrap()
+            .push_outgoing_edge(s)
+    }
+
+    for (r, p) in automata.iter() {
+        println!("{:?}", p.outgoing_edges)
+    }
+
+
+    // while state.time < 1.0 {
+    //     state = advance(state);
+    //     println!("[{}] t={:.4}", state.iteration, state.time);
+    // }
+
+    // let file = std::fs::File::create("state.cbor").unwrap();
+    // let mut buffer = std::io::BufWriter::new(file);
+    // ciborium::ser::into_writer(&state, &mut buffer).unwrap();
 }
 
 

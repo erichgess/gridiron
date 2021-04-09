@@ -94,8 +94,16 @@ impl IndexSpace {
      * Return the index space as a rectangle reference (a tuple of `Range`
      * references).
      */
-    pub fn as_rect_ref(&self) -> (&Range<i64>, &Range<i64>) {
+    pub fn to_rect_ref(&self) -> (&Range<i64>, &Range<i64>) {
         (&self.di, &self.dj)
+    }
+
+
+    /**
+     * Convert this index space as a rectangle (a tuple of `Range` objects).
+     */
+    pub fn into_rect(self) -> (Range<i64>, Range<i64>) {
+        (self.di, self.dj)
     }
 
 
