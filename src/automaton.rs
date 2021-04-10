@@ -161,19 +161,13 @@ where
          */
         for (dest, data) in a.messages() {
             match seen.entry(dest) {
-                Entry::Occupied(entry) => {
-                    let (dest, mut peer) = entry.remove_entry();
-                    match peer.receive(data) {
-                        Status::Eligible => {
-                            eligible.send(peer).unwrap();
-                        }
-                        Status::Ineligible => {
-                            seen.insert(dest, peer);
-                        }
+                Entry::Occupied(mut entry) => {
+                    if let Status::Eligible = entry.get_mut().receive(data) {
+                        eligible.send(entry.remove()).unwrap()
                     }
                 }
                 Entry::Vacant(none) => {
-                    undelivered.push((none.into_key(), data));
+                    undelivered.push((none.into_key(), data))
                 }
             }
         }
