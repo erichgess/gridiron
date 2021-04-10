@@ -172,7 +172,7 @@ impl Patch {
      * Return the index space at the high-resolution level below this patch.
      */
     pub fn high_resolution_space(&self) -> IndexSpace {
-        self.index_space().scale(1 << self.level)
+        self.index_space().refine_by(1 << self.level)
     }
 
 
@@ -239,22 +239,52 @@ impl Patch {
 
 
     /**
-     * Return a slice of all data fields at the given index.
+     * Return a slice of all data fields at the given index. This method does
+     * not check if the index is logically in bounds, but will panic if a memory
+     * location would have been out of bounds.
      */
     pub fn get_slice(&self, index: (i64, i64)) -> &[f64] {
-        self.validate_index(index, 0);
         let s = self.index_space().row_major_offset(index);
         &self.data[s .. s + self.num_fields]
     }
 
 
     /**
-     * Extract a subset of this patch and return it.
+     * Extract a subset of this patch and return it. This method panics if the
+     * slice is out of bounds.
      */
-    pub fn extract<I: Into<IndexSpace>>(&self, space: I) -> Self {
-        Self::from_slice_function(self.level, space, self.num_fields, |index, slice| {
+    pub fn extract<I: Into<IndexSpace>>(&self, subset: I) -> Self {
+        let subset: IndexSpace = subset.into();
+
+        assert!{
+            self.index_space().contains_space(&subset),
+            "the index space is out of bounds"
+        }
+
+        Self::from_slice_function(self.level, subset, self.num_fields, |index, slice| {
             slice.clone_from_slice(self.get_slice(index))
         })
+    }
+
+
+    /**
+     * Extract the subset of this patch which overlaps the index space given.
+     */
+    pub fn extract_overlap<I: Into<IndexSpace>>(&self, other: I) -> Self {
+        let overlap = self.index_space().intersect(other);
+        Self::from_slice_function(self.level, overlap, self.num_fields, |index, slice| {
+            slice.clone_from_slice(self.get_slice(index))
+        })
+    }
+
+
+    /**
+     * Extract the subset of this patch which overlaps the high-resolution index
+     * space given.
+     */
+    pub fn extract_overlap_with_high<I: Into<IndexSpace>>(&self, other: I) -> Self {
+        let other: IndexSpace = other.into();
+        self.extract_overlap(other.coarsen_by(1 << self.level))
     }
 
 
@@ -422,6 +452,7 @@ pub trait PatchOperator {
             data,
         }
     }
+
 
 
 

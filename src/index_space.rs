@@ -57,6 +57,14 @@ impl IndexSpace {
 
 
     /**
+     * Determine whether this index space is empty
+     */
+    pub fn is_empty(&self) -> bool {
+        self.di.is_empty() || self.dj.is_empty()
+    }
+
+
+    /**
      * Return the number of indexes on each axis.
      */
     pub fn dim(&self) -> (usize, usize) {
@@ -121,6 +129,19 @@ impl IndexSpace {
     pub fn contains_space(&self, other: &Self) -> bool {
         other.di.start >= self.di.start && other.di.end <= self.di.end &&
         other.dj.start >= self.dj.start && other.dj.end <= self.dj.end
+    }
+
+
+    /**
+     * Return the overlapping region between two index spaces.
+     */
+    pub fn intersect<I: Into<Self>>(&self, other: I) -> Self {
+        let other = other.into();
+        let i0 = self.di.start.max(other.di.start);
+        let j0 = self.dj.start.max(other.dj.start);
+        let i1 = self.di.end.min(other.di.end);
+        let j1 = self.dj.end.min(other.dj.end);
+        Self::new(i0..i1, j0..j1)
     }
 
 
@@ -208,10 +229,31 @@ impl IndexSpace {
     /**
      * Increase the size of this index space by the given factor.
      */
-    pub fn scale(&self, factor: i64) -> Self {
+    pub fn refine_by(&self, factor: u32) -> Self {
+        let factor = factor as i64;
         Self::new(
             self.di.start * factor .. self.di.end * factor,
             self.dj.start * factor .. self.dj.end * factor)
+    }
+
+
+    /**
+     * Increase the size of this index space by the given factor.
+     */
+    pub fn coarsen_by(&self, factor: u32) -> Self {
+        let factor = factor as i64;
+
+        assert!{
+            self.di.start % factor == 0 &&
+            self.dj.start % factor == 0 &&
+            self.di.end % factor == 0 &&
+            self.dj.end % factor == 0,
+            "index space must divide the coarsening factor"
+        };
+
+        Self::new(
+            self.di.start / factor .. self.di.end / factor,
+            self.dj.start / factor .. self.dj.end / factor)
     }
 
 
