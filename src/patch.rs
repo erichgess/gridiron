@@ -178,7 +178,7 @@ impl Patch {
     /**
      * Return this patch's rectangle.
      */
-    pub fn rect(&self) -> &Rectangle<i64> {
+    pub fn local_rect(&self) -> &Rectangle<i64> {
         &self.rect
     }
 
@@ -284,27 +284,6 @@ impl Patch {
         Self::from_slice_function(self.level, subset, self.num_fields, |index, slice| {
             slice.clone_from_slice(self.get_slice(index))
         })
-    }
-
-
-    /**
-     * Extract the subset of this patch which overlaps the index space given.
-     */
-    pub fn extract_overlap<I: Into<IndexSpace>>(&self, other: I) -> Self {
-        let overlap = self.index_space().intersect(other);
-        Self::from_slice_function(self.level, overlap, self.num_fields, |index, slice| {
-            slice.clone_from_slice(self.get_slice(index))
-        })
-    }
-
-
-    /**
-     * Extract the subset of this patch which overlaps the high-resolution index
-     * space given.
-     */
-    pub fn extract_overlap_with_high<I: Into<IndexSpace>>(&self, other: I) -> Self {
-        let other: IndexSpace = other.into();
-        self.extract_overlap(other.coarsen_by(1 << self.level))
     }
 
 
