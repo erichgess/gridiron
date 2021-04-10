@@ -160,11 +160,31 @@ impl Patch {
     }
 
 
+    pub fn level(&self) -> u32 {
+        self.level
+    }
+
+
+    pub fn num_fields(&self) -> usize {
+        self.num_fields
+    }
+
+
+    pub fn data(&self) -> &Vec<f64> {
+        &self.data
+    }
+
+
     /**
      * Return this patch's rectangle.
      */
-    pub fn rect(&self) -> Rectangle<i64> {
-        self.rect.clone()
+    pub fn rect(&self) -> &Rectangle<i64> {
+        &self.rect
+    }
+
+
+    pub fn index_space(&self) -> IndexSpace {
+        IndexSpace::from(self.rect.clone())
     }
 
 
@@ -348,196 +368,6 @@ impl Default for Patch {
 
 
 
-/**
- * A view of a patch subset
- */
-pub struct PatchView<'a> {
-
-    /// The level of the patch view
-    level: u32,
-
-    /// The region of index space covered by the underlying buffer. The
-    /// indexes are with respect to the ticks at this patch's granularity
-    /// level.
-    parent_space: IndexSpace,
-
-    /// The region of index space covered by the patch view. The indexes are
-    /// with respect to the ticks at this patch's granularity level.
-    selection: IndexSpace,
-
-    /// The number of fields stored at each zone.
-    num_fields: usize,
-
-    /// The backing array of data on this patch.
-    data: &'a Vec<f64>,
-}
-
-
-
-
-/**
- * A trait representing a `Patch` or a `PatchView`
- */
-pub trait PatchOperator {
-
-
-    /**
-     * Return the number of scalar fields per element.
-     */
-    fn num_fields(&self) -> usize;
-
-
-    /**
-     * Return this patch's refinement level.
-     */
-    fn level(&self) -> u32;
-
-
-    /**
-     * Return a reference to this patch's data.
-     */
-    fn data(&self) -> &Vec<f64>;
-
-
-    /**
-     * Return the index space of this patch.
-     */
-    fn index_space(&self) -> IndexSpace;
-
-
-    /**
-     * Return this patch's selection, which is in general a subset of its index
-     * space.
-     */
-    fn selection(&self) -> IndexSpace;
-
-
-
-
-    fn select(&self, selection: IndexSpace) -> PatchView {
-        assert!{
-            self.index_space().contains_space(&selection),
-            "selection {:?} is not contained inside the parent index space {:?}",
-            selection,
-            self.index_space()
-        };
-        PatchView {
-            level: self.level(),
-            parent_space: self.index_space(),
-            selection: selection.into(),
-            num_fields: self.num_fields(),
-            data: self.data(),
-        }
-    }
-
-
-
-
-    fn map<F>(&self, f: F) -> Patch
-    where
-        F: Fn((&[f64], &mut [f64]))
-    {
-        let mut data = vec![0.0; self.selection().len() * self.num_fields()];
-
-        self.selection()
-            .memory_region_in(&self.index_space())
-            .iter_slice(self.data(), self.num_fields())
-            .zip(data.chunks_exact_mut(self.num_fields()))
-            .for_each(f);
-
-        Patch {
-            level: self.level(),
-            rect: self.selection().into(),
-            num_fields: self.num_fields(),
-            data,
-        }
-    }
-
-
-
-
-    #[allow(unused)]
-    fn map_adjacent<F>(&self, f: F) -> Patch
-    where
-        F: Fn((&[f64], &[f64], &mut [f64]))
-    {
-        let mut data = vec![0.0; self.selection().len() * self.num_fields()];
-
-       /*
-        * Produce two source index spaces each smaller by one cell on the
-        * longitudinal axis: L = [:-1] and R = [1:]. If the source index spaces
-        * are cell-like then the target one is face-like.
-        *
-        * The target index space is logically the same as R. But it is
-        * physically shifted half an element to the right.
-        *
-        * Do an iter_slice over the two source index spaces and zip them
-        * together. Do a for-each on the closure to write into the data for the
-        * resulting patch.
-        */
-
-        Patch::new()
-    }
-}
-
-
-
-
-
-// ============================================================================
-impl PatchOperator for Patch {
-
-    fn level(&self) -> u32 {
-        self.level
-    }
-
-    fn num_fields(&self) -> usize {
-        self.num_fields
-    }
-
-    fn data(&self) -> &Vec<f64> {
-        &self.data
-    }
-
-    fn index_space(&self) -> IndexSpace {
-        self.rect.clone().into()
-    }
-
-    fn selection(&self) -> IndexSpace {
-        self.rect.clone().into()
-    }
-}
-
-
-
-
-// ============================================================================
-impl<'a> PatchOperator for PatchView<'a> {
-
-    fn level(&self) -> u32 {
-        self.level
-    }
-
-    fn num_fields(&self) -> usize {
-        self.num_fields
-    }
-
-    fn data(&self) -> &Vec<f64> {
-        &self.data
-    }
-
-    fn index_space(&self) -> IndexSpace {
-        self.parent_space.clone()
-    }
-
-    fn selection(&self) -> IndexSpace {
-        self.selection.clone()
-    }
-}
-
-
-
-
 // ============================================================================
 #[cfg(test)]
 mod test {
@@ -549,7 +379,7 @@ mod test {
         Rectangle,
         RectangleRef,
         RectangleMap};
-    use super::{Patch, PatchOperator};
+    use super::Patch;
 
 
     // ============================================================================

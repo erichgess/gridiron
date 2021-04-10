@@ -5,9 +5,8 @@ use gridiron::automaton::{self, Automaton};
 use gridiron::compute::Compute;
 use gridiron::hydro::{self, euler};
 use gridiron::index_space::{IndexSpace, Axis, range2d};
-use gridiron::patch::{Patch, PatchOperator};
+use gridiron::patch::Patch;
 use gridiron::rect_map::{Rectangle, RectangleRef, RectangleMap};
-
 
 
 
@@ -194,6 +193,10 @@ impl<K> AdjacencyList<K> where K: Hash + Eq + Clone {
 
     fn incoming_edges(&self, key: &K) -> Option<&Vec<K>> {
         self.incoming.get(key)
+    }
+
+    fn outgoing_edges(&self, key: &K) -> Option<&Vec<K>> {
+        self.outgoing.get(key)
     }
 }
 
