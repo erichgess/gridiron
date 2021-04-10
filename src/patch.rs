@@ -252,8 +252,8 @@ impl Patch {
      * number of fields.
      */
     pub fn sample_slice(&self, level: u32, index: (i64, i64), result: &mut [f64]) {
-        for field in 0..self.num_fields {
-            result[field] = self.sample(level, index, field)
+        for (field, r) in result.iter_mut().enumerate() {
+            *r = self.sample(level, index, field)
         }
     }
 

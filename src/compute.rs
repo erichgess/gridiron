@@ -1,7 +1,6 @@
 use core::hash::Hash;
 use std::collections::HashMap;
 use std::sync::mpsc;
-use crossbeam_channel;
 use rayon::prelude::*;
 
 
@@ -202,7 +201,7 @@ where
         .into_iter()
         .par_bridge()
         .for_each_with(sink, |sink, (key, item, peers): (K, C, Vec<C>)| {
-            sink.send((key.clone(), item.run(peers))).unwrap();
+            sink.send((key, item.run(peers))).unwrap();
         });
     });
 
@@ -249,7 +248,7 @@ where
         .into_iter()
         .par_bridge()
         .for_each_with(sink, |sink, (key, item, peers): (K, C, Vec<C>)| {
-            sink.send((key.clone(), item.run(peers))).unwrap();
+            sink.send((key, item.run(peers))).unwrap();
         });
     });
 

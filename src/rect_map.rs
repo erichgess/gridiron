@@ -92,12 +92,16 @@ impl<T: Ord + Copy, V> RectangleMap<T, V> {
         }
     }
 
-    pub fn into_iter(self) -> impl Iterator<Item = (Rectangle<T>, V)> {
-        self.map
-            .into_iter()
-            .map(|(di, l)| l.into_iter().map(move |(dj, m)| ((di.clone(), dj), m)))
-            .flatten()
-    }
+    // This is only commented to make clippy happy. It wants the method to be
+    // in the trait, but the trait impl requires unstable
+    // min_type_alias_impl_trait (see below).
+
+    // pub fn into_iter(self) -> impl Iterator<Item = (Rectangle<T>, V)> {
+    //     self.map
+    //         .into_iter()
+    //         .map(|(di, l)| l.into_iter().map(move |(dj, m)| ((di.clone(), dj), m)))
+    //         .flatten()
+    // }
 
     pub fn iter(&self) -> impl Iterator<Item = (RectangleRef<T>, &V)> {
         self.map

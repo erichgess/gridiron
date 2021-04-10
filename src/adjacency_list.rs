@@ -20,10 +20,7 @@ impl<K> AdjacencyList<K> where K: Hash + Eq + Clone {
 
 
     pub fn new() -> Self {
-        Self {
-            outgoing: HashMap::new(),
-            incoming: HashMap::new(),
-        }
+        Self::default()
     }
 
 
@@ -32,6 +29,14 @@ impl<K> AdjacencyList<K> where K: Hash + Eq + Clone {
      */
     pub fn len(&self) -> usize {
         self.incoming.iter().map(|(_, edges)| edges.len()).sum()
+    }
+
+
+    /**
+     * Determine whether there are any edges in the graph.
+     */
+    pub fn is_empty(&self) -> bool {
+    	self.incoming.iter().all(|(_, edges)| edges.is_empty())
     }
 
 
@@ -83,6 +88,15 @@ impl<K> AdjacencyList<K> where K: Hash + Eq + Clone {
      */
     pub fn incoming_edges(&self, b: &K) -> impl Iterator<Item = &K> {
         self.incoming.get(b).into_iter().flat_map(|edges| edges.iter())
+    }
+}
+
+impl<K> Default for AdjacencyList<K> {
+    fn default() -> Self {
+        Self {
+            outgoing: HashMap::new(),
+            incoming: HashMap::new(),
+        }
     }
 }
 

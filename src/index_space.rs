@@ -413,12 +413,12 @@ impl MemoryRegion {
 /**
  * This is an access pattern iterator for a 3D hyperslab selection.
  */
-pub fn iter_slice_3d_v1<'a>(
-    slice: &'a [f64],
+pub fn iter_slice_3d_v1(
+    slice: &[f64],
     start: (usize, usize, usize),
     count: (usize, usize, usize),
     shape: (usize, usize, usize),
-    chunk: usize) -> impl Iterator<Item = &'a [f64]>
+    chunk: usize) -> impl Iterator<Item = &[f64]>
 {
     assert!(slice.len() == shape.0 * shape.1 * shape.2 * chunk);
 
@@ -444,12 +444,12 @@ pub fn iter_slice_3d_v1<'a>(
  * to the one above but faster. Most benchmarks suggest neither is faster than
  * a triple for-loop.
  */
-pub fn iter_slice_3d_v2<'a>(
-    slice: &'a [f64],
+pub fn iter_slice_3d_v2(
+    slice: &[f64],
     start: (usize, usize, usize),
     count: (usize, usize, usize),
     shape: (usize, usize, usize),
-    chunk: usize) -> impl Iterator<Item = &'a [f64]>
+    chunk: usize) -> impl Iterator<Item = &[f64]>
 {
     assert!(slice.len() == shape.0 * shape.1 * shape.2 * chunk);
 
@@ -470,12 +470,12 @@ pub fn iter_slice_3d_v2<'a>(
  * This is yet another version of the hyperslab traversal. Benchmarks suggest
  * it's the slowest.
  */
-pub fn iter_slice_3d_v3<'a>(
-    slice: &'a [f64],
+pub fn iter_slice_3d_v3(
+    slice: &[f64],
     start: (usize, usize, usize),
     count: (usize, usize, usize),
     shape: (usize, usize, usize),
-    chunk: usize) -> impl Iterator<Item = &'a [f64]>
+    chunk: usize) -> impl Iterator<Item = &[f64]>
 {
     let s = chunk;
     let r = shape.2 * s;

@@ -18,6 +18,7 @@ pub struct Euler {
 // ============================================================================
 impl Euler {
 
+    #[allow(clippy::unit_arg)]
     pub fn cons_to_prim(&self, cons: &[f64], prim: &mut [f64]) -> Result<(), Error> {
         Ok(Conserved::from_slice(cons).to_primitive(self.gamma_law_index)?.write_to_slice(prim))
     }
@@ -121,8 +122,8 @@ impl Primitive {
         prim[4] = self.4;
     }
 
-    pub fn new(d: f64, u: f64, v: f64, w: f64, e: f64) -> Self {
-        Self(d, u, v, w, e)
+    pub fn new(d0: f64, u0: f64, v0: f64, w0: f64, e0: f64) -> Self {
+        Self(d0, u0, v0, w0, e0)
     }
 
     pub fn as_array(&self) -> [f64; 5] {
@@ -174,7 +175,7 @@ impl Primitive {
     }
 
     pub fn mach_number(&self, gamma_law_index: f64) -> f64 {
-        (&self.velocity_squared() / self.sound_speed_squared(gamma_law_index)).sqrt()
+        (self.velocity_squared() / self.sound_speed_squared(gamma_law_index)).sqrt()
     }
 
     pub fn outer_wavespeeds(&self, direction: Direction, gamma_law_index: f64) -> (f64, f64) {
