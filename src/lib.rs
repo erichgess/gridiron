@@ -1,3 +1,4 @@
+pub mod adjacency_list;
 pub mod aug_node;
 pub mod automaton;
 pub mod compute;

@@ -167,42 +167,6 @@ impl Automaton for PatchUpdate {
 
 
 
-use std::collections::HashMap;
-use core::hash::Hash;
-
-struct AdjacencyList<K> {
-    incoming: HashMap<K, Vec<K>>,
-    outgoing: HashMap<K, Vec<K>>,
-}
-
-impl<K> AdjacencyList<K> where K: Hash + Eq + Clone {
-
-    fn insert(&mut self, a0: K, b0: K) {
-        let a1 = a0.clone();
-        let b1 = b0.clone();
-        self.outgoing.entry(a0).or_default().push(b0);
-        self.incoming.entry(b1).or_default().push(a1);
-    }
-
-    fn remove(&mut self, a0: K, b0: K) {
-        let a1 = a0.clone();
-        let b1 = b0.clone();
-        self.incoming.entry(a0).and_modify(|edges| edges.retain(|k| k != &b0));
-        self.outgoing.entry(b1).and_modify(|edges| edges.retain(|k| k != &a1));
-    }
-
-    fn incoming_edges(&self, key: &K) -> Option<&Vec<K>> {
-        self.incoming.get(key)
-    }
-
-    fn outgoing_edges(&self, key: &K) -> Option<&Vec<K>> {
-        self.outgoing.get(key)
-    }
-}
-
-
-
-
 // ============================================================================
 fn main() {
     let state = State::new();
