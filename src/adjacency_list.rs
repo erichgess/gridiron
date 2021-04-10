@@ -19,9 +19,25 @@ pub struct AdjacencyList<K> {
 impl<K> AdjacencyList<K> where K: Hash + Eq + Clone {
 
 
-	/**
-	 * Insert an edge from a -> b. Duplicate edges are allowed.
-	 */
+    pub fn new() -> Self {
+        Self {
+            outgoing: HashMap::new(),
+            incoming: HashMap::new(),
+        }
+    }
+
+
+    /**
+     * Return the number of edges in the graph.
+     */
+    pub fn len(&self) -> usize {
+        self.incoming.iter().map(|(_, edges)| edges.len()).sum()
+    }
+
+
+    /**
+     * Insert an edge from a -> b. Duplicate and circular edges are allowed.
+     */
     pub fn insert(&mut self, a0: K, b0: K) {
         let a1 = a0.clone();
         let b1 = b0.clone();
@@ -33,11 +49,11 @@ impl<K> AdjacencyList<K> where K: Hash + Eq + Clone {
     /**
      * Determine whether the given edge exists.
      */
-    pub fn contains(&mut self, a: K, b: K) -> bool {
-    	self.outgoing
-    		.get(&a)
-    		.and_then(|edges| edges.iter().find(|&k| k == &b))
-    		.is_some()
+    pub fn contains(&mut self, a: &K, b: &K) -> bool {
+        self.outgoing
+            .get(a)
+            .and_then(|edges| edges.iter().find(|&k| k == b))
+            .is_some()
     }
 
 
@@ -57,7 +73,7 @@ impl<K> AdjacencyList<K> where K: Hash + Eq + Clone {
      * vertex.
      */
     pub fn outgoing_edges(&self, a: &K) -> impl Iterator<Item = &K> {
-    	self.outgoing.get(a).into_iter().flat_map(|edges| edges.iter())
+        self.outgoing.get(a).into_iter().flat_map(|edges| edges.iter())
     }
 
 
@@ -66,6 +82,65 @@ impl<K> AdjacencyList<K> where K: Hash + Eq + Clone {
      * vertex.
      */
     pub fn incoming_edges(&self, b: &K) -> impl Iterator<Item = &K> {
-    	self.incoming.get(b).into_iter().flat_map(|edges| edges.iter())
+        self.incoming.get(b).into_iter().flat_map(|edges| edges.iter())
+    }
+}
+
+
+
+
+// ============================================================================
+#[cfg(test)]
+mod test {
+
+    use super::AdjacencyList;
+
+
+    #[test]
+    fn graph_contained_works() {
+        let mut edges = AdjacencyList::new();
+        edges.insert(0, 1);
+        assert!(edges.contains(&0, &1));
+        assert!(!edges.contains(&1, &0));
+    }
+
+
+    #[test]
+    fn graph_has_the_correct_length() {
+        let mut edges = AdjacencyList::new();
+        edges.insert(0, 1);
+        edges.insert(1, 0);
+        edges.insert(1, 1);
+        edges.insert(0, 0);
+        assert_eq!(edges.len(), 4);
+    }
+
+
+    #[test]
+    fn graph_can_remove_edge() {
+        let mut edges = AdjacencyList::new();
+        edges.insert(0, 1);
+        edges.insert(1, 0);
+        edges.remove(1, 0);
+        assert!(edges.contains(&0, &1));
+        assert!(!edges.contains(&1, &0));
+        assert_eq!(edges.len(), 1);
+    }
+
+
+    #[test]
+    fn graph_can_iterate_incoming_and_outgoing_edges() {
+        let mut edges = AdjacencyList::new();
+        edges.insert(0, 1);
+        edges.insert(0, 2);
+        edges.insert(0, 3);
+
+        edges.insert(4, 1);
+        edges.insert(4, 2);
+
+        assert_eq!(edges.incoming_edges(&1).count(), 2);
+        assert_eq!(edges.incoming_edges(&3).count(), 1);
+        assert_eq!(edges.outgoing_edges(&0).count(), 3);
+        assert_eq!(edges.outgoing_edges(&4).count(), 2);
     }
 }
