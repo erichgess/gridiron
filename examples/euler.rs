@@ -1,11 +1,13 @@
 #![allow(unused)]
 
 use std::sync::Arc;
+use gridiron::automaton::{self, Automaton};
+use gridiron::compute::Compute;
+use gridiron::hydro::{self, euler};
+use gridiron::index_space::{IndexSpace, Axis, range2d};
 use gridiron::patch::{Patch, PatchOperator};
 use gridiron::rect_map::{Rectangle, RectangleRef, RectangleMap};
-use gridiron::index_space::{IndexSpace, Axis, range2d};
-use gridiron::hydro::{self, euler};
-use gridiron::compute::Compute;
+
 
 
 
@@ -21,10 +23,6 @@ struct Mesh {
     size: (usize, usize),
 }
 
-
-
-
-// ============================================================================
 impl Mesh {
 
     fn cell_spacing(&self) -> (f64, f64) {
@@ -44,13 +42,12 @@ impl Mesh {
 
 
 
+/**
+ * The initial model
+ */
 struct Model {
 }
 
-
-
-
-// ============================================================================
 impl Model {
     fn primitive_at(&self, position: (f64, f64)) -> euler::Primitive {
         euler::Primitive::new(1.0 + position.0 + position.1, 0.0, 0.0, 0.0, 1.0)
@@ -72,10 +69,6 @@ struct State {
     primitive_patches: Vec<Patch>
 }
 
-
-
-
-// ============================================================================
 impl State {
 
     fn new() -> Self {
@@ -104,66 +97,9 @@ impl State {
 
 
 // ============================================================================
-fn finest_patch<'a>(map: &'a RectangleMap<i64, &'a Patch>, index: (i64, i64)) -> Option<&'a Patch> {
-    map.query_point(index)
-       .map(|(_, &p)| p)
-       .min_by_key(|p| p.level())
-}
-
-fn extend_patch(map: &RectangleMap<i64, Patch>, rect: RectangleRef<i64>) -> (Rectangle<i64>, Patch) {
-
-    let space: IndexSpace = rect.into();
-    let extended = space.extend_all(1);
-    let local_map: RectangleMap<_, _> = map.query_rect(extended.clone()).collect();
-    let p = local_map.get(rect).unwrap();
-
-    let sample = |index, slice: &mut [f64]| {
-        if p.index_space().contains(index) {
-            p.sample_slice(p.level(), index, slice)
-        } else if let Some(n) = finest_patch(&local_map, index) {
-            n.sample_slice(p.level(), index, slice)
-        }
-    };
-    let extended_patch = Patch::from_slice_function(p.level(), extended.clone(), 5, sample);
-    (extended.into(), extended_patch)
-}
-
-
-
-
-// ============================================================================
 fn advance(state: State) -> State {
 
     let State { mut iteration, mut time, primitive_patches } = state;
-
-    // let mesh: RectangleMap<_, _> = patches.into_iter().map(|p| (p.rect(), p)).collect();
-
-    // let extended_mesh: RectangleMap<i64, Patch> = mesh
-    //     .keys()
-    //     .map(|rect| extend_patch(&mesh, rect))
-    //     .collect();
-
-    // let mut scheme_scratch: Vec<_> = extended_mesh
-    // .clone()
-    // .into_iter()
-    // .map(|(_, p)|
-    //     SchemeScratch {
-    //         extended_primitive: p,
-    //         flux_i: Patch::default(),
-    //         flux_j: Patch::default(),
-    //     })
-    // .collect();
-
-    // for scratch in &mut scheme_scratch {
-    //     scratch.flux_i = compute_flux(&scratch.extended_primitive, Axis::I);
-    //     scratch.flux_j = compute_flux(&scratch.extended_primitive, Axis::J);
-    // }
-
-    // let mut patches: Vec<_> = extended_mesh.into_iter().map(|(_, p)| p).collect();
-
-    // for patch in &mut patches {
-    //     patch.extract_mut(patch.index_space().trim_all(1));
-    // }
 
     iteration += 1;
     time += 0.01;
@@ -178,57 +114,86 @@ fn advance(state: State) -> State {
 
 
 
-struct Task {
+struct PatchUpdate {
     outgoing_edges: Vec<Rectangle<i64>>,
+    received_edges: Vec<Patch>,
+    number_expected: usize,
     base_primitive: Patch,
 }
 
-
-
-
-impl Task {
+impl PatchUpdate {
     fn new(base_primitive: Patch) -> Self {
-        Self { outgoing_edges: Vec::new(), base_primitive }
-    }
-}
-
-
-
-
-impl OutgoingEdge for Task {
-    type TargetVertex = Rectangle<i64>;
-    fn insert_outgoing_edge(&mut self, vertex: Self::TargetVertex) {
-        self.outgoing_edges.push(vertex)
-    }
-}
-
-
-
-
-trait OutgoingEdge {
-    type TargetVertex;
-    fn insert_outgoing_edge(&mut self, vertex: Self::TargetVertex);
-}
-
-
-
-
-fn connect_outgoing_edges<V>(graph: &mut RectangleMap<i64, V>)
-where
-    V: OutgoingEdge<TargetVertex = Rectangle<i64>>
-{
-    let mut edges = Vec::new();
-
-    for (s, _) in graph.iter() {
-        for (r, _) in graph.query_rect(IndexSpace::from(s).extend_all(2)) {
-            let r = IndexSpace::from(r).into_rect();
-            let s = IndexSpace::from(s).into_rect();
-            edges.push((r, s)) // (r, s) is a message from r -> s
+        Self {
+            outgoing_edges: Vec::new(),
+            received_edges: Vec::new(),
+            number_expected: 0,
+            base_primitive
         }
     }
+}
 
-    for (r, s) in edges {
-        graph.get_mut((&r.0, &r.1)).unwrap().insert_outgoing_edge(s)
+impl Automaton for PatchUpdate {
+
+    type Key = Rectangle<i64>;
+    type Message = Patch;
+    type Value = Patch;
+
+    /**
+     * The task is keyed on its high resolution index space.
+     */
+    fn key(&self) -> Self::Key {
+        self.base_primitive.high_resolution_space().into()
+    }
+
+    /**
+     * When computing messages, rect is in the high-resolution index space, so
+     * it needs to be converted to this patch's level for the purpose of
+     * extracting this patch's data. 
+     */
+    fn messages(&self) -> Vec<(Self::Key, Self::Message)> {
+        self.outgoing_edges
+            .iter()
+            .map(|r| (r.clone(), self.base_primitive.extract_overlap_with_high(r.clone())))
+            .collect()
+    }
+
+    fn receive(&mut self, patch: Self::Message) -> automaton::Status {
+        self.received_edges.push(patch);
+        automaton::Status::eligible_if(self.received_edges.len() == self.number_expected)
+    }
+
+    fn value(self) -> Self::Value { todo!() }
+}
+
+
+
+
+use std::collections::HashMap;
+use core::hash::Hash;
+
+struct AdjacencyList<K> {
+    incoming: HashMap<K, Vec<K>>,
+    outgoing: HashMap<K, Vec<K>>,
+}
+
+impl<K> AdjacencyList<K> where K: Hash + Eq + Clone {
+
+    fn insert(&mut self, a0: K, b0: K) {
+        let a1 = a0.clone();
+        let b1 = b0.clone();
+        self.outgoing.entry(a0).or_default().push(b0);
+        self.incoming.entry(b1).or_default().push(a1);
+    }
+
+    fn remove(&mut self, a0: K, b0: K) {
+        let a1 = a0.clone();
+        let b1 = b0.clone();
+        self.incoming.entry(a0).and_modify(|edges| edges.retain(|k| k != &b0));
+        self.outgoing.entry(b1).and_modify(|edges| edges.retain(|k| k != &a1));
+    }
+
+    fn incoming_edges(&self, key: &K) -> Option<&Vec<K>> {
+        self.incoming.get(key)
     }
 }
 
@@ -239,94 +204,19 @@ where
 fn main() {
     let state = State::new();
 
-    let State { iteration: _, time: _, primitive_patches } = state;
+   /*
+    * 1. Create a Vec of Patches
+    *
+    * 2. Generate a RectangleMap keyed on the HRIS (value = the block's local
+    * index space)
+    *
+    * 3. Query each rectangle in the RectangleMap for the patches it will
+    * overlap when it's expanded, to build an adjacency list
+    *
+    * 4. Map the Vec of Patches into a Vec of Tasks, querying the adjacency list
+    * to provide incoming and outgoing edges to each task
+    */
 
-    let mut automata: RectangleMap<_, _> = primitive_patches
-        .into_iter()
-        .map(|p| (p.high_resolution_space().into_rect(), Task::new(p)))
-        .collect();
+    // let State { iteration: _, time: _, primitive_patches } = state;
 
-
-    connect_outgoing_edges(&mut automata);
-
-
-    for (r, p) in automata.iter() {
-        println!("{:?}", p.outgoing_edges)
-    }
-
-
-    // while state.time < 1.0 {
-    //     state = advance(state);
-    //     println!("[{}] t={:.4}", state.iteration, state.time);
-    // }
-
-    // let file = std::fs::File::create("state.cbor").unwrap();
-    // let mut buffer = std::io::BufWriter::new(file);
-    // ciborium::ser::into_writer(&state, &mut buffer).unwrap();
-}
-
-
-
-
-// ============================================================================
-const NUM_GUARD: i64 = 2;
-const NUM_FIELDS: usize = 5;
-
-
-#[derive(Clone)]
-
-struct PatchUpdate {
-    primitive: Arc<Patch>,
-}
-
-impl PatchUpdate {
-    fn new(index_space: IndexSpace) -> Self {
-        Self {
-            primitive: Arc::new(Patch::zeros(0, NUM_FIELDS, index_space)),
-        }
-    }
-}
-
-
-
-
-// ============================================================================
-impl Compute for PatchUpdate {
-
-    type Key = Rectangle<i64>;
-    type Value = Self;
-
-    fn peer_keys(&self) -> Vec<Self::Key> {
-        vec![]
-    }
-
-    fn key(&self) -> Self::Key {
-        self.primitive.rect()
-    }
-
-    fn run(self, _peers: Vec<Self>) -> Self {
-        use hydro::geometry::Direction;
-
-        let index_space = self.primitive.index_space();
-        let flux_i_indexes = index_space.extend_upper(1, Axis::I);
-        let flux_j_indexes = index_space.extend_upper(1, Axis::J);
-        let mut flux_i = Patch::zeros(0, 5, flux_i_indexes);
-        let mut flux_j = Patch::zeros(0, 5, flux_j_indexes);
-
-        let pe = &self.primitive; // NOTE: not actually extended yet
-
-        flux_i.for_each_mut(|(i, j), flux| {
-            let pl = pe.get_slice((i - 1, j)).into();
-            let pr = pe.get_slice((i, j)).into();
-            euler::riemann_hlle(pl, pr, Direction::I, 5.0 / 3.0).write_to_slice(flux);
-        });
-
-        flux_j.for_each_mut(|(i, j), flux| {
-            let pl = pe.get_slice((i, j - 1)).into();
-            let pr = pe.get_slice((i, j)).into();
-            euler::riemann_hlle(pl, pr, Direction::J, 5.0 / 3.0).write_to_slice(flux);
-        });
-
-        self
-    }
 }
