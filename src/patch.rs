@@ -265,7 +265,7 @@ impl Patch {
      */
     pub fn get_slice(&self, index: (i64, i64)) -> &[f64] {
         let s = self.index_space().row_major_offset(index);
-        &self.data[s .. s + self.num_fields]
+        &self.data[s * self.num_fields .. (s + 1) * self.num_fields]
     }
 
 
