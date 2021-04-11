@@ -197,6 +197,15 @@ impl Patch {
 
 
     /**
+     * Convenience method to convert the high resolution index space to a
+     * rectangle.
+     */
+    pub fn high_resolution_rect(&self) -> Rectangle<i64> {
+        self.index_space().refine_by(1 << self.level).into()
+    }
+
+
+    /**
      * Sample the field at the given level and index. The index measures
      * ticks at the target sampling level, not the HRIS.
      */

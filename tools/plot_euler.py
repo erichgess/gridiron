@@ -7,7 +7,7 @@ fig = plt.figure()
 ax1 = fig.add_subplot(1, 1, 1)
 state = cbor2.load(open('state.cbor', 'rb'))
 
-for patch in state['primitive_patches'][:]:
+for patch in state['primitive'][:]:
     i0 = patch['rect'][0]['start']
     j0 = patch['rect'][1]['start']
     i1 = patch['rect'][0]['end']

@@ -3,7 +3,8 @@ use core::hash::Hash;
 
 
 
-
+/// Returned by Automaton::receive
+/// 
 pub enum Status {
     Eligible,
     Ineligible,
@@ -22,15 +23,14 @@ impl Status {
 
 
 
-/**
- * An agent in a group of compute tasks that can communicate with its peers, and
- * yields a computationally intensive data product. The data product can be
- * another `Automaton` to enable folding of parallel executions. The model
- * minimizes shared resource ownership: tasks own their data, and messages work
- * by transferring ownership of the memory buffer to the recipient. Since task
- * data and messages don't need to be put under `Arc`, they can be reused in
- * subsequent stages of the task lifetime, reducing dependence on the heap.
- */
+/// An agent in a group of compute tasks that can communicate with its peers,
+/// and yields a computationally intensive data product. The data product can
+/// be another `Automaton` to enable folding of parallel executions. The model
+/// minimizes shared resource ownership: tasks own their data, and messages
+/// work by transferring ownership of the memory buffer to the recipient.
+/// Since task data and messages don't need to be put under `Arc`, they can be
+/// reused in subsequent stages of the task lifetime, reducing dependence on
+/// the heap.
 pub trait Automaton {
 
 
@@ -124,10 +124,6 @@ where
         .into_iter()
         .par_bridge()
         .for_each(|peer: A| {
-            // NOTE: would there be a performance change if this were done
-            // using for_each_with to clone the sink? As it is, the sink is
-            // owned by the spawned closure, and captured by reference in the
-            // for_each.
             computed_sink.send(peer.value()).unwrap();
         });
     });
