@@ -1,31 +1,23 @@
 use gridiron::adjacency_list::AdjacencyList;
 use gridiron::automaton::{self, Automaton, Status};
 use gridiron::hydro::euler;
-use gridiron::index_space::{IndexSpace, range2d};
+use gridiron::index_space::{range2d, IndexSpace};
 use gridiron::patch::Patch;
-use gridiron::rect_map::{Rectangle, RectangleRef, RectangleMap};
+use gridiron::rect_map::{Rectangle, RectangleMap, RectangleRef};
 
-
-// ============================================================================
 const NUM_GUARD: i64 = 2;
 const _NUM_FIELDS: usize = 5;
-
-
-
-
-#[derive(serde::Serialize)]
-
 
 /**
  * The mesh
  */
+#[derive(serde::Serialize)]
 struct Mesh {
     area: Rectangle<f64>,
     size: (usize, usize),
 }
 
 impl Mesh {
-
     fn cell_spacing(&self) -> (f64, f64) {
         let d0 = (self.area.0.end - self.area.0.start) / self.size.0 as f64;
         let d1 = (self.area.1.end - self.area.1.start) / self.size.1 as f64;
@@ -40,14 +32,10 @@ impl Mesh {
     }
 }
 
-
-
-
 /**
  * The initial model
  */
-struct Model {
-}
+struct Model {}
 
 impl Model {
     fn primitive_at(&self, position: (f64, f64)) -> euler::Primitive {
@@ -55,34 +43,33 @@ impl Model {
     }
 }
 
-
-
-
-#[derive(serde::Serialize)]
-
-
 /**
  * The simulation solution state
  */
+#[derive(serde::Serialize)]
 struct State {
     iteration: u64,
     time: f64,
-    primitive_patches: Vec<Patch>
+    primitive_patches: Vec<Patch>,
 }
 
 impl State {
-
     fn new() -> Self {
         let block_size = 10;
-        let mesh = Mesh { area: (0.0 .. 1.0, 0.0 .. 1.0), size: (40, 40) };
-        let model = Model{};
+        let mesh = Mesh {
+            area: (0.0..1.0, 0.0..1.0),
+            size: (40, 40),
+        };
+        let model = Model {};
         let primitive = |index| model.primitive_at(mesh.cell_center(index)).as_array();
         let primitive_patches = range2d(0..4, 0..4)
             .iter()
-            .map(|(i, j)| (
-                i * block_size .. (i + 1) * block_size, 
-                j * block_size .. (j + 1) * block_size)
-            )
+            .map(|(i, j)| {
+                (
+                    i * block_size..(i + 1) * block_size,
+                    j * block_size..(j + 1) * block_size,
+                )
+            })
             .map(|rect| Patch::from_vector_function(0, rect, primitive))
             .collect();
 
@@ -94,13 +81,13 @@ impl State {
     }
 }
 
-
-
-
 // ============================================================================
 fn _advance(state: State) -> State {
-
-    let State { mut iteration, mut time, primitive_patches } = state;
+    let State {
+        mut iteration,
+        mut time,
+        primitive_patches,
+    } = state;
 
     iteration += 1;
     time += 0.01;
@@ -111,9 +98,6 @@ fn _advance(state: State) -> State {
         primitive_patches,
     }
 }
-
-
-
 
 struct PatchUpdate {
     outgoing_edges: Vec<(Rectangle<i64>, (IndexSpace, u32))>,
@@ -126,47 +110,43 @@ impl PatchUpdate {
     fn new(
         base_primitive: Patch,
         edges: &AdjacencyList<RectangleRef<i64>>,
-        index_space: &RectangleMap<i64, (IndexSpace, u32)>
+        index_space: &RectangleMap<i64, (IndexSpace, u32)>,
     ) -> Self {
-
         let hris = base_primitive.high_resolution_space();
         let outgoing = edges
             .outgoing_edges(&hris.to_rect_ref())
             .cloned()
-            .map(|rect_ref| (IndexSpace::from(rect_ref).into_rect(), index_space.get(rect_ref).cloned().unwrap()))
+            .map(|rect_ref| {
+                (
+                    IndexSpace::from(rect_ref).into_rect(),
+                    index_space.get(rect_ref).cloned().unwrap(),
+                )
+            })
             .collect();
 
         Self {
             outgoing_edges: outgoing,
             received_edges: Vec::new(),
             number_expected: edges.incoming_edges(&hris.to_rect_ref()).count(),
-            base_primitive
+            base_primitive,
         }
     }
 }
 
 impl Automaton for PatchUpdate {
-
     type Key = Rectangle<i64>;
     type Message = Patch;
     type Value = Patch;
 
-
-
-
     fn key(&self) -> Self::Key {
         self.base_primitive.high_resolution_space().into()
     }
-
-
-
 
     fn messages(&self) -> Vec<(Self::Key, Self::Message)> {
         self.outgoing_edges
             .iter()
             .cloned()
             .map(|(key, (space, level))| {
-
                 // key .......... key for the outgoing edge
                 // space ........ index space of the outgoing edge
                 // level ........ level of the outgoing edge
@@ -188,46 +168,74 @@ impl Automaton for PatchUpdate {
             .collect()
     }
 
-
-
-
     fn receive(&mut self, patch: Self::Message) -> Status {
         self.received_edges.push(patch);
         Status::eligible_if(self.received_edges.len() == self.number_expected)
     }
 
-
-
-
     fn value(self) -> Self::Value {
+        let Self {
+            outgoing_edges: _,
+            received_edges,
+            number_expected: _,
+            base_primitive,
+        } = self;
 
-        println!("{:?}", self.received_edges.len());
+        let neighbors: RectangleMap<_, _> = received_edges
+            .into_iter()
+            .map(|patch| (patch.high_resolution_space().into_rect(), patch))
+            .collect();
 
-        self.base_primitive
+        extend_patch(base_primitive, &neighbors)
     }
 }
 
+// ============================================================================
+fn finest_patch(map: &RectangleMap<i64, Patch>, index: (i64, i64)) -> Option<&Patch> {
+    map.query_point(index)
+       .map(|(_, p)| p)
+       .min_by_key(|p| p.level())
+}
 
+fn extend_patch(patch: Patch, neighbors: &RectangleMap<i64, Patch>) -> Patch {
+    let space = patch.index_space();
+    let extended = space.extend_all(NUM_GUARD);
 
+    let sample = |index, slice: &mut [f64]| {
+        if patch.index_space().contains(index) {
+            slice.clone_from_slice(patch.get_slice(index))
+        }
+        else if let Some(neigh) = finest_patch(neighbors, index) {
+            slice.clone_from_slice(neigh.get_slice(index))
+        }
+    };
+    Patch::from_slice_function(patch.level(), extended, patch.num_fields(), sample)
+}
 
 // ============================================================================
 fn main() {
     let state = State::new();
 
-
     // 1. Create a Vec of Patches.
     // ------------------------------------------------------------------------
-    let State { iteration: _, time: _, primitive_patches } = state;
-
+    let State {
+        iteration,
+        time,
+        primitive_patches,
+    } = state;
 
     // 2. Generate a RectangleMap keyed on the HRIS (value = the block's local
-    // index space and level). 
+    // index space and level).
     // ------------------------------------------------------------------------
     let rectangle_map: RectangleMap<_, _> = primitive_patches
         .iter()
-        .map(|p| (p.high_resolution_space().into_rect(), (p.index_space(), p.level())))
+        .map(|p| {
+            (
+                p.high_resolution_space().into_rect(),
+                (p.index_space(), p.level()),
+            )
+        })
         .collect();
-
 
     // 3. Query each rectangle in the RectangleMap for the patches it will
     // overlap when it's expanded, to build an adjacency list.
@@ -235,24 +243,31 @@ fn main() {
     let mut edges = AdjacencyList::new();
 
     for (rect_b, (space_b, _level_b)) in rectangle_map.iter() {
-        for (rect_a, (_space_a, _level_a)) in rectangle_map.query_rect(space_b.extend_all(NUM_GUARD)) {
+        for (rect_a, (_space_a, _level_a)) in
+            rectangle_map.query_rect(space_b.extend_all(NUM_GUARD))
+        {
             if rect_a != rect_b {
                 edges.insert(rect_a, rect_b)
             }
         }
     }
 
-
-    // 4. Map the Vec of Patches into a Vec of Tasks, querying the adjacency
-    // list to provide incoming and outgoing edges to each task
+    // 4. Map the Vec of Patches into an iterator of Tasks, querying the
+    // adjacency list to provide incoming and outgoing edges to each task
     // ------------------------------------------------------------------------
-    let task_list: Vec<_> = primitive_patches
+    let task_list = primitive_patches
         .into_iter()
-        .map(|patch| PatchUpdate::new(patch, &edges, &rectangle_map))
-        .collect();
+        .map(|patch| PatchUpdate::new(patch, &edges, &rectangle_map));
 
+    let primitive_patches: Vec<_> = automaton::execute(task_list).collect();
 
-    for _ in automaton::execute(task_list) {
+    let state = State {
+        iteration,
+        time,
+        primitive_patches,
+    };
 
-    }
+    let file = std::fs::File::create("state.cbor").unwrap();
+    let mut buffer = std::io::BufWriter::new(file);
+    ciborium::ser::into_writer(&state, &mut buffer).unwrap();
 }
