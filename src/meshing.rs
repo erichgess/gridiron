@@ -30,7 +30,7 @@ impl PatchQuery for RectangleMap<i64, Patch> {
 /// `boundary_value` is invoked when no patch overlies the sampling point.
 /// __WARNING__: this function is currently implemented only for patches at
 /// uniform refinement level.
-pub fn extend_patch<P, F, G>(patch: Patch, extend: F, boundary_value: G, neighbors: &P) -> Patch
+pub fn extend_patch<P, F, G>(patch: &Patch, extend: F, boundary_value: G, neighbors: &P) -> Patch
 where
     P: PatchQuery,
     F: Fn(&IndexSpace) -> IndexSpace,

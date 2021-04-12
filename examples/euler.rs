@@ -1,18 +1,42 @@
 use gridiron::adjacency_list::AdjacencyList;
 use gridiron::automaton::{self, Automaton, Status};
-use gridiron::hydro::euler;
-use gridiron::index_space::{range2d, IndexSpace};
+use gridiron::hydro::{euler, euler::Primitive, geometry::Direction};
+use gridiron::index_space::{range2d, Axis, IndexSpace};
+use gridiron::meshing::{self, GraphTopology};
 use gridiron::patch::Patch;
 use gridiron::rect_map::{Rectangle, RectangleMap};
-use gridiron::meshing::{self, GraphTopology};
 
-const NUM_GUARD: i64 = 2;
-const _NUM_FIELDS: usize = 5;
+const NUM_GUARD: i64 = 1;
+const GAMMA_LAW_INDEX: f64 = 5.0 / 3.0;
+
+fn compute_flux(pe: &Patch, axis: Axis) -> Patch {
+    match axis {
+        Axis::I => Patch::from_slice_function(
+            pe.level(),
+            pe.index_space().trim_lower(1, Axis::I),
+            pe.num_fields(),
+            |(i, j), f| {
+                let pl = pe.get_slice((i - 1, j)).into();
+                let pr = pe.get_slice((i, j)).into();
+                euler::riemann_hlle(pl, pr, Direction::I, GAMMA_LAW_INDEX).write_to_slice(f);
+            },
+        ),
+        Axis::J => Patch::from_slice_function(
+            pe.level(),
+            pe.index_space().trim_lower(1, Axis::J),
+            pe.num_fields(),
+            |(i, j), f| {
+                let pl = pe.get_slice((i, j - 1)).into();
+                let pr = pe.get_slice((i, j)).into();
+                euler::riemann_hlle(pl, pr, Direction::J, GAMMA_LAW_INDEX).write_to_slice(f);
+            },
+        ),
+    }
+}
 
 /**
  * The mesh
  */
-#[derive(serde::Serialize)]
 struct Mesh {
     area: Rectangle<f64>,
     size: (usize, usize),
@@ -56,22 +80,17 @@ struct State {
 
 impl State {
     fn new() -> Self {
-        let block_size = 10;
+        let bs = 10;
         let mesh = Mesh {
             area: (0.0..1.0, 0.0..1.0),
             size: (40, 40),
         };
         let model = Model {};
-        let primitive = |index| model.primitive_at(mesh.cell_center(index)).as_array();
+        let initial_data = |i| model.primitive_at(mesh.cell_center(i)).as_array();
         let primitive = range2d(0..4, 0..4)
             .iter()
-            .map(|(i, j)| {
-                (
-                    i * block_size..(i + 1) * block_size,
-                    j * block_size..(j + 1) * block_size,
-                )
-            })
-            .map(|rect| Patch::from_vector_function(0, rect, primitive))
+            .map(|(i, j)| (i * bs..(i + 1) * bs, j * bs..(j + 1) * bs))
+            .map(|rect| Patch::from_vector_function(0, rect, initial_data))
             .collect();
 
         Self {
@@ -133,12 +152,10 @@ impl Automaton for PatchUpdate {
             .iter()
             .cloned()
             .map(|(rect, level)| {
-    
                 let overlap = IndexSpace::from(rect.clone())
                     .extend_all(NUM_GUARD * (1 << level))
                     .coarsen_by(1 << self.primitive.level())
                     .intersect(self.primitive.index_space());
-
                 (rect, self.primitive.extract(overlap))
             })
             .collect()
@@ -157,19 +174,41 @@ impl Automaton for PatchUpdate {
             primitive,
         } = self;
 
-        meshing::extend_patch(primitive, |s| s.extend_all(NUM_GUARD), |_, _| {}, &neighbor_patches)
+        let space = primitive.index_space();
+        let _uc = Patch::from_vector_function(primitive.level(), space.clone(), |i| {
+            Primitive::from(primitive.get_slice(i))
+                .to_conserved(GAMMA_LAW_INDEX)
+                .as_array()
+        });
+
+        let pe = meshing::extend_patch(
+            &primitive,
+            |s| s.extend_all(NUM_GUARD),
+            |_index, slice| slice.clone_from_slice(&[1.0, 0.0, 0.0, 0.0, 1.0]),
+            &neighbor_patches,
+        );
+
+        let flux_i = compute_flux(&pe, Axis::I);
+        let flux_j = compute_flux(&pe, Axis::J);
+
+        for (i, j) in space.iter() {
+            let _fim = flux_i.get_slice((i, j));
+            let _fjm = flux_j.get_slice((i, j));
+            let _fip = flux_i.get_slice((i + 1, j));
+            let _fjp = flux_j.get_slice((i, j + 1));
+        }
+
+        pe
     }
 }
 
 // ============================================================================
 fn main() {
-    let state = State::new();
-
     let State {
         iteration,
         time,
         primitive,
-    } = state;
+    } = State::new();
 
     let primitive_map: RectangleMap<_, _> = primitive
         .into_iter()
@@ -177,7 +216,8 @@ fn main() {
         .collect();
 
     let edge_list = primitive_map.adjacency_list(2);
-    let task_list = primitive_map.into_iter()
+    let task_list = primitive_map
+        .into_iter()
         .map(|(_, patch)| PatchUpdate::new(patch, &edge_list));
 
     let primitive = automaton::execute(task_list).collect();
