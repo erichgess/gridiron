@@ -228,6 +228,12 @@ impl Primitive {
 
 
 // ============================================================================
+impl From<&[f64]> for Conserved {
+    fn from(prim: &[f64]) -> Self {
+        Self::from_slice(prim)
+    }
+}
+
 impl From<&[f64]> for Primitive {
     fn from(prim: &[f64]) -> Self {
         Self::from_slice(prim)
