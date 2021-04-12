@@ -31,6 +31,10 @@ impl Mesh {
         let x1 = self.area.1.start + d1 * (index.1 as f64 + 0.5);
         (x0, x1)
     }
+
+    fn total_zones(&self) -> i64 {
+        self.size.0 * self.size.1
+    }
 }
 
 /**
@@ -168,15 +172,10 @@ impl Automaton for PatchUpdate {
             mesh
         } = self;
         let space = primitive.index_space();
-        let uc = Patch::from_vector_function(primitive.level(), space.clone(), |i| {
-            Primitive::from(primitive.get_slice(i))
-                .to_conserved(GAMMA_LAW_INDEX)
-                .as_array()
-        });
         let pe = meshing::extend_patch(
             &primitive,
             |s| s.extend_all(NUM_GUARD),
-            |_index, slice| slice.clone_from_slice(&[1.0, 0.0, 0.0, 0.0, 1.0]),
+            |_index, slice| slice.clone_from_slice(&[0.1, 0.0, 0.0, 0.0, 0.125]),
             &neighbor_patches,
         );
         let flux_i = Self::compute_flux(&pe, Axis::I);
@@ -186,20 +185,20 @@ impl Automaton for PatchUpdate {
             let fjm = flux_j.get_slice((i, j));
             let fip = flux_i.get_slice((i + 1, j));
             let fjp = flux_j.get_slice((i, j + 1));
-            let uc = uc.get_slice((i, j));
 
+            let uc = Primitive::from(pe.get_slice((i, j))).to_conserved(GAMMA_LAW_INDEX).as_array();
             let (dx, dy) = mesh.cell_spacing();
-            let dt = 0.1 * f64::min(dx, dy);
+            let dt = 0.0004;
 
             for i in 0..5 {
                 u[i] = uc[i] - (fip[i] - fim[i]) * dt / dx - (fjp[i] - fjm[i]) * dt / dy;
             }
         });
-        Patch::from_vector_function(next_u.level(), next_u.index_space(), |i| {
+        Patch::from_slice_function(next_u.level(), next_u.index_space(), 5, |i, slice| {
             Conserved::from(next_u.get_slice(i))
                 .to_primitive(GAMMA_LAW_INDEX)
                 .unwrap()
-                .as_array()
+                .write_to_slice(slice)
         })
     }
 }
@@ -208,11 +207,11 @@ impl Automaton for PatchUpdate {
 fn main() {
     let mesh = Mesh {
         area: (-1.0..1.0, -1.0..1.0),
-        size: (500, 500),
+        size: (1000, 1000),
     };
     let State {
-        iteration,
-        time,
+        mut iteration,
+        mut time,
         primitive,
     } = State::new(&mesh);
 
@@ -222,11 +221,23 @@ fn main() {
         .collect();
 
     let edge_list = primitive_map.adjacency_list(2);
-    let task_list = primitive_map
-        .into_iter()
-        .map(|(_, patch)| PatchUpdate::new(patch, mesh.clone(), &edge_list));
+    let mut primitive: Vec<_> = primitive_map.into_iter().map(|(_, prim)| prim).collect();
 
-    let primitive = automaton::execute(task_list).collect();
+    while time < 0.1 {
+        let start = std::time::Instant::now();
+        let task_list = primitive
+            .into_iter()
+            .map(|patch| PatchUpdate::new(patch, mesh.clone(), &edge_list));
+        primitive = automaton::execute(task_list).collect();
+        iteration += 1;
+        time += 0.0004;
+
+        let step_seconds = start.elapsed().as_secs_f64();
+        let mzps = mesh.total_zones() as f64 / 1e6 / step_seconds;
+
+        println!("[{}] t={:.3} Mzps={:.2}", iteration, time, mzps);
+    }
+
     let state = State {
         iteration,
         time,
