@@ -313,11 +313,28 @@ impl Patch {
         let memory_region = index_space.memory_region();
 
         index_space
-        .iter()
-        .zip(memory_region.iter_slice_mut(&mut self.data, num_fields))
-        .for_each(|(index, slice)| f(index, slice))
+            .iter()
+            .zip(memory_region.iter_slice_mut(&mut self.data, num_fields))
+            .for_each(|(index, slice)| f(index, slice))
     }
 
+
+    pub fn map<F>(&self, f: F) -> Self
+    where
+        F: Fn((&[f64], &mut [f64]))
+    {
+        let mut data = vec![0.0; self.data.len()];
+        self.data
+            .chunks_exact(self.num_fields)
+            .zip(data.chunks_exact_mut(self.num_fields))
+            .for_each(f);
+        Self {
+            level: self.level,
+            rect: self.rect.clone(),
+            num_fields: self.num_fields,
+            data,
+        }
+    }
 
 
     // ========================================================================

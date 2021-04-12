@@ -1,6 +1,6 @@
 use gridiron::adjacency_list::AdjacencyList;
 use gridiron::automaton::{self, Automaton, Status};
-use gridiron::hydro::{euler, euler::Conserved, euler::Primitive, geometry::Direction};
+use gridiron::hydro::{euler2d, euler2d::Conserved, euler2d::Primitive, geometry::Direction};
 use gridiron::index_space::{range2d, Axis, IndexSpace};
 use gridiron::meshing::{self, GraphTopology};
 use gridiron::patch::Patch;
@@ -43,14 +43,14 @@ impl Mesh {
 struct Model {}
 
 impl Model {
-    fn primitive_at(&self, position: (f64, f64)) -> euler::Primitive {
+    fn primitive_at(&self, position: (f64, f64)) -> Primitive {
         let (x, y) = position;
         let r = (x * x + y * y).sqrt();
 
         if r < 0.24 {
-            euler::Primitive::new(1.0, 0.0, 0.0, 0.0, 1.0)
+            Primitive::new(1.0, 0.0, 0.0, 1.0)
         } else {
-            euler::Primitive::new(0.1, 0.0, 0.0, 0.0, 0.125)
+            Primitive::new(0.1, 0.0, 0.0, 0.125)
         }
     }
 }
@@ -118,7 +118,7 @@ impl PatchUpdate {
                 |(i, j), f| {
                     let pl = pe.get_slice((i - 1, j)).into();
                     let pr = pe.get_slice((i, j)).into();
-                    euler::riemann_hlle(pl, pr, Direction::I, GAMMA_LAW_INDEX).write_to_slice(f);
+                    euler2d::riemann_hlle(pl, pr, Direction::I, GAMMA_LAW_INDEX).write_to_slice(f);
                 },
             ),
             Axis::J => Patch::from_slice_function(
@@ -128,7 +128,7 @@ impl PatchUpdate {
                 |(i, j), f| {
                     let pl = pe.get_slice((i, j - 1)).into();
                     let pr = pe.get_slice((i, j)).into();
-                    euler::riemann_hlle(pl, pr, Direction::J, GAMMA_LAW_INDEX).write_to_slice(f);
+                    euler2d::riemann_hlle(pl, pr, Direction::J, GAMMA_LAW_INDEX).write_to_slice(f);
                 },
             ),
         }
@@ -175,12 +175,12 @@ impl Automaton for PatchUpdate {
         let pe = meshing::extend_patch(
             &primitive,
             |s| s.extend_all(NUM_GUARD),
-            |_index, slice| slice.clone_from_slice(&[0.1, 0.0, 0.0, 0.0, 0.125]),
+            |_index, slice| slice.clone_from_slice(&[0.1, 0.0, 0.0, 0.125]),
             &neighbor_patches,
         );
         let flux_i = Self::compute_flux(&pe, Axis::I);
         let flux_j = Self::compute_flux(&pe, Axis::J);
-        let next_u = Patch::from_slice_function(0, space, 5, |(i, j), u|  {
+        let next_u = Patch::from_slice_function(0, space, 4, |(i, j), u|  {
             let fim = flux_i.get_slice((i, j));
             let fjm = flux_j.get_slice((i, j));
             let fip = flux_i.get_slice((i + 1, j));
@@ -190,16 +190,11 @@ impl Automaton for PatchUpdate {
             let (dx, dy) = mesh.cell_spacing();
             let dt = 0.0004;
 
-            for i in 0..5 {
+            for i in 0..4 {
                 u[i] = uc[i] - (fip[i] - fim[i]) * dt / dx - (fjp[i] - fjm[i]) * dt / dy;
             }
         });
-        Patch::from_slice_function(next_u.level(), next_u.index_space(), 5, |i, slice| {
-            Conserved::from(next_u.get_slice(i))
-                .to_primitive(GAMMA_LAW_INDEX)
-                .unwrap()
-                .write_to_slice(slice)
-        })
+        next_u.map(|(u, slice)| Conserved::from(u).to_primitive(GAMMA_LAW_INDEX).unwrap().write_to_slice(slice))
     }
 }
 
@@ -222,6 +217,8 @@ fn main() {
 
     let edge_list = primitive_map.adjacency_list(2);
     let mut primitive: Vec<_> = primitive_map.into_iter().map(|(_, prim)| prim).collect();
+
+    println!("num total blocks: {}", primitive.len());
 
     while time < 0.1 {
         let start = std::time::Instant::now();

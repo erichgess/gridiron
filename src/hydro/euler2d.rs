@@ -6,27 +6,8 @@ use super::geometry::{Direction, Vector3d};
 
 
 // ============================================================================
-pub struct Conserved(f64, f64, f64, f64, f64);
-pub struct Primitive(f64, f64, f64, f64, f64);
-pub struct Euler {
-    gamma_law_index: f64,
-}
-
-
-
-
-// ============================================================================
-impl Euler {
-
-    #[allow(clippy::unit_arg)]
-    pub fn cons_to_prim(&self, cons: &[f64], prim: &mut [f64]) -> Result<(), Error> {
-        Ok(Conserved::from_slice(cons).to_primitive(self.gamma_law_index)?.write_to_slice(prim))
-    }
-
-    pub fn prim_to_cons(&self, prim: &[f64], cons: &mut [f64]) {
-        Primitive::from_slice(prim).to_conserved(self.gamma_law_index).write_to_slice(cons)
-    }
-}
+pub struct Conserved(f64, f64, f64, f64);
+pub struct Primitive(f64, f64, f64, f64);
 
 
 
@@ -35,7 +16,7 @@ impl Euler {
 impl Conserved {
 
     fn from_slice(cons: &[f64]) -> Self {
-        Self(cons[0], cons[1], cons[2], cons[3], cons[4])
+        Self(cons[0], cons[1], cons[2], cons[3])
     }
 
     pub fn write_to_slice(&self, cons: &mut [f64]) {
@@ -43,11 +24,10 @@ impl Conserved {
         cons[1] = self.1;
         cons[2] = self.2;
         cons[3] = self.3;
-        cons[4] = self.4;
     }
 
-    pub fn as_array(&self) -> [f64; 5] {
-        [self.0, self.1, self.2, self.3, self.4]
+    pub fn as_array(&self) -> [f64; 4] {
+        [self.0, self.1, self.2, self.3]
     }
 
     pub fn mass_density(&self) -> f64 {
@@ -63,27 +43,27 @@ impl Conserved {
     }
 
     pub fn momentum_3(&self) -> f64 {
-        self.3
+        0.0
     }
 
     pub fn energy_density(&self) -> f64 {
-        self.4
+        self.3
     }
 
     pub fn momentum_vector(&self)  -> Vector3d {
-        Vector3d::new(self.momentum_1(), self.momentum_2(), self.momentum_3())
+        Vector3d::new(self.momentum_1(), self.momentum_2(), 0.0)
     }
 
     pub fn momentum(&self, direction: Direction) -> f64 {
         match direction {
             Direction::I => self.momentum_1(),
             Direction::J => self.momentum_2(),
-            Direction::K => self.momentum_3(),
+            Direction::K => 0.0,
         }
     }
 
     pub fn momentum_squared(&self) -> f64 {
-        self.1 * self.1 + self.2 * self.2 + self.3 * self.3
+        self.1 * self.1 + self.2 * self.2
     }
 
     pub fn to_primitive(&self, gamma_law_index: f64) -> Result<Primitive, Error> {
@@ -92,14 +72,13 @@ impl Conserved {
         let pg = et * (gamma_law_index - 1.0);
         let v1 = self.momentum_1() / self.mass_density();
         let v2 = self.momentum_2() / self.mass_density();
-        let v3 = self.momentum_3() / self.mass_density();
 
         if self.mass_density() < 0.0 {
             Err(Error::NegativeMassDensity(self.mass_density()))
         } else if pg < 0.0 {
             Err(Error::NegativeGasPressure(pg))
         } else {
-            Ok(Primitive(self.mass_density(), v1, v2, v3, pg))
+            Ok(Primitive(self.mass_density(), v1, v2, pg))
         }
     }
 }
@@ -111,7 +90,7 @@ impl Conserved {
 impl Primitive {
 
     fn from_slice(prim: &[f64]) -> Self {
-        Self(prim[0], prim[1], prim[2], prim[3], prim[4])
+        Self(prim[0], prim[1], prim[2], prim[3])
     }
 
     pub fn write_to_slice(&self, prim: &mut [f64]) {
@@ -119,15 +98,14 @@ impl Primitive {
         prim[1] = self.1;
         prim[2] = self.2;
         prim[3] = self.3;
-        prim[4] = self.4;
     }
 
-    pub fn new(d0: f64, u0: f64, v0: f64, w0: f64, e0: f64) -> Self {
-        Self(d0, u0, v0, w0, e0)
+    pub fn new(d0: f64, u0: f64, v0: f64, e0: f64) -> Self {
+        Self(d0, u0, v0, e0)
     }
 
-    pub fn as_array(&self) -> [f64; 5] {
-        [self.0, self.1, self.2, self.3, self.4]
+    pub fn as_array(&self) -> [f64; 4] {
+        [self.0, self.1, self.2, self.3]
     }
 
     pub fn mass_density(&self) -> f64 {
@@ -143,23 +121,23 @@ impl Primitive {
     }
 
     pub fn velocity_3(&self) -> f64 {
-        self.3
+        0.0
     }
 
     pub fn gas_pressure(&self) -> f64 {
-        self.4
+        self.3
     }
 
     pub fn velocity(&self, direction: Direction) -> f64 {
         match direction {
             Direction::I => self.velocity_1(),
             Direction::J => self.velocity_2(),
-            Direction::K => self.velocity_3(),
+            Direction::K => 0.0,
         }
     }
 
     pub fn velocity_squared(&self) -> f64 {
-        self.1 * self.1 + self.2 * self.2 + self.3 * self.3
+        self.1 * self.1 + self.2 * self.2
     }
 
     pub fn sound_speed_squared(&self, gamma_law_index: f64) -> f64 {
@@ -197,7 +175,6 @@ impl Primitive {
             d,
             d * self.velocity_1(),
             d * self.velocity_2(),
-            d * self.velocity_3(),
             d * vsq * 0.5 + p / (gamma_law_index - 1.0)
         )
     }
@@ -211,15 +188,14 @@ impl Primitive {
              u.0 * vn,
              u.1 * vn + pg * direction.along(Direction::I),
              u.2 * vn + pg * direction.along(Direction::J),
-             u.3 * vn + pg * direction.along(Direction::K),
-             u.4 * vn + pg * vn)
+             u.3 * vn + pg * vn)
     }
 
     pub fn reflect(&self, direction: Direction) -> Primitive {
         match direction {
-            Direction::I => Primitive(self.0, -self.1, self.2, self.3, self.4),
-            Direction::J => Primitive(self.0, self.1, -self.2, self.3, self.4),
-            Direction::K => Primitive(self.0, self.1, self.2, -self.3, self.4),
+            Direction::I => Primitive(self.0, -self.1, self.2, self.3),
+            Direction::J => Primitive(self.0, self.1, -self.2, self.3),
+            Direction::K => panic!(),
         }
     }
 }
@@ -247,28 +223,28 @@ impl From<&[f64]> for Primitive {
 impl Add<Conserved> for Conserved {
     type Output = Conserved;
     fn add(self, u: Self) -> Conserved {
-        Conserved(self.0 + u.0, self.1 + u.1, self.2 + u.2, self.3 + u.3, self.4 + u.4)
+        Conserved(self.0 + u.0, self.1 + u.1, self.2 + u.2, self.3 + u.3)
     }
 }
 
 impl Sub<Conserved> for Conserved {
     type Output = Self;
     fn sub(self, u: Self) -> Self {
-        Self(self.0 - u.0, self.1 - u.1, self.2 - u.2, self.3 - u.3, self.4 - u.4)
+        Self(self.0 - u.0, self.1 - u.1, self.2 - u.2, self.3 - u.3)
     }
 }
 
 impl Mul<f64> for Conserved {
     type Output = Self;
     fn mul(self, a: f64) -> Self {
-        Self(self.0 * a, self.1 * a, self.2 * a, self.3 * a, self.4 * a)
+        Self(self.0 * a, self.1 * a, self.2 * a, self.3 * a)
     }
 }
 
 impl Div<f64> for Conserved {
     type Output = Self;
     fn div(self, a: f64) -> Self {
-        Self(self.0 / a, self.1 / a, self.2 / a, self.3 / a, self.4 / a)
+        Self(self.0 / a, self.1 / a, self.2 / a, self.3 / a)
     }
 }
 
