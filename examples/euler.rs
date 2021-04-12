@@ -92,6 +92,7 @@ struct PatchUpdate {
     neighbor_patches: Vec<Patch>,
     incoming_count: usize,
     primitive: Patch,
+    conserved: Patch,
     mesh: Mesh,
 }
 
@@ -102,6 +103,11 @@ impl PatchUpdate {
             outgoing_edges: edge_list.outgoing_edges(&key).cloned().collect(),
             incoming_count: edge_list.incoming_edges(&key).count(),
             neighbor_patches: Vec::new(),
+            conserved: primitive.map(|(p, u)| {
+                Primitive::from(p)
+                    .to_conserved(GAMMA_LAW_INDEX)
+                    .write_to_slice(u)
+            }),
             primitive,
             mesh,
         }
@@ -138,7 +144,7 @@ impl PatchUpdate {
 impl Automaton for PatchUpdate {
     type Key = Rectangle<i64>;
     type Message = Patch;
-    type Value = Patch;
+    type Value = Self;
 
     fn key(&self) -> Self::Key {
         self.primitive.high_resolution_space().into()
@@ -165,11 +171,12 @@ impl Automaton for PatchUpdate {
 
     fn value(self) -> Self::Value {
         let Self {
-            outgoing_edges: _,
+            outgoing_edges,
             neighbor_patches,
-            incoming_count: _,
+            incoming_count,
             primitive,
-            mesh
+            conserved,
+            mesh,
         } = self;
         let space = primitive.index_space();
         let pe = meshing::extend_patch(
@@ -180,13 +187,13 @@ impl Automaton for PatchUpdate {
         );
         let flux_i = Self::compute_flux(&pe, Axis::I);
         let flux_j = Self::compute_flux(&pe, Axis::J);
-        let next_u = Patch::from_slice_function(0, space, 4, |(i, j), u|  {
+        let next_u = Patch::from_slice_function(0, space, 4, |(i, j), u| {
             let fim = flux_i.get_slice((i, j));
             let fjm = flux_j.get_slice((i, j));
             let fip = flux_i.get_slice((i + 1, j));
             let fjp = flux_j.get_slice((i, j + 1));
+            let uc = conserved.get_slice((i, j));
 
-            let uc = Primitive::from(pe.get_slice((i, j))).to_conserved(GAMMA_LAW_INDEX).as_array();
             let (dx, dy) = mesh.cell_spacing();
             let dt = 0.0004;
 
@@ -194,7 +201,19 @@ impl Automaton for PatchUpdate {
                 u[i] = uc[i] - (fip[i] - fim[i]) * dt / dx - (fjp[i] - fjm[i]) * dt / dy;
             }
         });
-        next_u.map(|(u, slice)| Conserved::from(u).to_primitive(GAMMA_LAW_INDEX).unwrap().write_to_slice(slice))
+        Self {
+            outgoing_edges,
+            neighbor_patches: Vec::new(),
+            incoming_count,
+            primitive: next_u.map(|(u, slice)| {
+                Conserved::from(u)
+                    .to_primitive(GAMMA_LAW_INDEX)
+                    .unwrap()
+                    .write_to_slice(slice)
+            }),
+            conserved: next_u,
+            mesh,
+        }
     }
 }
 
@@ -216,16 +235,19 @@ fn main() {
         .collect();
 
     let edge_list = primitive_map.adjacency_list(2);
-    let mut primitive: Vec<_> = primitive_map.into_iter().map(|(_, prim)| prim).collect();
+    let primitive: Vec<_> = primitive_map.into_iter().map(|(_, prim)| prim).collect();
 
     println!("num total blocks: {}", primitive.len());
 
+    let mut task_list: Vec<_> = primitive
+        .into_iter()
+        .map(|patch| PatchUpdate::new(patch, mesh.clone(), &edge_list))
+        .collect();
+
     while time < 0.1 {
         let start = std::time::Instant::now();
-        let task_list = primitive
-            .into_iter()
-            .map(|patch| PatchUpdate::new(patch, mesh.clone(), &edge_list));
-        primitive = automaton::execute(task_list).collect();
+
+        task_list = automaton::execute(task_list).collect();
         iteration += 1;
         time += 0.0004;
 
@@ -235,6 +257,7 @@ fn main() {
         println!("[{}] t={:.3} Mzps={:.2}", iteration, time, mzps);
     }
 
+    let primitive = task_list.into_iter().map(|block| block.primitive).collect();
     let state = State {
         iteration,
         time,

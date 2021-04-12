@@ -304,19 +304,19 @@ impl Patch {
     }
 
 
-    pub fn for_each_mut<F>(&mut self, f: F)
-    where
-        F: Fn((i64, i64), &mut [f64])
-    {
-        let num_fields = self.num_fields();
-        let index_space = self.index_space();
-        let memory_region = index_space.memory_region();
+    // pub fn for_each_mut<F>(&mut self, f: F)
+    // where
+    //     F: Fn((i64, i64), &mut [f64])
+    // {
+    //     let num_fields = self.num_fields();
+    //     let index_space = self.index_space();
+    //     let memory_region = index_space.memory_region();
 
-        index_space
-            .iter()
-            .zip(memory_region.iter_slice_mut(&mut self.data, num_fields))
-            .for_each(|(index, slice)| f(index, slice))
-    }
+    //     index_space
+    //         .iter()
+    //         .zip(memory_region.iter_slice_mut(&mut self.data, num_fields))
+    //         .for_each(|(index, slice)| f(index, slice))
+    // }
 
 
     pub fn map<F>(&self, f: F) -> Self
