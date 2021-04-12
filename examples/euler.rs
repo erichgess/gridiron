@@ -244,14 +244,22 @@ fn main() {
         .map(|patch| PatchUpdate::new(patch, mesh.clone(), &edge_list))
         .collect();
 
+    let advance4 = |task_list| -> Vec<_> {
+        let task_list = automaton::execute(task_list);
+        let task_list = automaton::execute(task_list);
+        let task_list = automaton::execute(task_list);
+        let task_list = automaton::execute(task_list);
+        task_list.collect()
+    };
+
     while time < 0.1 {
         let start = std::time::Instant::now();
 
-        task_list = automaton::execute(task_list).collect();
-        iteration += 1;
+        task_list = advance4(task_list);
+        iteration += 4;
         time += 0.0004;
 
-        let step_seconds = start.elapsed().as_secs_f64();
+        let step_seconds = start.elapsed().as_secs_f64() / 4.0;
         let mzps = mesh.total_zones() as f64 / 1e6 / step_seconds;
 
         println!("[{}] t={:.3} Mzps={:.2}", iteration, time, mzps);
