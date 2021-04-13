@@ -9,9 +9,8 @@ use gridiron::rect_map::{Rectangle, RectangleMap};
 const NUM_GUARD: i64 = 1;
 const GAMMA_LAW_INDEX: f64 = 5.0 / 3.0;
 
-/**
- * The mesh
- */
+/// The mesh
+///
 #[derive(Clone)]
 struct Mesh {
     area: Rectangle<f64>,
@@ -37,9 +36,8 @@ impl Mesh {
     }
 }
 
-/**
- * The initial model
- */
+/// The initial model
+///
 struct Model {}
 
 impl Model {
@@ -55,9 +53,8 @@ impl Model {
     }
 }
 
-/**
- * The simulation solution state
- */
+/// The simulation solution state
+///
 #[derive(serde::Serialize)]
 struct State {
     time: f64,
@@ -67,7 +64,7 @@ struct State {
 
 impl State {
     fn new(mesh: &Mesh) -> Self {
-        let bs = 100;
+        let bs = 200;
         let ni = mesh.size.0 / bs;
         let nj = mesh.size.1 / bs;
         let model = Model {};
@@ -123,25 +120,17 @@ impl PatchUpdate {
 
 impl PatchUpdate {
     fn compute_flux(pe: &Patch, axis: Axis, flux: &mut Patch) {
-        let lmem = flux
-            .index_space()
-            .translate(-1, axis)
-            .memory_region_in(&pe.index_space());
-        let rmem = flux
-            .index_space()
-            .translate(0, axis)
-            .memory_region_in(&pe.index_space());
+        let pl = pe.select(flux.index_space().translate(-1, axis));
+        let pr = pe.select(flux.index_space());
 
-        let pl = lmem.iter_slice(pe.data(), pe.num_fields());
-        let pr = rmem.iter_slice(pe.data(), pe.num_fields());
         let dir = match axis {
             Axis::I => Direction::I,
             Axis::J => Direction::J,
         };
 
-        pl.zip(pr).zip(flux.data_iter_mut()).for_each(|(p, f)| {
-            euler2d::riemann_hlle(p.0.into(), p.1.into(), dir, GAMMA_LAW_INDEX).write_to_slice(f)
-        });
+        for ((pl, pr), f) in pl.zip(pr).zip(flux.iter_data_mut()) {
+            euler2d::riemann_hlle(pl.into(), pr.into(), dir, GAMMA_LAW_INDEX).write_to_slice(f)
+        }
     }
 
     fn primitive(&self) -> Patch {
@@ -199,16 +188,16 @@ impl Automaton for PatchUpdate {
 
     fn value(self) -> Self::Value {
         let Self {
-            outgoing_edges,
-            incoming_count,
-            mesh,
-            index_space,
-            level,
-            mut neighbor_patches,
-            mut extended_primitive,
             mut conserved,
+            mut extended_primitive,
             mut flux_i,
             mut flux_j,
+            incoming_count,
+            index_space,
+            level,
+            mesh,
+            mut neighbor_patches,
+            outgoing_edges,
         } = self;
 
         meshing::extend_patch_mut(
@@ -225,17 +214,31 @@ impl Automaton for PatchUpdate {
         let (dx, dy) = mesh.cell_spacing();
         let dt = 0.0004;
 
-        for (i, j) in conserved.index_space().iter() {
+        // let fim = flux_i.select(index_space.clone());
+        // let fip = flux_i.select(index_space.translate(1, Axis::I));
+        // let fjm = flux_j.select(index_space.clone());
+        // let fjp = flux_j.select(index_space.translate(1, Axis::J));
+
+        // for (((fip, fim), (fjp, fjm)), (u, p)) in fip.zip(fim).zip(fjp.zip(fjm)).zip(u.zip(p)) {
+        //     for (n, u) in u.iter_mut().enumerate() {
+        //         *u -= (fip[n] - fim[n]) * dt / dx + (fjp[n] - fjm[n]) * dt / dy;
+        //     }
+        //     Self::cons_to_prim(u, p)
+        // }
+
+        let u = conserved.iter_data_mut();
+        let p = extended_primitive.select_mut(index_space.clone());
+
+        for ((i, j), (u, p)) in index_space.iter().zip(u.zip(p)) {
             let fim = flux_i.get_slice((i, j));
             let fjm = flux_j.get_slice((i, j));
             let fip = flux_i.get_slice((i + 1, j));
             let fjp = flux_j.get_slice((i, j + 1));
-            let u = conserved.get_slice_mut((i, j));
             for (n, u) in u.iter_mut().enumerate() {
                 *u -= (fip[n] - fim[n]) * dt / dx + (fjp[n] - fjm[n]) * dt / dy;
             }
+            Self::cons_to_prim(u, p)
         }
-        conserved.map_into(&mut extended_primitive, Self::cons_to_prim);
 
         Self {
             conserved,
@@ -279,28 +282,23 @@ fn main() {
         .map(|patch| PatchUpdate::new(patch, mesh.clone(), &edge_list))
         .collect();
 
-    let advance4 = |task_list| -> Vec<_> {
-        let task_list = automaton::execute(task_list);
-        let task_list = automaton::execute(task_list);
-        let task_list = automaton::execute(task_list);
-        let task_list = automaton::execute(task_list);
-        task_list.collect()
-    };
-
-    while time < 0.025 {
+    while time < 0.1 {
         let start = std::time::Instant::now();
 
-        task_list = advance4(task_list);
-        iteration += 4;
+        task_list = automaton::execute(task_list).collect();
+        iteration += 1;
         time += 0.0004;
 
-        let step_seconds = start.elapsed().as_secs_f64() / 4.0;
+        let step_seconds = start.elapsed().as_secs_f64();
         let mzps = mesh.total_zones() as f64 / 1e6 / step_seconds;
 
         println!("[{}] t={:.3} Mzps={:.2}", iteration, time, mzps);
     }
 
-    let primitive = task_list.into_iter().map(|block| block.primitive()).collect();
+    let primitive = task_list
+        .into_iter()
+        .map(|block| block.primitive())
+        .collect();
     let state = State {
         iteration,
         time,

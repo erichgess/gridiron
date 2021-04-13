@@ -292,7 +292,7 @@ impl IndexSpace {
      * Return a memory region object corresponding to the selection of this
      * index space in the buffer allocated for another one.
      */
-    pub fn memory_region_in(&self, parent: &Self) -> MemoryRegion {
+    pub fn memory_region_in(&self, parent: Self) -> MemoryRegion {
         let start = (
             (self.di.start - parent.di.start) as usize,
             (self.dj.start - parent.dj.start) as usize);
@@ -387,10 +387,10 @@ pub struct MemoryRegion {
 // ============================================================================
 impl MemoryRegion {
 
-    pub fn iter_slice<'a>(&'a self, slice: &'a [f64], chunk: usize) -> impl Iterator<Item = &'a [f64]> {
-        let start = &self.start;
-        let shape = &self.shape;
-        let count = &self.count;
+    pub fn iter_slice<'a>(self, slice: &'a [f64], chunk: usize) -> impl Iterator<Item = &'a [f64]> {
+        let start = self.start;
+        let shape = self.shape;
+        let count = self.count;
         let r = chunk;
         let q = shape.1 * r;
 
@@ -401,10 +401,10 @@ impl MemoryRegion {
         .chunks_exact(r))
     }
 
-    pub fn iter_slice_mut<'a>(&'a self, slice: &'a mut [f64], chunk: usize) -> impl Iterator<Item = &'a mut [f64]> {
-        let start = &self.start;
-        let shape = &self.shape;
-        let count = &self.count;
+    pub fn iter_slice_mut<'a>(self, slice: &'a mut [f64], chunk: usize) -> impl Iterator<Item = &'a mut [f64]> {
+        let start = self.start;
+        let shape = self.shape;
+        let count = self.count;
         let r = chunk;
         let q = shape.1 * r;
 

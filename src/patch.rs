@@ -153,8 +153,16 @@ impl Patch {
         &self.data
     }
 
-    pub fn data_iter_mut(&mut self) -> impl Iterator<Item = &mut [f64]> {
+    pub fn iter_data_mut(&mut self) -> impl Iterator<Item = &mut [f64]> {
         self.data.chunks_exact_mut(self.num_fields)
+    }
+
+    pub fn select<'a>(&'a self, subspace: IndexSpace) -> impl Iterator<Item = &'a [f64]> {
+        subspace.memory_region_in(self.index_space()).iter_slice(&self.data, self.num_fields)
+    }
+
+    pub fn select_mut<'a>(&'a mut self, subspace: IndexSpace) -> impl Iterator<Item = &'a mut [f64]> {
+        subspace.memory_region_in(self.index_space()).iter_slice_mut(&mut self.data, self.num_fields)
     }
 
     /// Return this patch's rectangle.
@@ -286,8 +294,8 @@ impl Patch {
         assert!(self.num_fields == target.num_fields);
 
         let overlap_space = self.index_space().intersect(target.index_space());
-        let source_region = overlap_space.memory_region_in(&self.index_space());
-        let target_region = overlap_space.memory_region_in(&target.index_space());
+        let source_region = overlap_space.memory_region_in(self.index_space());
+        let target_region = overlap_space.memory_region_in(target.index_space());
 
         source_region
             .iter_slice(&self.data, self.num_fields)
