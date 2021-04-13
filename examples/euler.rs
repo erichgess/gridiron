@@ -91,14 +91,20 @@ struct PatchUpdate {
     outgoing_edges: Vec<(Rectangle<i64>, u32)>,
     neighbor_patches: Vec<Patch>,
     incoming_count: usize,
-    primitive: Patch,
     conserved: Patch,
+    primitive: Patch,
+    extended_primitive: Patch,
+    flux_i: Patch,
+    flux_j: Patch,
     mesh: Mesh,
 }
 
 impl PatchUpdate {
     fn new(primitive: Patch, mesh: Mesh, edge_list: &AdjacencyList<(Rectangle<i64>, u32)>) -> Self {
         let key = (primitive.high_resolution_rect(), primitive.level());
+        let lv = primitive.level();
+        let nq = primitive.num_fields();
+        let space = primitive.index_space();
         Self {
             outgoing_edges: edge_list.outgoing_edges(&key).cloned().collect(),
             incoming_count: edge_list.incoming_edges(&key).count(),
@@ -108,6 +114,9 @@ impl PatchUpdate {
                     .to_conserved(GAMMA_LAW_INDEX)
                     .write_to_slice(u)
             }),
+            flux_i: Patch::zeros(lv, nq, space.extend_upper(1, Axis::I)),
+            flux_j: Patch::zeros(lv, nq, space.extend_upper(1, Axis::J)),
+            extended_primitive: Patch::zeros(lv, nq, space.extend_all(NUM_GUARD)),
             primitive,
             mesh,
         }
@@ -115,28 +124,18 @@ impl PatchUpdate {
 }
 
 impl PatchUpdate {
-    fn compute_flux(pe: &Patch, axis: Axis) -> Patch {
+    fn compute_flux(pe: &Patch, axis: Axis, flux: &mut Patch) {
         match axis {
-            Axis::I => Patch::from_slice_function(
-                pe.level(),
-                pe.index_space().trim_lower(1, Axis::I),
-                pe.num_fields(),
-                |(i, j), f| {
-                    let pl = pe.get_slice((i - 1, j)).into();
-                    let pr = pe.get_slice((i, j)).into();
-                    euler2d::riemann_hlle(pl, pr, Direction::I, GAMMA_LAW_INDEX).write_to_slice(f);
-                },
-            ),
-            Axis::J => Patch::from_slice_function(
-                pe.level(),
-                pe.index_space().trim_lower(1, Axis::J),
-                pe.num_fields(),
-                |(i, j), f| {
-                    let pl = pe.get_slice((i, j - 1)).into();
-                    let pr = pe.get_slice((i, j)).into();
-                    euler2d::riemann_hlle(pl, pr, Direction::J, GAMMA_LAW_INDEX).write_to_slice(f);
-                },
-            ),
+            Axis::I => flux.for_each_index_mut(|(i, j), f| {
+                let pl = pe.get_slice((i - 1, j)).into();
+                let pr = pe.get_slice((i, j)).into();
+                euler2d::riemann_hlle(pl, pr, Direction::I, GAMMA_LAW_INDEX).write_to_slice(f);
+            }),
+            Axis::J => flux.for_each_index_mut(|(i, j), f| {
+                let pl = pe.get_slice((i, j - 1)).into();
+                let pr = pe.get_slice((i, j)).into();
+                euler2d::riemann_hlle(pl, pr, Direction::J, GAMMA_LAW_INDEX).write_to_slice(f);
+            }),
         }
     }
 }
@@ -172,46 +171,55 @@ impl Automaton for PatchUpdate {
     fn value(self) -> Self::Value {
         let Self {
             outgoing_edges,
-            neighbor_patches,
             incoming_count,
-            primitive,
-            conserved,
             mesh,
+            mut neighbor_patches,
+            mut primitive,
+            mut extended_primitive,
+            mut conserved,
+            mut flux_i,
+            mut flux_j,
         } = self;
-        let space = primitive.index_space();
-        let pe = meshing::extend_patch(
+
+        meshing::extend_patch_mut(
             &primitive,
-            |s| s.extend_all(NUM_GUARD),
             |_index, slice| slice.clone_from_slice(&[0.1, 0.0, 0.0, 0.125]),
             &neighbor_patches,
+            &mut extended_primitive,
         );
-        let flux_i = Self::compute_flux(&pe, Axis::I);
-        let flux_j = Self::compute_flux(&pe, Axis::J);
-        let next_u = Patch::from_slice_function(0, space, 4, |(i, j), u| {
+        neighbor_patches.clear();
+
+        Self::compute_flux(&extended_primitive, Axis::I, &mut flux_i);
+        Self::compute_flux(&extended_primitive, Axis::J, &mut flux_j);
+
+        let (dx, dy) = mesh.cell_spacing();
+        let dt = 0.0004;
+
+        for (i, j) in conserved.index_space().iter() {
             let fim = flux_i.get_slice((i, j));
             let fjm = flux_j.get_slice((i, j));
             let fip = flux_i.get_slice((i + 1, j));
             let fjp = flux_j.get_slice((i, j + 1));
-            let uc = conserved.get_slice((i, j));
-
-            let (dx, dy) = mesh.cell_spacing();
-            let dt = 0.0004;
-
-            for i in 0..4 {
-                u[i] = uc[i] - (fip[i] - fim[i]) * dt / dx - (fjp[i] - fjm[i]) * dt / dy;
+            let u = conserved.get_slice_mut((i, j));
+            let p = primitive.get_slice_mut((i, j));
+            for (n, u) in u.iter_mut().enumerate() {
+                *u -= (fip[n] - fim[n]) * dt / dx + (fjp[n] - fjm[n]) * dt / dy;
             }
-        });
+            Conserved::from(&u[..])
+                .to_primitive(GAMMA_LAW_INDEX)
+                .unwrap()
+                .write_to_slice(p)
+        }
+
         Self {
             outgoing_edges,
-            neighbor_patches: Vec::new(),
+            neighbor_patches,
             incoming_count,
-            primitive: next_u.map(|(u, slice)| {
-                Conserved::from(u)
-                    .to_primitive(GAMMA_LAW_INDEX)
-                    .unwrap()
-                    .write_to_slice(slice)
-            }),
-            conserved: next_u,
+            primitive,
+            conserved,
+            extended_primitive,
+            flux_i,
+            flux_j,
             mesh,
         }
     }
