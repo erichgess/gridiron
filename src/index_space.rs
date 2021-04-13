@@ -388,9 +388,9 @@ pub struct MemoryRegion {
 impl MemoryRegion {
 
     pub fn iter_slice<'a>(self, slice: &'a [f64], chunk: usize) -> impl Iterator<Item = &'a [f64]> {
-        let start = self.start;
-        let shape = self.shape;
-        let count = self.count;
+        let Self {
+            start, shape, count
+        } = self;
         let r = chunk;
         let q = shape.1 * r;
 
@@ -402,9 +402,9 @@ impl MemoryRegion {
     }
 
     pub fn iter_slice_mut<'a>(self, slice: &'a mut [f64], chunk: usize) -> impl Iterator<Item = &'a mut [f64]> {
-        let start = self.start;
-        let shape = self.shape;
-        let count = self.count;
+        let Self {
+            start, shape, count
+        } = self;
         let r = chunk;
         let q = shape.1 * r;
 

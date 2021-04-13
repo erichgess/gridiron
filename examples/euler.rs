@@ -128,7 +128,7 @@ impl PatchUpdate {
             Axis::J => Direction::J,
         };
 
-        for ((pl, pr), f) in pl.zip(pr).zip(flux.iter_data_mut()) {
+        for (f, (pl, pr)) in flux.iter_data_mut().zip(pl.zip(pr)) {
             euler2d::riemann_hlle(pl.into(), pr.into(), dir, GAMMA_LAW_INDEX).write_to_slice(f)
         }
     }
@@ -214,26 +214,15 @@ impl Automaton for PatchUpdate {
         let (dx, dy) = mesh.cell_spacing();
         let dt = 0.0004;
 
-        // let fim = flux_i.select(index_space.clone());
-        // let fip = flux_i.select(index_space.translate(1, Axis::I));
-        // let fjm = flux_j.select(index_space.clone());
-        // let fjp = flux_j.select(index_space.translate(1, Axis::J));
-
-        // for (((fip, fim), (fjp, fjm)), (u, p)) in fip.zip(fim).zip(fjp.zip(fjm)).zip(u.zip(p)) {
-        //     for (n, u) in u.iter_mut().enumerate() {
-        //         *u -= (fip[n] - fim[n]) * dt / dx + (fjp[n] - fjm[n]) * dt / dy;
-        //     }
-        //     Self::cons_to_prim(u, p)
-        // }
+        let fim = flux_i.select(index_space.clone());
+        let fip = flux_i.select(index_space.translate(1, Axis::I));
+        let fjm = flux_j.select(index_space.clone());
+        let fjp = flux_j.select(index_space.translate(1, Axis::J));
 
         let u = conserved.iter_data_mut();
         let p = extended_primitive.select_mut(index_space.clone());
 
-        for ((i, j), (u, p)) in index_space.iter().zip(u.zip(p)) {
-            let fim = flux_i.get_slice((i, j));
-            let fjm = flux_j.get_slice((i, j));
-            let fip = flux_i.get_slice((i + 1, j));
-            let fjp = flux_j.get_slice((i, j + 1));
+        for (fip, (fim, (fjp, (fjm, (u, p))))) in fip.zip(fim.zip(fjp.zip(fjm.zip(u.zip(p))))) {
             for (n, u) in u.iter_mut().enumerate() {
                 *u -= (fip[n] - fim[n]) * dt / dx + (fjp[n] - fjm[n]) * dt / dy;
             }
