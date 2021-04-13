@@ -218,16 +218,14 @@ impl Automaton for PatchUpdate {
         let fip = flux_i.select(index_space.translate(1, Axis::I));
         let fjm = flux_j.select(index_space.clone());
         let fjp = flux_j.select(index_space.translate(1, Axis::J));
-
         let u = conserved.iter_data_mut();
-        let p = extended_primitive.select_mut(index_space.clone());
 
-        for (fip, (fim, (fjp, (fjm, (u, p))))) in fip.zip(fim.zip(fjp.zip(fjm.zip(u.zip(p))))) {
+        for (fip, (fim, (fjp, (fjm, u)))) in fip.zip(fim.zip(fjp.zip(fjm.zip(u)))) {
             for (n, u) in u.iter_mut().enumerate() {
                 *u -= (fip[n] - fim[n]) * dt / dx + (fjp[n] - fjm[n]) * dt / dy;
             }
-            Self::cons_to_prim(u, p)
         }
+        conserved.map_into(&mut extended_primitive, Self::cons_to_prim);
 
         Self {
             conserved,
