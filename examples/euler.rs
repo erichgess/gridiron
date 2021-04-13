@@ -144,6 +144,10 @@ impl PatchUpdate {
         });
     }
 
+    fn primitive(&self) -> Patch {
+        self.extended_primitive.extract(self.index_space.clone())
+    }
+
     fn cons_to_prim(u: &[f64], p: &mut [f64]) {
         Conserved::from(u)
             .to_primitive(GAMMA_LAW_INDEX)
@@ -283,7 +287,7 @@ fn main() {
         task_list.collect()
     };
 
-    while time < 0.1 {
+    while time < 0.025 {
         let start = std::time::Instant::now();
 
         task_list = advance4(task_list);
@@ -296,7 +300,7 @@ fn main() {
         println!("[{}] t={:.3} Mzps={:.2}", iteration, time, mzps);
     }
 
-    let primitive = task_list.into_iter().map(|block| block.extended_primitive).collect();
+    let primitive = task_list.into_iter().map(|block| block.primitive()).collect();
     let state = State {
         iteration,
         time,

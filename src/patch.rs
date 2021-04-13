@@ -144,7 +144,9 @@ impl Patch {
 
     pub fn extract_from(source: &Patch, selection: IndexSpace) -> Self {
         Self::from_slice_function(source.level, selection, source.num_fields, |index, slice| {
-            slice.clone_from_slice(source.get_slice(index))
+            if source.index_space().contains(index) {
+                slice.clone_from_slice(source.get_slice(index))
+            }
         })
     }
 
@@ -303,19 +305,26 @@ impl Patch {
             .for_each(|(index, slice)| f(index, slice))
     }
 
-    pub fn map_into<F>(&self, other: &mut Self, f: F)
+
+    /// Map values from this patch into another one. The two patches must be
+    /// on the same level and have the same number of fields, but they do not
+    /// need to have the same index space. Only the elements at the
+    /// overlapping part of the index spaces are mapped; the remaining part of
+    /// the target patch is unchanged.
+    pub fn map_into<F>(&self, target: &mut Self, f: F)
     where
         F: Fn(&[f64], &mut [f64]),
     {
-        assert!(self.rect == other.rect);
-        assert!(self.level == other.level);
-        assert!(self.num_fields == other.num_fields);
+        assert!(self.level == target.level);
+        assert!(self.num_fields == target.num_fields);
 
-        let memory_region = self.index_space().memory_region();
+        let overlap_space = self.index_space().intersect(target.index_space());
+        let source_region = overlap_space.memory_region_in(&self.index_space());
+        let target_region = overlap_space.memory_region_in(&target.index_space());
 
-        memory_region
+        source_region
             .iter_slice(&self.data, self.num_fields)
-            .zip(memory_region.iter_slice_mut(&mut other.data, self.num_fields))
+            .zip(target_region.iter_slice_mut(&mut target.data, self.num_fields))
             .for_each(|x| f(x.0, x.1))
     }
 
