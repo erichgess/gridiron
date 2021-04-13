@@ -121,18 +121,25 @@ impl PatchUpdate {
 
 impl PatchUpdate {
     fn compute_flux(pe: &Patch, axis: Axis, flux: &mut Patch) {
-        match axis {
-            Axis::I => flux.map_index_mut(|(i, j), f| {
-                let pl = pe.get_slice((i - 1, j)).into();
-                let pr = pe.get_slice((i, j)).into();
-                euler2d::riemann_hlle(pl, pr, Direction::I, GAMMA_LAW_INDEX).write_to_slice(f);
-            }),
-            Axis::J => flux.map_index_mut(|(i, j), f| {
-                let pl = pe.get_slice((i, j - 1)).into();
-                let pr = pe.get_slice((i, j)).into();
-                euler2d::riemann_hlle(pl, pr, Direction::J, GAMMA_LAW_INDEX).write_to_slice(f);
-            }),
-        }
+        let lmem = flux
+            .index_space()
+            .translate(-1, axis)
+            .memory_region_in(&pe.index_space());
+        let rmem = flux
+            .index_space()
+            .translate(0, axis)
+            .memory_region_in(&pe.index_space());
+
+        let pl = lmem.iter_slice(pe.data(), pe.num_fields());
+        let pr = rmem.iter_slice(pe.data(), pe.num_fields());
+        let dir = match axis {
+            Axis::I => Direction::I,
+            Axis::J => Direction::J,
+        };
+
+        pl.zip(pr).zip(flux.data_iter_mut()).for_each(|(p, f)| {
+            euler2d::riemann_hlle(p.0.into(), p.1.into(), dir, GAMMA_LAW_INDEX).write_to_slice(f)
+        });
     }
 
     fn cons_to_prim(u: &[f64], p: &mut [f64]) {

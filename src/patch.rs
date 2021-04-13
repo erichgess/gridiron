@@ -154,6 +154,10 @@ impl Patch {
         &self.data
     }
 
+    pub fn data_iter_mut(&mut self) -> impl Iterator<Item = &mut [f64]> {
+        self.data.chunks_exact_mut(self.num_fields)
+    }
+
     /**
      * Return this patch's rectangle.
      */

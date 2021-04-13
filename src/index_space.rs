@@ -226,6 +226,14 @@ impl IndexSpace {
     }
 
 
+    pub fn translate(&self, delta: i64, axis: Axis) -> Self {
+        match axis {
+            Axis::I => Self::new(self.di.start + delta .. self.di.end + delta, self.dj.clone()),
+            Axis::J => Self::new(self.di.clone(), self.dj.start + delta .. self.dj.end + delta),
+        }
+    }
+
+
     /**
      * Increase the size of this index space by the given factor.
      */
@@ -366,6 +374,7 @@ pub fn range2d(di: Range<i64>, dj: Range<i64>) -> IndexSpace {
 /**
  * A 2D memory region within a contiguous buffer.
  */
+#[derive(Debug)]
 pub struct MemoryRegion {
     start: (usize, usize),
     count: (usize, usize),
