@@ -88,15 +88,16 @@ impl State {
 
 // ============================================================================
 struct PatchUpdate {
-    outgoing_edges: Vec<(Rectangle<i64>, u32)>,
-    neighbor_patches: Vec<Patch>,
-    incoming_count: usize,
     conserved: Patch,
-    primitive: Patch,
     extended_primitive: Patch,
     flux_i: Patch,
     flux_j: Patch,
+    incoming_count: usize,
+    index_space: IndexSpace,
+    level: u32,
     mesh: Mesh,
+    neighbor_patches: Vec<Patch>,
+    outgoing_edges: Vec<(Rectangle<i64>, u32)>,
 }
 
 impl PatchUpdate {
@@ -104,17 +105,18 @@ impl PatchUpdate {
         let key = (primitive.high_resolution_rect(), primitive.level());
         let lv = primitive.level();
         let nq = primitive.num_fields();
-        let space = primitive.index_space();
+        let index_space = primitive.index_space();
         Self {
-            outgoing_edges: edge_list.outgoing_edges(&key).cloned().collect(),
-            incoming_count: edge_list.incoming_edges(&key).count(),
-            neighbor_patches: Vec::new(),
             conserved: primitive.map(Self::prim_to_cons),
-            flux_i: Patch::zeros(lv, nq, space.extend_upper(1, Axis::I)),
-            flux_j: Patch::zeros(lv, nq, space.extend_upper(1, Axis::J)),
-            extended_primitive: Patch::zeros(lv, nq, space.extend_all(NUM_GUARD)),
-            primitive,
+            extended_primitive: Patch::extract_from(&primitive, index_space.extend_all(NUM_GUARD)),
+            flux_i: Patch::zeros(lv, nq, index_space.extend_upper(1, Axis::I)),
+            flux_j: Patch::zeros(lv, nq, index_space.extend_upper(1, Axis::J)),
+            incoming_count: edge_list.incoming_edges(&key).count(),
+            index_space,
+            level: primitive.level(),
             mesh,
+            neighbor_patches: Vec::new(),
+            outgoing_edges: edge_list.outgoing_edges(&key).cloned().collect(),
         }
     }
 }
@@ -169,7 +171,7 @@ impl Automaton for PatchUpdate {
     type Value = Self;
 
     fn key(&self) -> Self::Key {
-        self.primitive.high_resolution_space().into()
+        self.index_space.refine_by(1 << self.level).into_rect()
     }
 
     fn messages(&self) -> Vec<(Self::Key, Self::Message)> {
@@ -179,9 +181,9 @@ impl Automaton for PatchUpdate {
             .map(|(rect, level)| {
                 let overlap = IndexSpace::from(rect.clone())
                     .extend_all(NUM_GUARD * (1 << level))
-                    .coarsen_by(1 << self.primitive.level())
-                    .intersect(self.primitive.index_space());
-                (rect, self.primitive.extract(overlap))
+                    .coarsen_by(1 << self.level)
+                    .intersect(self.index_space.clone());
+                (rect, self.extended_primitive.extract(overlap))
             })
             .collect()
     }
@@ -196,8 +198,9 @@ impl Automaton for PatchUpdate {
             outgoing_edges,
             incoming_count,
             mesh,
+            index_space,
+            level,
             mut neighbor_patches,
-            mut primitive,
             mut extended_primitive,
             mut conserved,
             mut flux_i,
@@ -205,10 +208,10 @@ impl Automaton for PatchUpdate {
         } = self;
 
         meshing::extend_patch_mut(
-            &primitive,
+            &mut extended_primitive,
+            &index_space,
             Self::boundary_value,
             &neighbor_patches,
-            &mut extended_primitive,
         );
         neighbor_patches.clear();
 
@@ -228,18 +231,19 @@ impl Automaton for PatchUpdate {
                 *u -= (fip[n] - fim[n]) * dt / dx + (fjp[n] - fjm[n]) * dt / dy;
             }
         }
-        conserved.map_into(&mut primitive, Self::cons_to_prim);
+        conserved.map_into(&mut extended_primitive, Self::cons_to_prim);
 
         Self {
-            outgoing_edges,
-            neighbor_patches,
-            incoming_count,
-            primitive,
             conserved,
             extended_primitive,
             flux_i,
             flux_j,
+            incoming_count,
+            index_space,
+            level,
             mesh,
+            neighbor_patches,
+            outgoing_edges,
         }
     }
 }
@@ -292,7 +296,7 @@ fn main() {
         println!("[{}] t={:.3} Mzps={:.2}", iteration, time, mzps);
     }
 
-    let primitive = task_list.into_iter().map(|block| block.primitive).collect();
+    let primitive = task_list.into_iter().map(|block| block.extended_primitive).collect();
     let state = State {
         iteration,
         time,
