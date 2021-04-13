@@ -109,11 +109,7 @@ impl PatchUpdate {
             outgoing_edges: edge_list.outgoing_edges(&key).cloned().collect(),
             incoming_count: edge_list.incoming_edges(&key).count(),
             neighbor_patches: Vec::new(),
-            conserved: primitive.map(|(p, u)| {
-                Primitive::from(p)
-                    .to_conserved(GAMMA_LAW_INDEX)
-                    .write_to_slice(u)
-            }),
+            conserved: primitive.map(Self::prim_to_cons),
             flux_i: Patch::zeros(lv, nq, space.extend_upper(1, Axis::I)),
             flux_j: Patch::zeros(lv, nq, space.extend_upper(1, Axis::J)),
             extended_primitive: Patch::zeros(lv, nq, space.extend_all(NUM_GUARD)),
@@ -126,17 +122,37 @@ impl PatchUpdate {
 impl PatchUpdate {
     fn compute_flux(pe: &Patch, axis: Axis, flux: &mut Patch) {
         match axis {
-            Axis::I => flux.for_each_index_mut(|(i, j), f| {
+            Axis::I => flux.map_index_mut(|(i, j), f| {
                 let pl = pe.get_slice((i - 1, j)).into();
                 let pr = pe.get_slice((i, j)).into();
                 euler2d::riemann_hlle(pl, pr, Direction::I, GAMMA_LAW_INDEX).write_to_slice(f);
             }),
-            Axis::J => flux.for_each_index_mut(|(i, j), f| {
+            Axis::J => flux.map_index_mut(|(i, j), f| {
                 let pl = pe.get_slice((i, j - 1)).into();
                 let pr = pe.get_slice((i, j)).into();
                 euler2d::riemann_hlle(pl, pr, Direction::J, GAMMA_LAW_INDEX).write_to_slice(f);
             }),
         }
+    }
+
+    fn cons_to_prim(u: &[f64], p: &mut [f64]) {
+        Conserved::from(u)
+            .to_primitive(GAMMA_LAW_INDEX)
+            .unwrap()
+            .write_to_slice(p)
+    }
+
+    fn prim_to_cons(p: &[f64], u: &mut [f64]) {
+        Primitive::from(p)
+            .to_conserved(GAMMA_LAW_INDEX)
+            .write_to_slice(u)
+    }
+
+    fn boundary_value(_: (i64, i64), p: &mut [f64]) {
+        p[0] = 0.1;
+        p[1] = 0.0;
+        p[2] = 0.0;
+        p[3] = 0.125;
     }
 }
 
@@ -183,7 +199,7 @@ impl Automaton for PatchUpdate {
 
         meshing::extend_patch_mut(
             &primitive,
-            |_index, slice| slice.clone_from_slice(&[0.1, 0.0, 0.0, 0.125]),
+            Self::boundary_value,
             &neighbor_patches,
             &mut extended_primitive,
         );
@@ -201,15 +217,11 @@ impl Automaton for PatchUpdate {
             let fip = flux_i.get_slice((i + 1, j));
             let fjp = flux_j.get_slice((i, j + 1));
             let u = conserved.get_slice_mut((i, j));
-            let p = primitive.get_slice_mut((i, j));
             for (n, u) in u.iter_mut().enumerate() {
                 *u -= (fip[n] - fim[n]) * dt / dx + (fjp[n] - fjm[n]) * dt / dy;
             }
-            Conserved::from(&u[..])
-                .to_primitive(GAMMA_LAW_INDEX)
-                .unwrap()
-                .write_to_slice(p)
         }
+        conserved.map_into(&mut primitive, Self::cons_to_prim);
 
         Self {
             outgoing_edges,

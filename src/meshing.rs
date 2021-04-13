@@ -65,7 +65,7 @@ where
             boundary_value(index, slice)
         }
     };
-    extended_patch.for_each_index_mut(sample)
+    extended_patch.map_index_mut(sample)
 }
 
 /// A trait for a container that can yield an adjacency list. It means the

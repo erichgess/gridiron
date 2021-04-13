@@ -279,7 +279,7 @@ impl Patch {
         *self = self.extract(space)
     }
 
-    pub fn for_each_index_mut<F>(&mut self, f: F)
+    pub fn map_index_mut<F>(&mut self, f: F)
     where
         F: Fn((i64, i64), &mut [f64]),
     {
@@ -293,15 +293,31 @@ impl Patch {
             .for_each(|(index, slice)| f(index, slice))
     }
 
+    pub fn map_into<F>(&self, other: &mut Self, f: F)
+    where
+        F: Fn(&[f64], &mut [f64]),
+    {
+        assert!(self.rect == other.rect);
+        assert!(self.level == other.level);
+        assert!(self.num_fields == other.num_fields);
+
+        let memory_region = self.index_space().memory_region();
+
+        memory_region
+            .iter_slice(&self.data, self.num_fields)
+            .zip(memory_region.iter_slice_mut(&mut other.data, self.num_fields))
+            .for_each(|x| f(x.0, x.1))
+    }
+
     pub fn map<F>(&self, f: F) -> Self
     where
-        F: Fn((&[f64], &mut [f64])),
+        F: Fn(&[f64], &mut [f64]),
     {
         let mut data = vec![0.0; self.data.len()];
         self.data
             .chunks_exact(self.num_fields)
             .zip(data.chunks_exact_mut(self.num_fields))
-            .for_each(f);
+            .for_each(|x| f(x.0, x.1));
         Self {
             level: self.level,
             rect: self.rect.clone(),
