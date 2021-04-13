@@ -2,55 +2,51 @@ use crate::index_space::IndexSpace;
 use crate::rect_map::Rectangle;
 use std::cmp::Ordering::*;
 
-/**
- * Identifies the part of the mesh where patch data resides. An `n`-dimensional
- * cartesian array has `n` of these parameters, one per axis. `Cell` regions are
- * the spaces between `Node` points. For example in a 3D array, the tuple
- * `(Cell, Cell, Cell)` refers to 3D cell volumes, `(Node, Cell, Cell)` refers
- * to the 2D, `i`-directed cell faces, and `(Node, Node, Cell)` refers to the 1D
- * `k`-directed cell edges. (`Node`, `Node`, `Node`) are the point-like vertices
- * of the dual mesh.
- *
- * Different mesh locations have different sampling policies. For example,
- * sampling data in 3D finite volumes at a coarser granularity level involves
- * averaging over 8 smaller volumes, whereas down-sampling the data residing on
- * 2D faces involves averaging over 4 smaller faces and down-sampling edge-like
- * data averages over 2 smaller edges. Data can only be sampled up and down on
- * its cell-like axes. For example, up-sampling a 3D array of faces only splits
- * each "window" into four smaller ones; it does not add new "panes" between the
- * existing ones.
- *
- * A patch's index space is the same regardless of the mesh location: it always
- * refers to the patch's index extent on the primary grid. However the array
- * size is one larger on the node-like axes.
- *
- * The flux correction on a patch P at level n procedes by identifying all
- * patches which overlap P at a higher granularity, and sampling those patches
- * at level n wherever they intersect P.
- */
+/// Identifies the part of the mesh where patch data resides. An
+/// `n`-dimensional cartesian array has `n` of these parameters, one per axis.
+/// `Cell` regions are the spaces between `Node` points. For example in a 3D
+/// array, the tuple `(Cell, Cell, Cell)` refers to 3D cell volumes, `(Node,
+/// Cell, Cell)` refers to the 2D, `i`-directed cell faces, and `(Node, Node,
+/// Cell)` refers to the 1D `k`-directed cell edges. (`Node`, `Node`, `Node`)
+/// are the point-like vertices of the dual mesh.
+///
+/// Different mesh locations have different sampling policies. For example,
+/// sampling data in 3D finite volumes at a coarser granularity level involves
+/// averaging over 8 smaller volumes, whereas down-sampling the data residing
+/// on 2D faces involves averaging over 4 smaller faces and down-sampling
+/// edge-like data averages over 2 smaller edges. Data can only be sampled up
+/// and down on its cell-like axes. For example, up-sampling a 3D array of
+/// faces only splits each "window" into four smaller ones; it does not add
+/// new "panes" between the existing ones.
+///
+/// A patch's index space is the same regardless of the mesh location: it
+/// always refers to the patch's index extent on the primary grid. However the
+/// array size is one larger on the node-like axes.
+///
+/// The flux correction on a patch P at level n procedes by identifying all
+/// patches which overlap P at a higher granularity, and sampling those
+/// patches at level n wherever they intersect P.
 pub enum MeshLocation {
     Cell,
     Node,
 }
 
-/**
- * A patch is a mapping from a rectangular subset of a high-resolution index
- * space (HRIS), to associated field values. The mapping is backed by an array
- * of data, which is in general at a coarser level of granularity than the HRIS;
- * each cell in the backing array stands for (2^level)^rank cells in the HRIS.
- * The HRIS is at level 0.
- *
- * The patch can be sampled at different granularity levels. If the sampling
- * level is finer than the patch granularity, then sub-cell sampling is
- * employed, either with piecewise constant or multi-linear interpolation. If
- * the sampling level is coarser than the patch granularity, then the result is
- * obtained by averaging over the region within the patch covered by the coarse
- * cell.  
- */
 #[derive(Clone, serde::Serialize)]
+
+/// A patch is a mapping from a rectangular subset of a high-resolution index
+/// space (HRIS), to associated field values. The mapping is backed by an
+/// array of data, which is in general at a coarser level of granularity than
+/// the HRIS; each cell in the backing array stands for (2^level)^rank cells
+/// in the HRIS. The HRIS is at level 0.
+/// 
+/// The patch can be sampled at different granularity levels. If the sampling
+/// level is finer than the patch granularity, then sub-cell sampling is
+/// employed, either with piecewise constant or multi-linear interpolation. If
+/// the sampling level is coarser than the patch granularity, then the result
+/// is obtained by averaging over the region within the patch covered by the
+/// coarse cell.
 pub struct Patch {
-    /// The granularity level of this patch. Level 0 is the highest
-    /// resolution.
+    /// The granularity level of this patch. Level 0 is the highest resolution.
     level: u32,
 
     /// The region of index space covered by this patch. The indexes are with
@@ -64,11 +60,9 @@ pub struct Patch {
     data: Vec<f64>,
 }
 
-// ============================================================================
 impl Patch {
-    /**
-     * Generate an empty patch.
-     */
+ 
+    /// Creates a new empty patch.
     pub fn new() -> Self {
         Self {
             level: 0,
@@ -78,9 +72,7 @@ impl Patch {
         }
     }
 
-    /**
-     * Generate a patch of zeros over the given index space.
-     */
+    /// Generate a patch of zeros over the given index space.
     pub fn zeros<I: Into<IndexSpace>>(level: u32, num_fields: usize, space: I) -> Self {
         let space: IndexSpace = space.into();
         let data = vec![0.0; space.len() * num_fields];
@@ -93,10 +85,8 @@ impl Patch {
         }
     }
 
-    /**
-     * Generate a patch at a given level, covering the given space, with values
-     * defined from a closure.
-     */
+    /// Generate a patch at a given level, covering the given space, with
+    /// values defined from a closure.
     pub fn from_scalar_function<I, F>(level: u32, space: I, f: F) -> Self
     where
         I: Into<IndexSpace>,
@@ -105,12 +95,10 @@ impl Patch {
         Self::from_vector_function(level, space, |i| [f(i)])
     }
 
-    /**
-     * Generate a patch at a given level, covering the given space, with values
-     * defined from a closure which returns a fixed-length array. The number of
-     * fields in the patch is inferred from the size of the fixed length array
-     * returned by the closure.
-     */
+    /// Generate a patch at a given level, covering the given space, with
+    /// values defined from a closure which returns a fixed-length array. The
+    /// number of fields in the patch is inferred from the size of the fixed
+    /// length array returned by the closure.
     pub fn from_vector_function<I, F, const NUM_FIELDS: usize>(level: u32, space: I, f: F) -> Self
     where
         I: Into<IndexSpace>,
@@ -119,10 +107,8 @@ impl Patch {
         Self::from_slice_function(level, space, NUM_FIELDS, |i, s| s.clone_from_slice(&f(i)))
     }
 
-    /**
-     * Generate a patch at a given level, covering the given space, with values
-     * defined from a closure which operates on mutable slices.
-     */
+    /// Generate a patch at a given level, covering the given space, with
+    /// values defined from a closure which operates on mutable slices.
     pub fn from_slice_function<I, F>(level: u32, space: I, num_fields: usize, f: F) -> Self
     where
         I: Into<IndexSpace>,
@@ -143,11 +129,16 @@ impl Patch {
     }
 
     pub fn extract_from(source: &Patch, selection: IndexSpace) -> Self {
-        Self::from_slice_function(source.level, selection, source.num_fields, |index, slice| {
-            if source.index_space().contains(index) {
-                slice.clone_from_slice(source.get_slice(index))
-            }
-        })
+        Self::from_slice_function(
+            source.level,
+            selection,
+            source.num_fields,
+            |index, slice| {
+                if source.index_space().contains(index) {
+                    slice.clone_from_slice(source.get_slice(index))
+                }
+            },
+        )
     }
 
     pub fn level(&self) -> u32 {
@@ -166,9 +157,7 @@ impl Patch {
         self.data.chunks_exact_mut(self.num_fields)
     }
 
-    /**
-     * Return this patch's rectangle.
-     */
+    /// Return this patch's rectangle.
     pub fn local_rect(&self) -> &Rectangle<i64> {
         &self.rect
     }
@@ -177,25 +166,19 @@ impl Patch {
         IndexSpace::from(self.rect.clone())
     }
 
-    /**
-     * Return the index space at the high-resolution level below this patch.
-     */
+    /// Return the index space at the high-resolution level below this patch.
     pub fn high_resolution_space(&self) -> IndexSpace {
         self.index_space().refine_by(1 << self.level)
     }
 
-    /**
-     * Convenience method to convert the high resolution index space to a
-     * rectangle.
-     */
+    /// Convenience method to convert the high resolution index space to a
+    /// rectangle.
     pub fn high_resolution_rect(&self) -> Rectangle<i64> {
         self.index_space().refine_by(1 << self.level).into()
     }
 
-    /**
-     * Sample the field at the given level and index. The index measures
-     * ticks at the target sampling level, not the HRIS.
-     */
+    /// Sample the field at the given level and index. The index measures
+    /// ticks at the target sampling level, not the HRIS.
     pub fn sample(&self, level: u32, index: (i64, i64), field: usize) -> f64 {
         match level.cmp(&self.level) {
             Equal => {
@@ -219,11 +202,9 @@ impl Patch {
         }
     }
 
-    /**
-     * Sample all the fields in this patch at the given index and return the
-     * result as a fixed-length array. The array size must be less than or equal
-     * to the number of fields.
-     */
+    /// Sample all the fields in this patch at the given index and return the
+    /// result as a fixed-length array. The array size must be less than or
+    /// equal to the number of fields.
     pub fn sample_vector<const NUM_FIELDS: usize>(
         &self,
         level: u32,
@@ -241,22 +222,18 @@ impl Patch {
         result
     }
 
-    /**
-     * Sample all the fields in this patch at the given index and write the
-     * result into the given slice. The slice must be at least as large as the
-     * number of fields.
-     */
+    /// Sample all the fields in this patch at the given index and write the
+    /// result into the given slice. The slice must be at least as large as
+    /// the number of fields.
     pub fn sample_slice(&self, level: u32, index: (i64, i64), result: &mut [f64]) {
         for (field, r) in result.iter_mut().enumerate() {
             *r = self.sample(level, index, field)
         }
     }
 
-    /**
-     * Return a slice of all data fields at the given index. This method does
-     * not check if the index is logically in bounds, but will panic if a memory
-     * location would have been out of bounds.
-     */
+    /// Return a slice of all data fields at the given index. This method does
+    /// not check if the index is logically in bounds, but will panic if a
+    /// memory location would have been out of bounds.
     pub fn get_slice(&self, index: (i64, i64)) -> &[f64] {
         let s = self.index_space().row_major_offset(index);
         &self.data[s * self.num_fields..(s + 1) * self.num_fields]
@@ -267,10 +244,8 @@ impl Patch {
         &mut self.data[s * self.num_fields..(s + 1) * self.num_fields]
     }
 
-    /**
-     * Extract a subset of this patch and return it. This method panics if the
-     * slice is out of bounds.
-     */
+    /// Extract a subset of this patch and return it. This method panics if
+    /// the slice is out of bounds.
     pub fn extract<I: Into<IndexSpace>>(&self, subset: I) -> Self {
         let subset: IndexSpace = subset.into();
 
@@ -282,13 +257,6 @@ impl Patch {
         Self::from_slice_function(self.level, subset, self.num_fields, |index, slice| {
             slice.clone_from_slice(self.get_slice(index))
         })
-    }
-
-    /**
-     * Convert this patch into a subset of itself.
-     */
-    pub fn extract_mut<I: Into<IndexSpace>>(&mut self, space: I) {
-        *self = self.extract(space)
     }
 
     pub fn map_index_mut<F>(&mut self, f: F)
@@ -304,7 +272,6 @@ impl Patch {
             .zip(memory_region.iter_slice_mut(&mut self.data, num_fields))
             .for_each(|(index, slice)| f(index, slice))
     }
-
 
     /// Map values from this patch into another one. The two patches must be
     /// on the same level and have the same number of fields, but they do not
@@ -345,7 +312,6 @@ impl Patch {
         }
     }
 
-    // ========================================================================
     fn validate_index(&self, index: (i64, i64), field: usize) {
         let space = self.index_space();
 
@@ -375,7 +341,6 @@ impl Default for Patch {
     }
 }
 
-// ============================================================================
 #[cfg(test)]
 mod test {
 
@@ -383,7 +348,6 @@ mod test {
     use crate::index_space::{range2d, IndexSpace};
     use crate::rect_map::{Rectangle, RectangleMap, RectangleRef};
 
-    // ============================================================================
     fn finest_patch<'a>(
         map: &'a RectangleMap<i64, &'a Patch>,
         index: (i64, i64),
