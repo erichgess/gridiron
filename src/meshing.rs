@@ -51,21 +51,33 @@ where
     Patch::from_slice_function(patch.level(), extended, patch.num_fields(), sample)
 }
 
-pub fn extend_patch_mut<P, G>(patch: &mut Patch, valid_index_space: &IndexSpace, boundary_value: G, neighbors: &P)
-where
+pub fn extend_patch_mut<P, G>(
+    patch: &mut Patch,
+    valid_index_space: &IndexSpace,
+    boundary_value: G,
+    neighbors: &P,
+) where
     P: PatchQuery,
     G: Fn((i64, i64), &mut [f64]),
 {
-    let sample = |index, slice: &mut [f64]| {
-        if !valid_index_space.contains(index) {
-            if let Some(neigh) = neighbors.patch_containing_point(index) {
-                slice.clone_from_slice(neigh.get_slice(index))
-            } else {
-                boundary_value(index, slice)
-            }
+    let (i0, j0) = valid_index_space.start();
+    let (i1, j1) = valid_index_space.end();
+    let (x0, y0) = patch.index_space().start();
+    let (x1, y1) = patch.index_space().end();
+
+    let li = IndexSpace::new(x0..i0, j0..j1);
+    let lj = IndexSpace::new(i0..i1, y0..j0);
+    let ri = IndexSpace::new(i1..x1, j0..j1);
+    let rj = IndexSpace::new(i0..i1, j1..y1);
+
+    for index in li.iter().chain(lj.iter()).chain(ri.iter()).chain(rj.iter()) {
+        let slice = patch.get_slice_mut(index);
+        if let Some(neigh) = neighbors.patch_containing_point(index) {
+            slice.clone_from_slice(neigh.get_slice(index))
+        } else {
+            boundary_value(index, slice)
         }
-    };
-    patch.map_index_mut(sample)
+    }
 }
 
 /// A trait for a container that can yield an adjacency list. It means the
