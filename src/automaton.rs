@@ -1,8 +1,8 @@
 use core::hash::Hash;
 use std::collections::hash_map::{Entry, HashMap};
 
-/// Returned by Automaton::receive to indicate whether a task is eligible to
-/// be evaluated.
+/// Returned by [`Automaton::receive`] to indicate whether a task is eligible
+/// to be evaluated.
 pub enum Status {
     Eligible,
     Ineligible,
@@ -22,10 +22,15 @@ impl Status {
 /// and yields a computationally intensive data product. The data product can
 /// be another `Automaton` to enable folding of parallel executions. The model
 /// uses message passing rather than memory sharing: tasks own their data, and
-/// transfer ownership of the message content (including its uniquely owned
-/// memory butter) to the recipient. Since task data and messages don't need
-/// to be put under `Arc`, they can be reused in subsequent stages of the task
-/// lifetime, reducing dependence on the heap.
+/// transfer ownership of the message content (and memory buffer) to the
+/// recipient. This strategy adheres to the principle of sharing memory by
+/// passing messages, rather than passing messages by sharing memory. Memory
+/// buffers are _owned_ and _transferred_, never _shared_; buffers don't need
+/// to be put under `Arc`, and may be re-used at the discretion of the task on
+/// subsequent executions. Heap usage in the `value` method (which is
+/// generally run on a worker thread by the executor) can thus be avoided
+/// entirely.
+///
 pub trait Automaton {
     /// The type of the key to uniquely identify this automaton within a
     /// group. Executors will generally require this type to be `Hash + Eq`,
@@ -65,9 +70,8 @@ pub trait Automaton {
     fn value(self) -> Self::Value;
 }
 
-/**
- * Execute a group of automata in serial.
- */
+/// Execute a group of tasks in serial.
+/// 
 pub fn execute<I, A, K, V>(stage: I) -> impl Iterator<Item = V>
 where
     I: IntoIterator<Item = A>,
@@ -81,10 +85,23 @@ where
     eligible_source.into_iter().map(|peer: A| peer.value())
 }
 
-/**
- * Execute a group of automata in parallel.
- */
-pub fn execute_par<'a, I, A, K, V>(scope: &rayon::Scope<'a>, stage: I) -> impl Iterator<Item = V>
+/// Execute a group (or _flow_, since it can be a stream) of tasks in
+/// parallel. Tasks are spawned into the given Rayon scope. The strategy is
+/// based on a coordinator-dispatcher model. The coordinator delivers messages
+/// between tasks as they are yielded by the `flow` iterator, and sends them
+/// to the dispatcher when they have become eligible (received all the
+/// messages they need in order to run). The dispatcher moves tasks into the
+/// Rayon thread pool for execution, and then delivers their result into the
+/// output channel. This function returns as soon as the `flow` iterator is
+/// exhausted; the result iterator (over the output channel) generally yields
+/// compute results well after this function has returned.
+/// 
+/// _Note_: There must be at least two threads running in the Rayon thread
+/// pool, because the coordinator and dispatcher need to run in parallel; if
+/// there is only one thread, they'll be queued up in serial on that thread's
+/// work list.
+/// 
+pub fn execute_par<'a, I, A, K, V>(scope: &rayon::Scope<'a>, flow: I) -> impl Iterator<Item = V>
 where
     I: IntoIterator<Item = A>,
     A: Send + Automaton<Key = K, Value = V> + 'a,
@@ -92,6 +109,11 @@ where
     V: Send + 'a,
 {
     use rayon::prelude::*;
+
+    assert!{
+        rayon::current_num_threads() >= 2,
+        "automaton::execute_par requires at least two threads to be running"
+    };
 
     let (eligible_sink, eligible_source) = crossbeam_channel::unbounded();
     let (computed_sink, computed_source) = crossbeam_channel::unbounded();
@@ -101,16 +123,15 @@ where
             .into_iter()
             .par_bridge()
             .for_each(|peer: A| {
-                computed_sink.send(peer.value()).unwrap();
-            });
+                computed_sink.send(peer.value()).unwrap()
+            })
     });
 
-    coordinate(stage, eligible_sink);
+    coordinate(flow, eligible_sink);
     computed_source.into_iter()
 }
 
-// ============================================================================
-fn coordinate<I, A, K, V>(stage: I, eligible: crossbeam_channel::Sender<A>)
+fn coordinate<I, A, K, V>(flow: I, eligible: crossbeam_channel::Sender<A>)
 where
     I: IntoIterator<Item = A>,
     A: Automaton<Key = K, Value = V>,
@@ -119,15 +140,14 @@ where
     let mut seen: HashMap<K, A> = HashMap::new();
     let mut undelivered = Vec::new();
 
-    for mut a in stage {
-        /*
-         * For each of A's messages, either deliver it to the recipient peer, if
-         * the peer has already been seen, or otherwise put it in the
-         * undelivered box.
-         *
-         * If any of the recipient peers became eligible upon receiving a
-         * message, then send those peers off to be executed.
-         */
+    for mut a in flow {
+        // For each of A's messages, either deliver it to the recipient peer,
+        // if the peer has already been seen, or otherwise put it in the
+        // undelivered box.
+        //
+        // If any of the recipient peers became eligible upon receiving a
+        // message, then send those peers off to be executed.
+        // 
         for (dest, data) in a.messages() {
             match seen.entry(dest) {
                 Entry::Occupied(mut entry) => {
@@ -139,9 +159,8 @@ where
             }
         }
 
-        /*
-         * Deliver any messages addressed to A that had arrived previously.
-         */
+        // Deliver any messages addressed to A that had arrived previously.
+        //
         let dest = a.key();
         let mut i = 0;
         let mut is_eligible = false;
@@ -156,10 +175,10 @@ where
             }
         }
 
-        /*
-         * If A is eligible after receiving its messages, then send it off to be
-         * executed. Otherwise mark it as seen and process the next automaton.
-         */
+        // If A is eligible after receiving its messages, then send it off to
+        // be executed. Otherwise mark it as seen and process the next
+        // automaton.
+        //
         if is_eligible {
             eligible.send(a).unwrap();
         } else {
