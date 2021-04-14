@@ -24,33 +24,15 @@ impl PatchQuery for RectangleMap<i64, Patch> {
     }
 }
 
-/// Extend a patch given a container of neighbor patches which implements
-/// `PatchQuery`. The callback function `extend` transforms the argument
-/// patch's index space to an extended space. The other callback function
-/// `boundary_value` is invoked when no patch overlies the sampling point.
+/// Fill guard zone values in a mutable patch by sampling data from other
+/// patches in `PatchQuery` object. Indexes contained in the
+/// `valid_index_space` are not touched.
+///
 /// __WARNING__: this function is currently implemented only for patches at
 /// uniform refinement level.
-pub fn extend_patch<P, F, G>(patch: &Patch, extend: F, boundary_value: G, neighbors: &P) -> Patch
-where
-    P: PatchQuery,
-    F: Fn(&IndexSpace) -> IndexSpace,
-    G: Fn((i64, i64), &mut [f64]),
-{
-    let space = patch.index_space();
-    let extended = extend(&space);
-
-    let sample = |index, slice: &mut [f64]| {
-        if patch.index_space().contains(index) {
-            slice.clone_from_slice(patch.get_slice(index))
-        } else if let Some(neigh) = neighbors.patch_containing_point(index) {
-            slice.clone_from_slice(neigh.get_slice(index))
-        } else {
-            boundary_value(index, slice)
-        }
-    };
-    Patch::from_slice_function(patch.level(), extended, patch.num_fields(), sample)
-}
-
+/// 
+/// __WARNING__: this function currently neglects the patch corners. The
+/// corners are needed for MHD and viscous fluxes.
 pub fn extend_patch_mut<P, G>(
     patch: &mut Patch,
     valid_index_space: &IndexSpace,
@@ -90,6 +72,9 @@ pub trait GraphTopology {
     /// The type of key used to identify vertices
     type Key;
 
+    /// An additional type parameter given to `Self::adjacency_list`. In
+    /// contect, this is probably the number of guard zones, which in general
+    /// will influence which other patches are neighbors.
     type Parameter;
 
     /// Return an adjacency list derived from this container.
