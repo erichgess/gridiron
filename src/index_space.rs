@@ -28,7 +28,8 @@ pub struct IndexSpace {
 impl IndexSpace {
 
     /// Construct a new index space from the given ranges. The ranges are
-    /// allowed to be empty but cannot have negative length.
+    /// allowed to be empty but this function panics if either has negative
+    /// length.
     /// 
     pub fn new(di: Range<i64>, dj: Range<i64>) -> Self {
         assert!{

@@ -5,8 +5,10 @@ use crate::rect_map::{Rectangle, RectangleMap};
 
 /// A trait for a container that can respond to queries for a patch overlying
 /// a point.
+/// 
 pub trait PatchQuery {
     /// Return a patch containing the given point, if one exists.
+    /// 
     fn patch_containing_point(&self, point: (i64, i64)) -> Option<&Patch>;
 }
 
@@ -33,6 +35,7 @@ impl PatchQuery for RectangleMap<i64, Patch> {
 /// 
 /// __WARNING__: this function currently neglects the patch corners. The
 /// corners are needed for MHD and viscous fluxes.
+/// 
 pub fn extend_patch_mut<P, G>(
     patch: &mut Patch,
     valid_index_space: &IndexSpace,
@@ -62,22 +65,27 @@ pub fn extend_patch_mut<P, G>(
     }
 }
 
-/// A trait for a container that can yield an adjacency list. It means the
-/// container items are (or can be) related to one another in one more ways to
-/// yield a topology. The obvious use case is for a `RectangleMap` of patches,
-/// where adjacency can mean that an edge should point from patch `A` to patch
-/// `B` when `f(A)` intersects `B`, where `f` is a function to map rectangles
-/// in some way.
+/// A trait for a container that can yield an adjacency list (the container
+/// items can form a topology). The intended use case is for a `RectangleMap`
+/// of patches, where adjacency means that two patches overlap when one is
+/// extended. More specifically, an edge pointing from patch `A` to patch `B`
+/// means that `A` is _upstream_ of `B`: guard zones from `A` are required to
+/// extend `B`. In parallel executions, messages are passed in the direction
+/// of the arrows, from `A` to `B` in this case.
+/// 
 pub trait GraphTopology {
     /// The type of key used to identify vertices
+    /// 
     type Key;
 
     /// An additional type parameter given to `Self::adjacency_list`. In
     /// contect, this is probably the number of guard zones, which in general
     /// will influence which other patches are neighbors.
+    /// 
     type Parameter;
 
     /// Return an adjacency list derived from this container.
+    /// 
     fn adjacency_list(&self, parameter: Self::Parameter) -> AdjacencyList<Self::Key>;
 }
 
