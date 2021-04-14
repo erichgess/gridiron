@@ -68,10 +68,10 @@ pub fn extend_patch_mut<P, G>(
 /// A trait for a container that can yield an adjacency list (the container
 /// items can form a topology). The intended use case is for a `RectangleMap`
 /// of patches, where adjacency means that two patches overlap when one is
-/// extended. More specifically, an edge pointing from patch `A` to patch `B`
-/// means that `A` is _upstream_ of `B`: guard zones from `A` are required to
-/// extend `B`. In parallel executions, messages are passed in the direction
-/// of the arrows, from `A` to `B` in this case.
+/// extended. More specifically, a graph edge pointing from patch `A` to patch
+/// `B` means that `A` is _upstream_ of `B`: guard zones from `A` are required
+/// to extend `B`. In parallel executions, messages are passed in the
+/// direction of the arrows, from `A` to `B` in this case.
 /// 
 pub trait GraphTopology {
     /// The type of key used to identify vertices
