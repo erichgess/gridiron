@@ -112,7 +112,7 @@ where
 
     assert!{
         rayon::current_num_threads() >= 2,
-        "automaton::execute_par requires at least two threads to be running"
+        "automaton::execute_par requires the Rayon pool to be running at least two threads"
     };
 
     let (eligible_sink, eligible_source) = crossbeam_channel::unbounded();
