@@ -80,26 +80,17 @@ where
 {
     let (eligible_sink, eligible_source) = crossbeam_channel::unbounded();
 
-    coordinate(stage, eligible_sink);
+    coordinate(stage, |a: A| eligible_sink.send(a).unwrap());
 
     eligible_source.into_iter().map(|peer: A| peer.value())
 }
 
-/// Execute a group (or _flow_, since it can be a stream) of tasks in
-/// parallel. Tasks are spawned into the given Rayon scope. The strategy is
-/// based on a coordinator-dispatcher model. The coordinator delivers messages
-/// between tasks as they are yielded by the `flow` iterator, and sends them
-/// to the dispatcher when they have become eligible (received all the
-/// messages they need in order to run). The dispatcher moves tasks into the
-/// Rayon thread pool for execution, and then delivers their result into the
-/// output channel. This function returns as soon as the `flow` iterator is
-/// exhausted; the result iterator (over the output channel) generally yields
-/// compute results well after this function has returned.
-/// 
-/// _Note_: There must be at least two threads running in the Rayon thread
-/// pool, because the coordinator and dispatcher need to run in parallel; if
-/// there is only one thread, they'll be queued up in serial on that thread's
-/// work list.
+/// Execute a group of tasks in parallel. As tasks are yielded from the input
+/// iterator (`flow`), their messages are gathered and delivered to any
+/// pending tasks. Those tasks which become eligible upon receiving a message
+/// are spawned into the Rayon thread pool. This function returns as soon as
+/// the input iterator is exhausted. The output iterator will then yield
+/// results until all the tasks have completed in the pool.
 /// 
 pub fn execute_par<'a, I, A, K, V>(scope: &rayon::ScopeFifo<'a>, flow: I) -> impl Iterator<Item = V>
 where
@@ -108,39 +99,34 @@ where
     K: Hash + Eq,
     V: Send + 'a,
 {
-    use rayon::prelude::*;
-
     assert!{
         rayon::current_num_threads() >= 2,
         "automaton::execute_par requires the Rayon pool to be running at least two threads"
     };
 
-    let (eligible_sink, eligible_source) = crossbeam_channel::unbounded();
-    let (computed_sink, computed_source) = crossbeam_channel::unbounded();
+    let (sink, source) = crossbeam_channel::unbounded();
 
-    scope.spawn_fifo(move |_| {
-        eligible_source
-            .into_iter()
-            .par_bridge()
-            .for_each_with(computed_sink, |sink, peer: A| {
-                sink.send(peer.value()).unwrap();
-            })
+    coordinate(flow, |a: A| {
+        let sink = sink.clone();
+        scope.spawn_fifo(move |_| {
+            sink.send(a.value()).unwrap();
+        })
     });
-
-    coordinate(flow, eligible_sink);
-    computed_source.into_iter()
+    source.into_iter()
 }
 
-fn coordinate<I, A, K, V>(flow: I, eligible: crossbeam_channel::Sender<A>)
+fn coordinate<I, A, K, V, S>(flow: I, sink: S)
 where
     I: IntoIterator<Item = A>,
     A: Automaton<Key = K, Value = V>,
     K: Hash + Eq,
+    S: Fn(A),
 {
     let mut seen: HashMap<K, A> = HashMap::new();
     let mut undelivered = Vec::new();
 
     for mut a in flow {
+
         // For each of A's messages, either deliver it to the recipient peer,
         // if the peer has already been seen, or otherwise put it in the
         // undelivered box.
@@ -152,7 +138,7 @@ where
             match seen.entry(dest) {
                 Entry::Occupied(mut entry) => {
                     if let Status::Eligible = entry.get_mut().receive(data) {
-                        eligible.send(entry.remove()).unwrap()
+                        sink(entry.remove())
                     }
                 }
                 Entry::Vacant(none) => undelivered.push((none.into_key(), data)),
@@ -180,7 +166,7 @@ where
         // automaton.
         //
         if is_eligible {
-            eligible.send(a).unwrap();
+            sink(a);
         } else {
             seen.insert(dest, a);
         }

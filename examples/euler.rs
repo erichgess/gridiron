@@ -80,26 +80,28 @@ fn main() {
         .map(|patch| PatchUpdate::new(patch, mesh.clone(), dt, &edge_list))
         .collect();
 
-    let pool = rayon::ThreadPoolBuilder::new().num_threads(5).build().unwrap();
+    let pool = rayon::ThreadPoolBuilder::new()
+        .num_threads(8)
+        .build()
+        .unwrap();
 
-    let task_list = pool.scope_fifo(|scope| {
-        while time < 0.1 {
-            let start = std::time::Instant::now();
+    while time < 0.1 {
+        let start = std::time::Instant::now();
 
+        task_list = pool.scope_fifo(|scope| {
             let task_list_iter = automaton::execute_par(scope, task_list);
             let task_list_iter = automaton::execute_par(scope, task_list_iter);
+            task_list_iter.collect()
+        });
 
-            task_list = task_list_iter.collect();
-            iteration += 2;
-            time += dt * 2.0;
+        iteration += 2;
+        time += dt * 2.0;
 
-            let step_seconds = start.elapsed().as_secs_f64() / 2.0;
-            let mzps = mesh.total_zones() as f64 / 1e6 / step_seconds;
+        let step_seconds = start.elapsed().as_secs_f64() / 2.0;
+        let mzps = mesh.total_zones() as f64 / 1e6 / step_seconds;
 
-            println!("[{}] t={:.3} Mzps={:.2}", iteration, time, mzps);
-        }
-        task_list
-    });
+        println!("[{}] t={:.3} Mzps={:.2}", iteration, time, mzps);
+    }
 
     let primitive = task_list
         .into_iter()
