@@ -49,12 +49,14 @@ pub struct PatchUpdate {
     mesh: Mesh,
     neighbor_patches: Vec<Patch>,
     outgoing_edges: Vec<(Rectangle<i64>, u32)>,
+    time_step_size: f64,
 }
 
 impl PatchUpdate {
     pub fn new(
         primitive: Patch,
         mesh: Mesh,
+        time_step_size: f64,
         edge_list: &AdjacencyList<(Rectangle<i64>, u32)>,
     ) -> Self {
         let key = (primitive.high_resolution_rect(), primitive.level());
@@ -80,6 +82,7 @@ impl PatchUpdate {
             mesh,
             neighbor_patches,
             outgoing_edges,
+            time_step_size,
         }
     }
 }
@@ -164,6 +167,7 @@ impl Automaton for PatchUpdate {
             mesh,
             mut neighbor_patches,
             outgoing_edges,
+            time_step_size,
         } = self;
 
         meshing::extend_patch_mut(
@@ -178,7 +182,7 @@ impl Automaton for PatchUpdate {
         Self::compute_flux(&extended_primitive, Axis::J, &mut flux_j);
 
         let (dx, dy) = mesh.cell_spacing();
-        let dt = 0.0004; // WARNING: fixed arbitrary time step here
+        let dt = time_step_size;
 
         let fim = flux_i.select(index_space.clone());
         let fip = flux_i.select(index_space.translate(1, Axis::I));
@@ -204,6 +208,7 @@ impl Automaton for PatchUpdate {
             mesh,
             neighbor_patches,
             outgoing_edges,
+            time_step_size,
         }
     }
 }

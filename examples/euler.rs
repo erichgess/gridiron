@@ -69,7 +69,7 @@ fn main() {
         .into_iter()
         .map(|p| (p.high_resolution_rect(), p))
         .collect();
-
+    let dt = mesh.cell_spacing().0 * 0.1;
     let edge_list = primitive_map.adjacency_list(2);
     let primitive: Vec<_> = primitive_map.into_iter().map(|(_, prim)| prim).collect();
 
@@ -77,21 +77,23 @@ fn main() {
 
     let mut task_list: Vec<_> = primitive
         .into_iter()
-        .map(|patch| PatchUpdate::new(patch, mesh.clone(), &edge_list))
+        .map(|patch| PatchUpdate::new(patch, mesh.clone(), dt, &edge_list))
         .collect();
 
     let pool = rayon::ThreadPoolBuilder::new().num_threads(5).build().unwrap();
 
-    let task_list = pool.scope(|scope| {
+    let task_list = pool.scope_fifo(|scope| {
         while time < 0.1 {
             let start = std::time::Instant::now();
 
-            // task_list = automaton::execute(task_list).collect();
-            task_list = automaton::execute_par(scope, task_list).collect();
-            iteration += 1;
-            time += 0.0004;
+            let task_list_iter = automaton::execute_par(scope, task_list);
+            let task_list_iter = automaton::execute_par(scope, task_list_iter);
 
-            let step_seconds = start.elapsed().as_secs_f64();
+            task_list = task_list_iter.collect();
+            iteration += 2;
+            time += dt * 2.0;
+
+            let step_seconds = start.elapsed().as_secs_f64() / 2.0;
             let mzps = mesh.total_zones() as f64 / 1e6 / step_seconds;
 
             println!("[{}] t={:.3} Mzps={:.2}", iteration, time, mzps);
