@@ -1,7 +1,6 @@
 pub mod adjacency_list;
 pub mod aug_node;
 pub mod automaton;
-pub mod compute;
 pub mod hydro;
 pub mod index_space;
 pub mod interval_map;
@@ -10,5 +9,4 @@ pub mod meshing;
 pub mod num_vec;
 pub mod overlap;
 pub mod patch;
-pub mod quilt;
 pub mod rect_map;
