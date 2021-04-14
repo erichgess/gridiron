@@ -10,3 +10,4 @@ pub mod num_vec;
 pub mod overlap;
 pub mod patch;
 pub mod rect_map;
+pub mod solvers;
