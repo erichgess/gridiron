@@ -101,7 +101,7 @@ where
 /// there is only one thread, they'll be queued up in serial on that thread's
 /// work list.
 /// 
-pub fn execute_par<'a, I, A, K, V>(scope: &rayon::Scope<'a>, flow: I) -> impl Iterator<Item = V>
+pub fn execute_par<'a, I, A, K, V>(scope: &rayon::ScopeFifo<'a>, flow: I) -> impl Iterator<Item = V>
 where
     I: IntoIterator<Item = A>,
     A: Send + Automaton<Key = K, Value = V> + 'a,
@@ -118,12 +118,12 @@ where
     let (eligible_sink, eligible_source) = crossbeam_channel::unbounded();
     let (computed_sink, computed_source) = crossbeam_channel::unbounded();
 
-    scope.spawn(move |_| {
+    scope.spawn_fifo(move |_| {
         eligible_source
             .into_iter()
             .par_bridge()
-            .for_each(|peer: A| {
-                computed_sink.send(peer.value()).unwrap()
+            .for_each_with(computed_sink, |sink, peer: A| {
+                sink.send(peer.value()).unwrap();
             })
     });
 
