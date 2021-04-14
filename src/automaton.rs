@@ -21,11 +21,11 @@ impl Status {
 /// An agent in a group of compute tasks that can communicate with its peers,
 /// and yields a computationally intensive data product. The data product can
 /// be another `Automaton` to enable folding of parallel executions. The model
-/// minimizes shared resource ownership: tasks own their data, and messages
-/// work by transferring ownership of the memory buffer to the recipient.
-/// Since task data and messages don't need to be put under `Arc`, they can be
-/// reused in subsequent stages of the task lifetime, reducing dependence on
-/// the heap.
+/// uses message passing rather than memory sharing: tasks own their data, and
+/// transfer ownership of the message content (including its uniquely owned
+/// memory butter) to the recipient. Since task data and messages don't need
+/// to be put under `Arc`, they can be reused in subsequent stages of the task
+/// lifetime, reducing dependence on the heap.
 pub trait Automaton {
     /// The type of the key to uniquely identify this automaton within a
     /// group. Executors will generally require this type to be `Hash + Eq`,
