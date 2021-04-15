@@ -16,6 +16,12 @@ impl Status {
             Self::Ineligible
         }
     }
+    pub fn is_eligible(&self) -> bool {
+        match self {
+            Self::Eligible => true,
+            Self::Ineligible => false,
+        }
+    }
 }
 
 /// An agent in a group of compute tasks that can communicate with its peers,
@@ -71,7 +77,7 @@ pub trait Automaton {
 }
 
 /// Execute a group of tasks in serial.
-/// 
+///
 pub fn execute<I, A, K, V>(stage: I) -> impl Iterator<Item = V>
 where
     I: IntoIterator<Item = A>,
@@ -91,7 +97,7 @@ where
 /// are spawned into the Rayon thread pool. This function returns as soon as
 /// the input iterator is exhausted. The output iterator will then yield
 /// results until all the tasks have completed in the pool.
-/// 
+///
 pub fn execute_par<'a, I, A, K, V>(scope: &rayon::ScopeFifo<'a>, flow: I) -> impl Iterator<Item = V>
 where
     I: IntoIterator<Item = A>,
@@ -99,7 +105,7 @@ where
     K: Hash + Eq,
     V: Send + 'a,
 {
-    assert!{
+    assert! {
         rayon::current_num_threads() >= 2,
         "automaton::execute_par requires the Rayon pool to be running at least two threads"
     };
@@ -126,14 +132,13 @@ where
     let mut undelivered = HashMap::new();
 
     for mut a in flow {
-
         // For each of A's messages, either deliver it to the recipient peer,
         // if the peer has already been seen, or otherwise put it in the
         // undelivered box.
         //
         // If any of the recipient peers became eligible upon receiving a
         // message, then send those peers off to be executed.
-        // 
+        //
         for (dest, data) in a.messages() {
             match seen.entry(dest) {
                 Entry::Occupied(mut entry) => {
@@ -150,28 +155,19 @@ where
             }
         }
 
-        // Deliver any messages addressed to A that had arrived previously.
+        // Deliver any messages addressed to A that had arrived previously. If
+        // A is eligible after receiving its messages, then send it off to be
+        // executed. Otherwise mark it as seen and process the next automaton.
         //
-        let dest = a.key();
-        let mut is_eligible = false;
-
-        if let Some((_, messages)) = undelivered.remove_entry(&dest) {
-            for message in messages {
-                if let Status::Eligible = a.receive(message) {
-                    is_eligible = true;
-                    break;
-                }
-            }
-        }
-
-        // If A is eligible after receiving its messages, then send it off to
-        // be executed. Otherwise mark it as seen and process the next
-        // automaton.
-        //
-        if is_eligible {
-            sink(a);
+        if undelivered
+            .remove_entry(&a.key())
+            .map_or(false, |(_, messages)| {
+                messages.into_iter().any(|m| a.receive(m).is_eligible())
+            })
+        {
+            sink(a)
         } else {
-            seen.insert(dest, a);
+            seen.insert(a.key(), a);
         }
     }
     assert_eq!(seen.len(), 0);
