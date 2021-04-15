@@ -123,7 +123,7 @@ where
     S: Fn(A),
 {
     let mut seen: HashMap<K, A> = HashMap::new();
-    let mut undelivered = Vec::new();
+    let mut undelivered = HashMap::new();
 
     for mut a in flow {
 
@@ -141,23 +141,26 @@ where
                         sink(entry.remove())
                     }
                 }
-                Entry::Vacant(none) => undelivered.push((none.into_key(), data)),
+                Entry::Vacant(none) => {
+                    undelivered
+                        .entry(none.into_key())
+                        .or_insert(Vec::new())
+                        .push(data);
+                }
             }
         }
 
         // Deliver any messages addressed to A that had arrived previously.
         //
         let dest = a.key();
-        let mut i = 0;
         let mut is_eligible = false;
-        while i != undelivered.len() {
-            if undelivered[i].0 == dest {
-                if let Status::Eligible = a.receive(undelivered.remove(i).1) {
+
+        if let Some((_, messages)) = undelivered.remove_entry(&dest) {
+            for message in messages {
+                if let Status::Eligible = a.receive(message) {
                     is_eligible = true;
                     break;
                 }
-            } else {
-                i += 1;
             }
         }
 
@@ -171,4 +174,5 @@ where
             seen.insert(dest, a);
         }
     }
+    assert_eq!(seen.len(), 0);
 }
