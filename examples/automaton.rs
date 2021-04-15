@@ -67,7 +67,7 @@ fn main() {
 
     let group_size = 10;
 
-    rayon::scope(|scope| {
+    rayon::scope_fifo(|scope| {
         let group = (0..group_size).map(|n| ConcatenateNearestNeighbors::new(n, group_size));
 
         assert_eq!{

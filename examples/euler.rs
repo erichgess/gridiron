@@ -1,3 +1,4 @@
+use clap::{AppSettings, Clap};
 use gridiron::automaton;
 use gridiron::hydro::euler2d::Primitive;
 use gridiron::index_space::range2d;
@@ -33,10 +34,10 @@ struct State {
 }
 
 impl State {
-    fn new(mesh: &Mesh) -> Self {
-        let bs = 200;
-        let ni = mesh.size.0 / bs;
-        let nj = mesh.size.1 / bs;
+    fn new(mesh: &Mesh, bs: usize) -> Self {
+        let bs = bs as i64;
+        let ni = mesh.size.0 as i64 / bs;
+        let nj = mesh.size.1 as i64 / bs;
         let model = Model {};
         let initial_data = |i| model.primitive_at(mesh.cell_center(i)).as_array();
         let primitive = range2d(0..ni, 0..nj)
@@ -53,27 +54,54 @@ impl State {
     }
 }
 
-// ============================================================================
+#[derive(Clap)]
+#[clap(version = "1.0", author = "J. Zrake <jzrake@clemson.edu>")]
+#[clap(setting = AppSettings::ColoredHelp)]
+struct Opts {
+    #[clap(short = 't', long, default_value = "2")]
+    num_threads: usize,
+
+    #[clap(short, long)]
+    serial: bool,
+
+    #[clap(short = 'n', long, default_value = "1000")]
+    grid_resolution: usize,
+
+    #[clap(short = 'b', long, default_value = "100")]
+    block_size: usize,
+
+    #[clap(short = 'f', long, default_value = "1")]
+    fold: usize,
+}
+
 fn main() {
+    let opts = Opts::parse();
+
     let mesh = Mesh {
         area: (-1.0..1.0, -1.0..1.0),
-        size: (1000, 1000),
+        size: (opts.grid_resolution, opts.grid_resolution),
     };
     let State {
         mut iteration,
         mut time,
         primitive,
-    } = State::new(&mesh);
+    } = State::new(&mesh, opts.block_size);
 
     let primitive_map: RectangleMap<_, _> = primitive
         .into_iter()
         .map(|p| (p.high_resolution_rect(), p))
         .collect();
     let dt = mesh.cell_spacing().0 * 0.1;
-    let edge_list = primitive_map.adjacency_list(2);
+    let edge_list = primitive_map.adjacency_list(1);
     let primitive: Vec<_> = primitive_map.into_iter().map(|(_, prim)| prim).collect();
 
-    println!("num total blocks: {}", primitive.len());
+    println!("num blocks .... {}", primitive.len());
+    println!("num threads ... {}", opts.num_threads);
+    println!(
+        "exec mode ..... {}",
+        if opts.serial { "serial" } else { "parallel" }
+    );
+    println!("");
 
     let mut task_list: Vec<_> = primitive
         .into_iter()
@@ -81,23 +109,28 @@ fn main() {
         .collect();
 
     let pool = rayon::ThreadPoolBuilder::new()
-        .num_threads(8)
+        .num_threads(opts.num_threads)
         .build()
         .unwrap();
 
     while time < 0.1 {
         let start = std::time::Instant::now();
 
-        task_list = pool.scope_fifo(|scope| {
-            let task_list_iter = automaton::execute_par(scope, task_list);
-            let task_list_iter = automaton::execute_par(scope, task_list_iter);
-            task_list_iter.collect()
-        });
+        for _ in 0..opts.fold {
+            task_list = if opts.serial {
+                automaton::execute(task_list).collect()
+            } else {
+                pool.scope_fifo(|scope| {
+                    let task_list_iter = automaton::execute_par(scope, task_list);
+                    task_list_iter.collect()
+                })
+            };
 
-        iteration += 2;
-        time += dt * 2.0;
+            iteration += 1;
+            time += dt;
+        }
 
-        let step_seconds = start.elapsed().as_secs_f64() / 2.0;
+        let step_seconds = start.elapsed().as_secs_f64() / opts.fold as f64;
         let mzps = mesh.total_zones() as f64 / 1e6 / step_seconds;
 
         println!("[{}] t={:.3} Mzps={:.2}", iteration, time, mzps);

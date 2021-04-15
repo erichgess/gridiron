@@ -14,7 +14,7 @@ const GAMMA_LAW_INDEX: f64 = 5.0 / 3.0;
 #[derive(Clone)]
 pub struct Mesh {
     pub area: Rectangle<f64>,
-    pub size: (i64, i64),
+    pub size: (usize, usize),
 }
 
 impl Mesh {
@@ -31,7 +31,7 @@ impl Mesh {
         (x0, x1)
     }
 
-    pub fn total_zones(&self) -> i64 {
+    pub fn total_zones(&self) -> usize {
         self.size.0 * self.size.1
     }
 }
