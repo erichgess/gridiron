@@ -58,11 +58,8 @@ impl State {
 #[clap(version = "1.0", author = "J. Zrake <jzrake@clemson.edu>")]
 #[clap(setting = AppSettings::ColoredHelp)]
 struct Opts {
-    #[clap(short = 't', long, default_value = "2")]
+    #[clap(short = 't', long, default_value = "1")]
     num_threads: usize,
-
-    #[clap(short, long)]
-    serial: bool,
 
     #[clap(short = 'n', long, default_value = "1000")]
     grid_resolution: usize,
@@ -97,10 +94,6 @@ fn main() {
 
     println!("num blocks .... {}", primitive.len());
     println!("num threads ... {}", opts.num_threads);
-    println!(
-        "exec mode ..... {}",
-        if opts.serial { "serial" } else { "parallel" }
-    );
     println!("");
 
     let mut task_list: Vec<_> = primitive
@@ -108,22 +101,26 @@ fn main() {
         .map(|patch| PatchUpdate::new(patch, mesh.clone(), dt, &edge_list))
         .collect();
 
-    let pool = rayon::ThreadPoolBuilder::new()
-        .num_threads(opts.num_threads)
-        .build()
-        .unwrap();
+    let maybe_pool = if opts.num_threads > 1 {
+        Some(rayon::ThreadPoolBuilder::new()
+                .num_threads(opts.num_threads)
+                .build()
+                .unwrap())
+    } else {
+        None
+    };
 
     while time < 0.1 {
         let start = std::time::Instant::now();
 
         for _ in 0..opts.fold {
-            task_list = if opts.serial {
-                automaton::execute(task_list).collect()
-            } else {
+
+            task_list = if let Some(ref pool) = maybe_pool {
                 pool.scope_fifo(|scope| {
-                    let task_list_iter = automaton::execute_par(scope, task_list);
-                    task_list_iter.collect()
-                })
+                    automaton::execute_par(scope, task_list)
+                }).collect()
+            } else {
+                automaton::execute(task_list).collect()
             };
 
             iteration += 1;
@@ -133,7 +130,7 @@ fn main() {
         let step_seconds = start.elapsed().as_secs_f64() / opts.fold as f64;
         let mzps = mesh.total_zones() as f64 / 1e6 / step_seconds;
 
-        println!("[{}] t={:.3} Mzps={:.2}", iteration, time, mzps);
+        println!("[{}] t={:.3} Mzps={:.2} ({:.2}-thread)", iteration, time, mzps, mzps / opts.num_threads as f64);
     }
 
     let primitive = task_list
