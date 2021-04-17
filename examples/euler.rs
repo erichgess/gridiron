@@ -61,6 +61,9 @@ struct Opts {
     #[clap(short = 't', long, default_value = "1")]
     num_threads: usize,
 
+    #[clap(short = 's', long, default_value = "serial", about = "serial|stupid|rayon")]
+    strategy: String,
+
     #[clap(short = 'n', long, default_value = "1000")]
     grid_resolution: usize,
 
@@ -69,6 +72,12 @@ struct Opts {
 
     #[clap(short = 'f', long, default_value = "1")]
     fold: usize,
+}
+
+enum Execution {
+    Serial,
+    Stupid(gridiron::thread_pool::ThreadPool),
+    Rayon(rayon::ThreadPool),
 }
 
 fn main() {
@@ -101,28 +110,38 @@ fn main() {
         .map(|patch| PatchUpdate::new(patch, mesh.clone(), dt, &edge_list))
         .collect();
 
-    let maybe_pool = if opts.num_threads > 1 {
-        Some(rayon::ThreadPoolBuilder::new()
+    let executor = match opts.strategy.as_str() {
+        "serial" => Execution::Serial,
+        "stupid" => Execution::Stupid(gridiron::thread_pool::ThreadPool::new(opts.num_threads)),
+        "rayon" => Execution::Rayon(
+            rayon::ThreadPoolBuilder::new()
                 .num_threads(opts.num_threads)
                 .build()
-                .unwrap())
-    } else {
-        None
+                .unwrap(),
+        ),
+        _ => {
+            println!("--strategy options are [serial|stupid|rayon]");
+            return;
+        }
     };
 
     while time < 0.1 {
         let start = std::time::Instant::now();
 
         for _ in 0..opts.fold {
-
-            task_list = if let Some(ref pool) = maybe_pool {
-                pool.scope_fifo(|scope| {
-                    automaton::execute_par(scope, task_list)
-                }).collect()
-            } else {
-                automaton::execute(task_list).collect()
+            task_list = match &executor {
+                Execution::Serial => {
+                    automaton::execute(task_list).collect()
+                }
+                Execution::Stupid(pool) => {
+                    automaton::execute_par_stupid(&pool, task_list).collect()
+                }
+                Execution::Rayon(pool) => {
+                    pool.scope_fifo(|scope| {
+                        automaton::execute_par(scope, task_list)
+                    }).collect()
+                }
             };
-
             iteration += 1;
             time += dt;
         }
@@ -130,7 +149,13 @@ fn main() {
         let step_seconds = start.elapsed().as_secs_f64() / opts.fold as f64;
         let mzps = mesh.total_zones() as f64 / 1e6 / step_seconds;
 
-        println!("[{}] t={:.3} Mzps={:.2} ({:.2}-thread)", iteration, time, mzps, mzps / opts.num_threads as f64);
+        println!(
+            "[{}] t={:.3} Mzps={:.2} ({:.2}-thread)",
+            iteration,
+            time,
+            mzps,
+            mzps / opts.num_threads as f64
+        );
     }
 
     let primitive = task_list

@@ -91,12 +91,12 @@ where
     eligible_source.into_iter().map(|peer: A| peer.value())
 }
 
-/// Execute a group of tasks in parallel. As tasks are yielded from the input
-/// iterator (`flow`), their messages are gathered and delivered to any
-/// pending tasks. Those tasks which become eligible upon receiving a message
-/// are spawned into the Rayon thread pool. This function returns as soon as
-/// the input iterator is exhausted. The output iterator will then yield
-/// results until all the tasks have completed in the pool.
+/// Execute a group of tasks in parallel on the Rayon thread pool. As tasks
+/// are yielded from the input iterator (`flow`), their messages are gathered
+/// and delivered to any pending tasks. Those tasks which become eligible upon
+/// receiving a message are spawned into the Rayon thread pool. This function
+/// returns as soon as the input iterator is exhausted. The output iterator
+/// will then yield results until all the tasks have completed in the pool.
 ///
 pub fn execute_par<'a, I, A, K, V>(scope: &rayon::ScopeFifo<'a>, flow: I) -> impl Iterator<Item = V>
 where
@@ -117,6 +117,26 @@ where
         scope.spawn_fifo(move |_| {
             sink.send(a.value()).unwrap();
         })
+    });
+    source.into_iter()
+}
+
+/// Execute a group of tasks in parallel using `gridiron`'s stupid scheduler.
+///
+pub fn execute_par_stupid<I, A, K, V>(pool: &crate::thread_pool::ThreadPool, flow: I) -> impl Iterator<Item = V>
+where
+    I: IntoIterator<Item = A>,
+    A: 'static + Send + Automaton<Key = K, Value = V>,
+    K: 'static + Hash + Eq,
+    V: 'static + Send,
+{
+    let (sink, source) = crossbeam_channel::unbounded();
+
+    coordinate(flow, |a: A| {
+        let sink = sink.clone();
+        pool.spawn(move || {
+            sink.send(a.value()).unwrap();
+        });
     });
     source.into_iter()
 }
