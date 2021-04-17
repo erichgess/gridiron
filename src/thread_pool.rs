@@ -42,6 +42,12 @@ impl ThreadPool {
         }
     }
 
+    /// Return the number of worker threads in the pool
+    /// 
+    pub fn num_threads(&self) -> usize {
+        self.workers.len()
+    }
+
     /// Spawn a new job into the pool. Job submissions go cyclically to the
     /// workers: if worker `n` gets this job, then worker `(n + 1) %
     /// num_workers` gets the next one.

@@ -130,6 +130,11 @@ where
     K: 'static + Hash + Eq,
     V: 'static + Send,
 {
+    assert! {
+        pool.num_threads() >= 2,
+        "automaton::execute_par_stupid requires the thread pool to be running at least two threads"
+    };
+
     let (sink, source) = crossbeam_channel::unbounded();
 
     coordinate(flow, |a: A| {
