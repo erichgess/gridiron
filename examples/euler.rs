@@ -110,6 +110,11 @@ fn main() {
         .map(|patch| PatchUpdate::new(patch, mesh.clone(), dt, &edge_list))
         .collect();
 
+    if opts.grid_resolution % opts.block_size != 0 {
+        println!("Error: block size must divide the grid resolution");
+        return;
+    }
+
     let executor = match opts.strategy.as_str() {
         "serial" => Execution::Serial,
         "stupid" => Execution::Stupid(gridiron::thread_pool::ThreadPool::new(opts.num_threads)),
@@ -120,7 +125,7 @@ fn main() {
                 .unwrap(),
         ),
         _ => {
-            println!("--strategy options are [serial|stupid|rayon]");
+            println!("Error: --strategy options are [serial|stupid|rayon]");
             return;
         }
     };
