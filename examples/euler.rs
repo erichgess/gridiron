@@ -72,6 +72,9 @@ struct Opts {
 
     #[clap(short = 'f', long, default_value = "1")]
     fold: usize,
+
+    #[clap(long, default_value = "0.1")]
+    tfinal: f64,
 }
 
 enum Execution {
@@ -111,7 +114,12 @@ fn main() {
         .collect();
 
     if opts.grid_resolution % opts.block_size != 0 {
-        println!("Error: block size must divide the grid resolution");
+        eprintln!("Error: block size must divide the grid resolution");
+        return;
+    }
+
+    if opts.strategy == "serial" && opts.num_threads != 1 {
+        eprintln!("Error: serial option requires --num-threads=1");
         return;
     }
 
@@ -125,12 +133,12 @@ fn main() {
                 .unwrap(),
         ),
         _ => {
-            println!("Error: --strategy options are [serial|stupid|rayon]");
+            eprintln!("Error: --strategy options are [serial|stupid|rayon]");
             return;
         }
     };
 
-    while time < 0.1 {
+    while time < opts.tfinal {
         let start = std::time::Instant::now();
 
         for _ in 0..opts.fold {
