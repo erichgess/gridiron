@@ -46,7 +46,7 @@ impl ThreadPool {
         }
     }
 
-    /// Return the number of worker threads in the pool
+    /// Return the number of worker threads in the pool.
     /// 
     pub fn num_threads(&self) -> usize {
         self.workers.len()
@@ -60,36 +60,31 @@ impl ThreadPool {
     where
         F: FnOnce() -> () + Send + 'static,
     {
-        let mut worker_id = self.current_worker_id.get();
+        self.spawn_on(None, job)
+    }
+
+    /// Spawn a job onto the worker thread with the given index, if it is
+    /// `Some`. The current worker index is not incremented. If the worker
+    /// index is `None`, then the job is run on the current worker index,
+    /// which is then incremented.
+    ///
+    pub fn spawn_on<F>(&self, worker_id: Option<usize>, job: F)
+    where
+        F: FnOnce() -> () + Send + 'static,
+    {
+        let worker_id = if let Some(worker_id) = worker_id {
+            worker_id
+        } else {
+            let worker_id = self.current_worker_id.get();
+            self.current_worker_id.set((worker_id + 1) % self.num_threads());
+            worker_id
+        };
         self.workers[worker_id]
             .sender
             .as_ref()
             .unwrap()
             .send(Box::new(job))
             .unwrap();
-        worker_id += 1;
-        worker_id %= self.workers.len();
-        self.current_worker_id.set(worker_id);
-    }
-
-    /// Spawn a job onto the worker thread with the given index, if it is
-    /// `Some`. The current worker index is not incremented. If the worker
-    /// index is `None`, reverts to `Self::spawn`.
-    ///
-    pub fn spawn_on<F>(&self, worker_id: Option<usize>, job: F)
-    where
-        F: FnOnce() -> () + Send + 'static,
-    {
-        if let Some(worker_id) = worker_id {
-            self.workers[worker_id]
-                .sender
-                .as_ref()
-                .unwrap()
-                .send(Box::new(job))
-                .unwrap();            
-        } else {
-            self.spawn(job)
-        }
     }
 }
 
