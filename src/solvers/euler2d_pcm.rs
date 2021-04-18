@@ -50,6 +50,7 @@ pub struct PatchUpdate {
     neighbor_patches: Vec<Patch>,
     outgoing_edges: Vec<(Rectangle<i64>, u32)>,
     time_step_size: f64,
+    worker_group: Option<usize>,
 }
 
 impl PatchUpdate {
@@ -57,6 +58,7 @@ impl PatchUpdate {
         primitive: Patch,
         mesh: Mesh,
         time_step_size: f64,
+        worker_group: Option<usize>,
         edge_list: &AdjacencyList<(Rectangle<i64>, u32)>,
     ) -> Self {
         let key = (primitive.high_resolution_rect(), primitive.level());
@@ -83,6 +85,7 @@ impl PatchUpdate {
             neighbor_patches,
             outgoing_edges,
             time_step_size,
+            worker_group,
         }
     }
 }
@@ -168,6 +171,7 @@ impl Automaton for PatchUpdate {
             mut neighbor_patches,
             outgoing_edges,
             time_step_size,
+            worker_group,
         } = self;
 
         meshing::extend_patch_mut(
@@ -209,6 +213,11 @@ impl Automaton for PatchUpdate {
             neighbor_patches,
             outgoing_edges,
             time_step_size,
+            worker_group,
         }
+    }
+
+    fn worker_hint(&self) -> Option<usize> {
+        self.worker_group
     }
 }

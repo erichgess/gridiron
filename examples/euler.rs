@@ -110,7 +110,8 @@ fn main() {
 
     let mut task_list: Vec<_> = primitive
         .into_iter()
-        .map(|patch| PatchUpdate::new(patch, mesh.clone(), dt, &edge_list))
+        .enumerate()
+        .map(|(n, patch)| PatchUpdate::new(patch, mesh.clone(), dt, Some(n % opts.num_threads), &edge_list))
         .collect();
 
     if opts.grid_resolution % opts.block_size != 0 {

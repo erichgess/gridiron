@@ -14,17 +14,21 @@ struct Worker {
 ///
 pub struct ThreadPool {
     workers: Vec<Worker>,
-    current_worker_index: cell::Cell<usize>,
+    current_worker_id: cell::Cell<usize>,
 }
 
 impl ThreadPool {
     /// Create a new thread pool with the given number of threads.
     ///
     pub fn new(num_threads: usize) -> Self {
-        let workers = (0..num_threads)
-            .map(|_| {
+
+        use core_affinity::{get_core_ids, set_for_current};
+
+        let workers = get_core_ids().unwrap().into_iter().take(num_threads)
+            .map(|core_id| {
                 let (sender, receiver): (mpsc::Sender<Job>, mpsc::Receiver<Job>) = mpsc::channel();
-                let handle = thread::spawn(|| {
+                let handle = thread::spawn(move || {
+                    set_for_current(core_id);
                     for job in receiver {
                         job()
                     }
@@ -38,7 +42,7 @@ impl ThreadPool {
 
         ThreadPool {
             workers,
-            current_worker_index: cell::Cell::new(0),
+            current_worker_id: cell::Cell::new(0),
         }
     }
 
@@ -56,16 +60,36 @@ impl ThreadPool {
     where
         F: FnOnce() -> () + Send + 'static,
     {
-        let mut index = self.current_worker_index.get();
-        self.workers[index]
+        let mut worker_id = self.current_worker_id.get();
+        self.workers[worker_id]
             .sender
             .as_ref()
             .unwrap()
             .send(Box::new(job))
             .unwrap();
-        index += 1;
-        index %= self.workers.len();
-        self.current_worker_index.set(index);
+        worker_id += 1;
+        worker_id %= self.workers.len();
+        self.current_worker_id.set(worker_id);
+    }
+
+    /// Spawn a job onto the worker thread with the given index, if it is
+    /// `Some`. The current worker index is not incremented. If the worker
+    /// index is `None`, reverts to `Self::spawn`.
+    ///
+    pub fn spawn_on<F>(&self, worker_id: Option<usize>, job: F)
+    where
+        F: FnOnce() -> () + Send + 'static,
+    {
+        if let Some(worker_id) = worker_id {
+            self.workers[worker_id]
+                .sender
+                .as_ref()
+                .unwrap()
+                .send(Box::new(job))
+                .unwrap();            
+        } else {
+            self.spawn(job)
+        }
     }
 }
 

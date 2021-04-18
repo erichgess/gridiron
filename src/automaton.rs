@@ -74,6 +74,12 @@ pub trait Automaton {
     /// It is likely to be called on a worker thread, so it should also
     /// minimize creating or dropping memory buffers.
     fn value(self) -> Self::Value;
+
+    /// This method may be implemented to hint the executor which worker
+    /// thread it wants to run on. The executor is allowed to ignore the hint.
+    fn worker_hint(&self) -> Option<usize> {
+        None
+    }
 }
 
 /// Execute a group of tasks in serial.
@@ -139,7 +145,7 @@ where
 
     coordinate(flow, |a: A| {
         let sink = sink.clone();
-        pool.spawn(move || {
+        pool.spawn_on(a.worker_hint(), move || {
             sink.send(a.value()).unwrap();
         });
     });
