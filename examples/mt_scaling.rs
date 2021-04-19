@@ -1,3 +1,5 @@
+#![feature(test)]
+
 use clap::{AppSettings, Clap};
 use gridiron::thread_pool::ThreadPool;
 use rayon::prelude::*;
@@ -13,7 +15,30 @@ struct Opts {
     num_jobs: usize,
 
     #[clap(short = 'w', long, default_value = "100000")]
-    work_per_job: usize,
+    work_per_job: u64,
+}
+
+fn do_work(work: u64) -> f64 {
+
+    // Work load 1:
+    // std::thread::sleep(std::time::Duration::from_micros(work));
+    // 0.0
+
+    // Work load 2:
+    // (0..work).map(|n| n as f64).sum()
+
+    // Work load 3:
+    let mut x: [f64; 4] = [0.0, 0.0, 0.0, 0.0];
+    let mut n = 0;
+
+    while n < work {
+        n += 1;
+        x[0] += 0.0;
+        x[1] += x[0].sin();
+        x[2] += x[1].cos();
+        x[3] += x[2].ln();
+    }
+    x[3]
 }
 
 fn main() {
@@ -27,7 +52,7 @@ fn main() {
 
         for _ in 0..opts.num_jobs {
             pool.spawn(move || {
-                let _: f64 = (0..work).map(|n| n as f64).sum();
+                std::hint::black_box(do_work(work));
             });
         }
         drop(pool);
@@ -55,7 +80,7 @@ fn main() {
         pool.scope(|scope| {
             for _ in 0..opts.num_jobs {
                 scope.spawn(|_| {
-                    let _: f64 = (0..work).map(|n| n as f64).sum();
+                    std::hint::black_box(do_work(work));
                 });
             }
         });
@@ -83,7 +108,7 @@ fn main() {
         let start = std::time::Instant::now();
         pool.install(|| {
             data.par_iter().for_each(|_| {
-                let _: f64 = (0..work).map(|n| n as f64).sum();
+                std::hint::black_box(do_work(work));
             });
         });
         start.elapsed().as_secs_f64()
