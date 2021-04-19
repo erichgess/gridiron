@@ -1,16 +1,18 @@
 use std::cell;
-use std::sync::mpsc;
 use std::thread;
+use crossbeam_channel::{Sender, Receiver, unbounded};
+use core_affinity::{get_core_ids, set_for_current};
 
 type Job = Box<dyn FnOnce() -> () + Send + 'static>;
 
 struct Worker {
     handle: Option<thread::JoinHandle<()>>,
-    sender: Option<mpsc::Sender<Job>>,
+    sender: Option<Sender<Job>>,
 }
 
-/// A minimal thread pool implementation. No effort is made to schedule jobs
-/// intelligently, it just goes round-robin. Jobs must be `'static`.
+/// A minimal thread pool implementation with core affinity. No effort is made
+/// to schedule jobs intelligently, it just goes round-robin. Jobs must be
+/// `'static`.
 ///
 pub struct ThreadPool {
     workers: Vec<Worker>,
@@ -18,15 +20,17 @@ pub struct ThreadPool {
 }
 
 impl ThreadPool {
-    /// Create a new thread pool with the given number of threads.
+    /// Create a new thread pool with at most the given number of threads. If
+    /// the system has fewer physical CPU cores than the requested number of
+    /// threads, then the number of cores is unsed instead.
     ///
     pub fn new(num_threads: usize) -> Self {
-
-        use core_affinity::{get_core_ids, set_for_current};
-
-        let workers = get_core_ids().unwrap().into_iter().take(num_threads)
+        let workers = get_core_ids()
+            .unwrap()
+            .into_iter()
+            .take(num_threads)
             .map(|core_id| {
-                let (sender, receiver): (mpsc::Sender<Job>, mpsc::Receiver<Job>) = mpsc::channel();
+                let (sender, receiver): (Sender<Job>, Receiver<Job>) = unbounded();
                 let handle = thread::spawn(move || {
                     set_for_current(core_id);
                     for job in receiver {
@@ -47,7 +51,7 @@ impl ThreadPool {
     }
 
     /// Return the number of worker threads in the pool.
-    /// 
+    ///
     pub fn num_threads(&self) -> usize {
         self.workers.len()
     }
@@ -76,7 +80,8 @@ impl ThreadPool {
             worker_id
         } else {
             let worker_id = self.current_worker_id.get();
-            self.current_worker_id.set((worker_id + 1) % self.num_threads());
+            self.current_worker_id
+                .set((worker_id + 1) % self.num_threads());
             worker_id
         };
         self.workers[worker_id]

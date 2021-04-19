@@ -1,17 +1,20 @@
 use rayon::prelude::*;
 use gridiron::index_space::range2d;
+use gridiron::thread_pool::ThreadPool;
 
-const NUM_THREADS: usize = 8;
+// assume 2x logical cores per CPU
+const LOGICAL_CORES_PER_CPU: usize = 2;
 
 fn main() {
+    let num_cores = core_affinity::get_core_ids().unwrap().len() / LOGICAL_CORES_PER_CPU;
     let t0 = run_with_num_threads(1);
     let t1 = run_with_num_threads(1);
-    let t2 = run_with_num_threads(NUM_THREADS);
-    let t3 = run_with_num_threads(NUM_THREADS);
-    println!("scaling is at {:.3}%", 100.0 * (t0 + t1) / (t2 + t3) / NUM_THREADS as f64);
+    let t2 = run_with_num_threads(num_cores);
+    let t3 = run_with_num_threads(num_cores);
+    println!("scaling is {:.3}% to {} threads", 100.0 * (t0 + t1) / (t2 + t3) / num_cores as f64, num_cores);
 }
 
-fn run_with_num_threads(num_threads: usize) -> f64 {
+fn _run_with_num_threads(num_threads: usize) -> f64 {
     let num_blocks = (64, 64);
     let block_size = (64, 64);
     let blocks = range2d(0..num_blocks.0 as i64, 0..num_blocks.1 as i64);
@@ -26,6 +29,26 @@ fn run_with_num_threads(num_threads: usize) -> f64 {
     pool.install(|| {
         let _result: Vec<_> = peers.into_par_iter().map(|task| task.run()).collect();
     });
+    let delta = start.elapsed().as_secs_f64();
+    println!("num_threads: {}: {:.4}s", num_threads, delta);
+    delta
+}
+
+fn run_with_num_threads(num_threads: usize) -> f64 {
+    let num_blocks = (64, 64);
+    let block_size = (64, 64);
+    let blocks = range2d(0..num_blocks.0 as i64, 0..num_blocks.1 as i64);
+    let peers: Vec<_> = blocks.iter().map(|_| Task::new(block_size)).collect();
+
+    let pool = ThreadPool::new(num_threads);
+
+    let start = std::time::Instant::now();
+    for task in peers {
+        pool.spawn(move || {
+            task.run();
+        });
+    }
+    drop(pool);
     let delta = start.elapsed().as_secs_f64();
     println!("num_threads: {}: {:.4}s", num_threads, delta);
     delta
@@ -54,7 +77,7 @@ impl Task {
 
         let ind = |i, j| i * m + j;
 
-        for _ in 0..1000 {
+        for _ in 0..500 {
             for i in 1..l - 1 {
                 for j in 1..m - 1 {
                     let cxl = data[ind(i, j)];

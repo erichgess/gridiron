@@ -54,7 +54,7 @@ impl State {
     }
 }
 
-#[derive(Clap)]
+#[derive(Debug, Clap)]
 #[clap(version = "1.0", author = "J. Zrake <jzrake@clemson.edu>")]
 #[clap(setting = AppSettings::ColoredHelp)]
 struct Opts {
@@ -85,6 +85,7 @@ enum Execution {
 
 fn main() {
     let opts = Opts::parse();
+    println!("{:?}", opts);
 
     let mesh = Mesh {
         area: (-1.0..1.0, -1.0..1.0),
