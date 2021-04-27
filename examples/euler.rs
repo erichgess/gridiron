@@ -139,9 +139,9 @@ fn main() {
 
     // TODO: Connect to peer which will have the second half of the grid
     let mut threads = vec![];
-    let (from_peer_s, from_peer_r) = unbounded(); // i_s goes to the server and i_r goes to the worker
+    let (from_peer_s, _from_peer_r) = unbounded(); // i_s goes to the server and i_r goes to the worker
     let (to_peer_s, to_peer_r) = unbounded(); // o_s goes to the worker and o_r goes to the client
-    let (sig_s, sig_r) = unbounded();
+    let (_sig_s, sig_r) = unbounded();
 
     // start the host receiver
     let sig_r = sig_r.clone();
@@ -208,19 +208,26 @@ fn main() {
     // TODO: then compute the time from the frame counter
     let num_frames = (opts.tfinal / dt).ceil() as u64;
     info!("Total Frames: {}", num_frames);
+    let local_range = (opts.start, opts.end);
     for frame in 0..num_frames {
         time = dt * frame as f64;
         let start = std::time::Instant::now();
 
         // TODO: Handle folding with distribution
         for _ in 0..opts.fold {
+            let to_peer_s = to_peer_s.clone();
             task_list = match &executor {
-                Execution::Serial => automaton::execute(task_list).collect(),
+                Execution::Serial => {
+                    automaton::execute(task_list, to_peer_s, local_range).collect()
+                }
                 Execution::Stupid(pool) => {
-                    automaton::execute_par_stupid(&pool, task_list).collect()
+                    automaton::execute_par_stupid(&pool, task_list, to_peer_s, local_range)
+                        .collect()
                 }
                 Execution::Rayon(pool) => pool
-                    .scope_fifo(|scope| automaton::execute_par(scope, task_list))
+                    .scope_fifo(|scope| {
+                        automaton::execute_par(scope, task_list, to_peer_s, local_range)
+                    })
                     .collect(),
             };
             time += dt;

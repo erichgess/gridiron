@@ -1,5 +1,10 @@
 use core::hash::Hash;
-use std::collections::hash_map::{Entry, HashMap};
+use std::{
+    collections::hash_map::{Entry, HashMap},
+    ops::Range,
+};
+
+use crossbeam_channel::Sender;
 
 /// Returned by [`Automaton::receive`] to indicate whether a task is eligible
 /// to be evaluated.
@@ -84,7 +89,11 @@ pub trait Automaton {
 
 /// Execute a group of tasks in serial.
 ///
-pub fn execute<I, A, K, V>(stage: I) -> impl Iterator<Item = V>
+pub fn execute<I, A, K, V>(
+    stage: I,
+    to_peer: Sender<A::Message>,
+    local_range: (i64, i64),
+) -> impl Iterator<Item = V>
 where
     I: IntoIterator<Item = A>,
     A: Automaton<Key = K, Value = V>,
@@ -92,7 +101,12 @@ where
 {
     let (eligible_sink, eligible_source) = crossbeam_channel::unbounded();
 
-    coordinate(stage, |a: A| eligible_sink.send(a).unwrap());
+    coordinate(
+        stage,
+        |a: A| eligible_sink.send(a).unwrap(),
+        to_peer,
+        local_range,
+    );
 
     eligible_source.into_iter().map(|peer: A| peer.value())
 }
@@ -104,7 +118,12 @@ where
 /// returns as soon as the input iterator is exhausted. The output iterator
 /// will then yield results until all the tasks have completed in the pool.
 ///
-pub fn execute_par<'a, I, A, K, V>(scope: &rayon::ScopeFifo<'a>, flow: I) -> impl Iterator<Item = V>
+pub fn execute_par<'a, I, A, K, V>(
+    scope: &rayon::ScopeFifo<'a>,
+    flow: I,
+    to_peer: Sender<A::Message>,
+    local_range: (i64, i64),
+) -> impl Iterator<Item = V>
 where
     I: IntoIterator<Item = A>,
     A: Send + Automaton<Key = K, Value = V> + 'a,
@@ -118,12 +137,17 @@ where
 
     let (sink, source) = crossbeam_channel::unbounded();
 
-    coordinate(flow, |a: A| {
-        let sink = sink.clone();
-        scope.spawn_fifo(move |_| {
-            sink.send(a.value()).unwrap();
-        })
-    });
+    coordinate(
+        flow,
+        |a: A| {
+            let sink = sink.clone();
+            scope.spawn_fifo(move |_| {
+                sink.send(a.value()).unwrap();
+            })
+        },
+        to_peer,
+        local_range,
+    );
     source.into_iter()
 }
 
@@ -132,6 +156,8 @@ where
 pub fn execute_par_stupid<I, A, K, V>(
     pool: &crate::thread_pool::ThreadPool,
     flow: I,
+    to_peer: Sender<A::Message>,
+    local_range: (i64, i64),
 ) -> impl Iterator<Item = V>
 where
     I: IntoIterator<Item = A>,
@@ -146,17 +172,24 @@ where
 
     let (sink, source) = crossbeam_channel::unbounded();
 
-    coordinate(flow, |a: A| {
-        let sink = sink.clone();
-        pool.spawn_on(a.worker_hint(), move || {
-            sink.send(a.value()).unwrap();
-        });
-    });
+    coordinate(
+        flow,
+        |a: A| {
+            let sink = sink.clone();
+            pool.spawn_on(a.worker_hint(), move || {
+                sink.send(a.value()).unwrap();
+            });
+        },
+        to_peer,
+        local_range,
+    );
     source.into_iter()
 }
 
 // TODO: Pass in channels from host to receive and send msgs from and to peers
-fn coordinate<I, A, K, V, S>(flow: I, sink: S)
+// TODO: Key/K is a rectangle<i64> corresponding the the patch's grid range.
+// So that's what the hashmap is keyed on
+fn coordinate<I, A, K, V, S>(flow: I, sink: S, to_peer: Sender<A::Message>, local_range: (i64, i64))
 where
     I: IntoIterator<Item = A>,
     A: Automaton<Key = K, Value = V>,
@@ -176,6 +209,7 @@ where
         //
         // TODO: send any remote messages to peers
         for (dest, data) in a.messages() {
+            // TODO: If message is for a remote peer, then post to to_peer channel
             match seen.entry(dest) {
                 Entry::Occupied(mut entry) => {
                     if let Status::Eligible = entry.get_mut().receive(data) {
