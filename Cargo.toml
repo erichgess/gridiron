@@ -13,3 +13,5 @@ clap = "3.0.0-beta"
 core_affinity = "0.5"
 simple_logger = "1.11.0"
 log = "*"
+zmq = {version = "0.9", features=["vendored"]}
+signal-hook = "0.3.8"
