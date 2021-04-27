@@ -139,21 +139,21 @@ fn main() {
 
     // TODO: Connect to peer which will have the second half of the grid
     let mut threads = vec![];
-    let (i_s, i_r) = unbounded(); // i_s goes to the server and i_r goes to the worker
-    let (o_s, o_r) = unbounded(); // o_s goes to the worker and o_r goes to the client
+    let (from_peer_s, from_peer_r) = unbounded(); // i_s goes to the server and i_r goes to the worker
+    let (to_peer_s, to_peer_r) = unbounded(); // o_s goes to the worker and o_r goes to the client
     let (sig_s, sig_r) = unbounded();
 
     // start the host receiver
     let sig_r = sig_r.clone();
     let port = opts.port;
     let receiver = std::thread::spawn(move || {
-        receiver::receiver(port, i_s, sig_r);
+        receiver::receiver(port, from_peer_s, sig_r);
         info!("Receiver thread completed");
     });
     threads.push(receiver);
 
     // start the sender thread
-    let o_r = o_r.clone();
+    let o_r = to_peer_r.clone();
     let peer_addr = opts.peer_addr.clone();
     let sender = std::thread::spawn(move || {
         sender::sender(peer_addr, o_r);
@@ -252,6 +252,11 @@ fn main() {
     let file = std::fs::File::create("state.cbor").unwrap();
     let mut buffer = std::io::BufWriter::new(file);
     ciborium::ser::into_writer(&state, &mut buffer).unwrap();
+
+    // Wait until all threads are complete to exit the service
+    for t in threads {
+        t.join().unwrap();
+    }
 }
 
 fn init_logging() {
