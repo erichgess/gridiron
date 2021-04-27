@@ -48,15 +48,12 @@ pub mod receiver {
                 Err(_) => continue, // TODO: I don't like having the continue here because it makes it hard to see the cycles that have no exit
             }
             let req: msg::Request = rmp_serde::decode::from_slice(&msg).unwrap();
-            info!("Message: {:?}", req);
 
             // Post message to a channel for processing and then send Ack
             match input_sender.send(req.data().clone()) {
                 Ok(_) => debug!("Sent data to channel"),
                 Err(msg) => error!("Failed to post to channel: {}", msg),
             }
-
-            thread::sleep(Duration::from_millis(1000));
 
             info!("Sending Ack for {}", req.id());
             let response = msg::Response::new(msg::Status::Good(req.id()));

@@ -131,10 +131,10 @@ fn main() {
     let primitive: Vec<_> = primitive_map
         .into_iter()
         .map(|(_, prim)| prim)
-        .filter(|prim| {
+        /*.filter(|prim| {
             // TODO: filter the primitives to only be half of the grid
             opts.start <= prim.local_rect().0.start && prim.local_rect().0.end <= opts.end
-        })
+        })*/
         .collect();
 
     // TODO: Connect to peer which will have the second half of the grid
@@ -153,10 +153,9 @@ fn main() {
     threads.push(receiver);
 
     // start the sender thread
-    let o_r = to_peer_r.clone();
     let peer_addr = opts.peer_addr.clone();
     let sender = std::thread::spawn(move || {
-        sender::sender(peer_addr, o_r);
+        sender::sender(peer_addr, to_peer_r);
         info!("Sender thread completed");
     });
     threads.push(sender);

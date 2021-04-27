@@ -114,6 +114,7 @@ pub fn execute<I, A, K, V>(
 where
     I: IntoIterator<Item = A>,
     A: Automaton<Key = K, Value = V>,
+    A::Message: Clone,
     K: Hash + Eq + RemoteValue + std::fmt::Debug,
 {
     let (eligible_sink, eligible_source) = crossbeam_channel::unbounded();
@@ -144,6 +145,7 @@ pub fn execute_par<'a, I, A, K, V>(
 where
     I: IntoIterator<Item = A>,
     A: Send + Automaton<Key = K, Value = V> + 'a,
+    A::Message: Clone,
     K: Hash + Eq + RemoteValue + std::fmt::Debug,
     V: Send + 'a,
 {
@@ -179,6 +181,7 @@ pub fn execute_par_stupid<I, A, K, V>(
 where
     I: IntoIterator<Item = A>,
     A: 'static + Send + Automaton<Key = K, Value = V>,
+    A::Message: Clone,
     K: 'static + Hash + Eq + RemoteValue + std::fmt::Debug,
     V: 'static + Send,
 {
@@ -211,6 +214,7 @@ where
     I: IntoIterator<Item = A>,
     A: Automaton<Key = K, Value = V>,
     K: Hash + Eq + RemoteValue + std::fmt::Debug,
+    A::Message: Clone, // TODO: This is just temp, to make it easy for me to send data locally and remotely
     S: Fn(A),
 {
     let mut seen: HashMap<K, A> = HashMap::new();
@@ -228,9 +232,9 @@ where
         for (dest, data) in a.messages() {
             // TODO: If message is for a remote peer, then post to to_peer channel
             if dest.is_remote(local_range) {
-                info!("Remote Dest: {:?}", dest);
+                to_peer.send(data.clone()).unwrap();
             } else {
-                info!("Local Dest: {:?}", dest);
+                //info!("Local Dest: {:?}", dest);
             }
             match seen.entry(dest) {
                 Entry::Occupied(mut entry) => {
@@ -269,5 +273,5 @@ where
     // TODO: Does this need to be updated? With p2p will this wind up being correct?
     // TODO: Leave for now and think about when p2p is added in
     // TODO: I think that I can still use `seen` to track if remote hosts have been sent to or not?
-    assert_eq!(seen.len(), 0);
+    //assert_eq!(seen.len(), 0);
 }
