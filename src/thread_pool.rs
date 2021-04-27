@@ -3,7 +3,7 @@ use std::thread;
 use crossbeam_channel::{Sender, Receiver, unbounded};
 use core_affinity::{get_core_ids, set_for_current};
 
-type Job = Box<dyn FnOnce() -> () + Send + 'static>;
+type Job = Box<dyn FnOnce() + Send + 'static>;
 
 struct Worker {
     handle: Option<thread::JoinHandle<()>>,
@@ -62,7 +62,7 @@ impl ThreadPool {
     ///
     pub fn spawn<F>(&self, job: F)
     where
-        F: FnOnce() -> () + Send + 'static,
+        F: FnOnce() + Send + 'static,
     {
         self.spawn_on(None, job)
     }
@@ -74,7 +74,7 @@ impl ThreadPool {
     ///
     pub fn spawn_on<F>(&self, worker_id: Option<usize>, job: F)
     where
-        F: FnOnce() -> () + Send + 'static,
+        F: FnOnce() + Send + 'static,
     {
         let worker_id = if let Some(worker_id) = worker_id {
             worker_id

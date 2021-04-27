@@ -5,6 +5,9 @@ use std::net::{SocketAddr, TcpListener, TcpStream};
 use std::sync::mpsc;
 use std::thread;
 
+type Sender = mpsc::Sender<(usize, Vec<u8>)>;
+type Receiver = mpsc::Receiver<(usize, Vec<u8>)>;
+
 pub struct TcpCommunicator {
     rank: usize,
     num_peers: usize,

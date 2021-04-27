@@ -157,11 +157,11 @@ impl Patch {
         self.data.chunks_exact_mut(self.num_fields)
     }
 
-    pub fn select<'a>(&'a self, subspace: IndexSpace) -> impl Iterator<Item = &'a [f64]> {
+    pub fn select(&self, subspace: IndexSpace) -> impl Iterator<Item = &'_ [f64]> {
         subspace.memory_region_in(self.index_space()).iter_slice(&self.data, self.num_fields)
     }
 
-    pub fn select_mut<'a>(&'a mut self, subspace: IndexSpace) -> impl Iterator<Item = &'a mut [f64]> {
+    pub fn select_mut(&mut self, subspace: IndexSpace) -> impl Iterator<Item = &'_ mut [f64]> {
         subspace.memory_region_in(self.index_space()).iter_slice_mut(&mut self.data, self.num_fields)
     }
 

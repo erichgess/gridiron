@@ -129,7 +129,10 @@ where
 
 /// Execute a group of tasks in parallel using `gridiron`'s stupid scheduler.
 ///
-pub fn execute_par_stupid<I, A, K, V>(pool: &crate::thread_pool::ThreadPool, flow: I) -> impl Iterator<Item = V>
+pub fn execute_par_stupid<I, A, K, V>(
+    pool: &crate::thread_pool::ThreadPool,
+    flow: I,
+) -> impl Iterator<Item = V>
 where
     I: IntoIterator<Item = A>,
     A: 'static + Send + Automaton<Key = K, Value = V>,
@@ -180,7 +183,7 @@ where
                 Entry::Vacant(none) => {
                     undelivered
                         .entry(none.into_key())
-                        .or_insert(Vec::new())
+                        .or_insert_with(Vec::new)
                         .push(data);
                 }
             }
@@ -190,12 +193,13 @@ where
         // A is eligible after receiving its messages, then send it off to be
         // executed. Otherwise mark it as seen and process the next automaton.
         //
-        if undelivered
+        let eligible = undelivered
             .remove_entry(&a.key())
             .map_or(false, |(_, messages)| {
                 messages.into_iter().any(|m| a.receive(m).is_eligible())
-            })
-        {
+            });
+
+        if eligible {
             sink(a)
         } else {
             seen.insert(a.key(), a);

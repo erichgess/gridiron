@@ -15,8 +15,7 @@ pub trait PatchQuery {
 impl PatchQuery for Vec<Patch> {
     fn patch_containing_point(&self, point: (i64, i64)) -> Option<&Patch> {
         self.iter()
-            .filter(|p| p.high_resolution_space().contains(point))
-            .next()
+            .find(|p| p.high_resolution_space().contains(point))
     }
 }
 

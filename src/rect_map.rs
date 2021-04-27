@@ -1,40 +1,26 @@
+use crate::interval_map::IntervalMap;
 use core::iter::FromIterator;
 use core::ops::{Range, RangeBounds};
-use crate::interval_map::IntervalMap;
-
-
-
 
 /// Type alias for a 2d range
 pub type Rectangle<T> = (Range<T>, Range<T>);
 
-
-
-
 /// Type alias for a 2d range, by-reference
 pub type RectangleRef<'a, T> = (&'a Range<T>, &'a Range<T>);
 
-
-
-
+/// An associative map where the keys are `Rectangle` objects. Supports point,
+/// rectangle, generic 2d range-based queries to iterate over key-value pairs.
+///
 #[derive(Clone)]
-
-/**
- * An associative map where the keys are `Rectangle` objects. Supports point,
- * rectangle, generic 2d range-based queries to iterate over key-value pairs.
- */
 pub struct RectangleMap<T: Ord + Copy, V> {
-    map: IntervalMap<T, IntervalMap<T, V>>
+    map: IntervalMap<T, IntervalMap<T, V>>,
 }
 
-
-
-
-// ============================================================================
 impl<T: Ord + Copy, V> RectangleMap<T, V> {
-
     pub fn new() -> Self {
-        Self { map: IntervalMap::new() }
+        Self {
+            map: IntervalMap::new(),
+        }
     }
 
     pub fn is_empty(&self) -> bool {
@@ -59,39 +45,40 @@ impl<T: Ord + Copy, V> RectangleMap<T, V> {
 
     pub fn insert<I>(&mut self, space: I, value: V) -> &mut V
     where
-        I: Into<Rectangle<T>>
+        I: Into<Rectangle<T>>,
     {
         let (di, dj) = space.into();
-        self.map
-            .require(di)
-            .insert(dj, value)
+        self.map.require(di).insert(dj, value)
     }
 
-    pub fn require(&mut self, area: Rectangle<T>) -> &mut V where V: Default {
+    pub fn require(&mut self, area: Rectangle<T>) -> &mut V
+    where
+        V: Default,
+    {
         let (di, dj) = area;
-        self.map
-            .require(di)
-            .require(dj)
+        self.map.require(di).require(dj)
     }
 
     pub fn remove(&mut self, key: RectangleRef<T>) {
         if let Some(m) = self.map.get_mut(key.0) {
             m.remove(key.1);
             if m.is_empty() {
-                self.map.remove(key.0)                
+                self.map.remove(key.0)
             }
         }
     }
 
     pub fn into_balanced(self) -> Self {
         Self {
-            map: self.map
+            map: self
+                .map
                 .into_sorted()
                 .map(|(k, m)| (k, m.into_balanced()))
-                .collect()
+                .collect(),
         }
     }
 
+    #[allow(clippy::should_implement_trait)]
     pub fn into_iter(self) -> impl Iterator<Item = (Rectangle<T>, V)> {
         self.map
             .into_iter()
@@ -120,29 +107,22 @@ impl<T: Ord + Copy, V> RectangleMap<T, V> {
             .flatten()
     }
 
-    pub fn query_point(
-        &self,
-        point: (T, T)) -> impl Iterator<Item = (RectangleRef<T>, &V)> {
+    pub fn query_point(&self, point: (T, T)) -> impl Iterator<Item = (RectangleRef<T>, &V)> {
         self.map
             .query_point(point.0)
             .map(move |(di, l)| l.query_point(point.1).map(move |(dj, m)| ((di, dj), m)))
             .flatten()
     }
 
-    pub fn query_rect<I>(
-        &self,
-        space: I) -> impl Iterator<Item = (RectangleRef<T>, &V)>
+    pub fn query_rect<I>(&self, space: I) -> impl Iterator<Item = (RectangleRef<T>, &V)>
     where
-        I: Into<Rectangle<T>>
+        I: Into<Rectangle<T>>,
     {
         let rect = space.into();
         self.query_bounds(rect.0, rect.1)
     }
 
-    pub fn query_bounds<R, S>(
-        &self,
-        r: R,
-        s: S) -> impl Iterator<Item = (RectangleRef<T>, &V)>
+    pub fn query_bounds<R, S>(&self, r: R, s: S) -> impl Iterator<Item = (RectangleRef<T>, &V)>
     where
         R: RangeBounds<T> + Clone,
         S: RangeBounds<T> + Clone,
@@ -153,9 +133,6 @@ impl<T: Ord + Copy, V> RectangleMap<T, V> {
             .flatten()
     }
 }
-
-
-
 
 // ============================================================================
 impl<T: Ord + Copy, V> Default for RectangleMap<T, V> {
@@ -186,16 +163,11 @@ impl<T: Ord + Copy, V> FromIterator<(Rectangle<T>, V)> for RectangleMap<T, V> {
     }
 }
 
-
-
-
 // The impl's below enable syntactic sugar for iteration, but since the
 // iterators use combinators and closures, the iterator type cannt be written
 // explicitly for the `IntoIter` associated type. The
 // `min_type_alias_impl_trait` feature on nightly allows the syntax below.
 
-
-// ============================================================================
 // impl<T: Ord + Copy, V> IntoIterator for RectangleMap<T, V> {
 //     type Item = (Rectangle<T>, V);
 //     type IntoIter = impl Iterator<Item = Self::Item>;
@@ -226,13 +198,8 @@ impl<T: Ord + Copy, V> FromIterator<(Rectangle<T>, V)> for RectangleMap<T, V> {
 //     }
 // }
 
-
-
-
-// ============================================================================
 #[cfg(test)]
 mod test {
-
     use super::RectangleMap;
 
     #[test]

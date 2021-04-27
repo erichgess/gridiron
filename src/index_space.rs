@@ -336,7 +336,7 @@ pub struct MemoryRegion {
 }
 
 impl MemoryRegion {
-    pub fn iter_slice<'a>(self, slice: &'a [f64], chunk: usize) -> impl Iterator<Item = &'a [f64]> {
+    pub fn iter_slice(self, slice: &[f64], chunk: usize) -> impl Iterator<Item = &'_ [f64]> {
         let Self {
             start,
             shape,
@@ -352,11 +352,11 @@ impl MemoryRegion {
             .flat_map(move |j| j[start.1 * r..(start.1 + count.1) * r].chunks_exact(r))
     }
 
-    pub fn iter_slice_mut<'a>(
+    pub fn iter_slice_mut(
         self,
-        slice: &'a mut [f64],
+        slice: &mut [f64],
         chunk: usize,
-    ) -> impl Iterator<Item = &'a mut [f64]> {
+    ) -> impl Iterator<Item = &'_ mut [f64]> {
         let Self {
             start,
             shape,
