@@ -4,7 +4,7 @@ use std::{
     ops::Range,
 };
 
-use crossbeam_channel::Sender;
+use crossbeam_channel::{Receiver, Sender};
 use log::info;
 
 /// Returned by [`Automaton::receive`] to indicate whether a task is eligible
@@ -108,14 +108,15 @@ pub trait Automaton {
 ///
 pub fn execute<I, A, K, V>(
     stage: I,
-    to_peer: Sender<A::Message>,
+    to_peer: Sender<(A::Key, A::Message)>,
+    from_peer: Receiver<(A::Key, A::Message)>,
     local_range: (i64, i64),
 ) -> impl Iterator<Item = V>
 where
     I: IntoIterator<Item = A>,
     A: Automaton<Key = K, Value = V>,
     A::Message: Clone,
-    K: Hash + Eq + RemoteValue + std::fmt::Debug,
+    K: Hash + Eq + RemoteValue + Clone + std::fmt::Debug,
 {
     let (eligible_sink, eligible_source) = crossbeam_channel::unbounded();
 
@@ -123,6 +124,7 @@ where
         stage,
         |a: A| eligible_sink.send(a).unwrap(),
         to_peer,
+        from_peer,
         local_range,
     );
 
@@ -139,14 +141,15 @@ where
 pub fn execute_par<'a, I, A, K, V>(
     scope: &rayon::ScopeFifo<'a>,
     flow: I,
-    to_peer: Sender<A::Message>,
+    to_peer: Sender<(A::Key, A::Message)>,
+    from_peer: Receiver<(A::Key, A::Message)>,
     local_range: (i64, i64),
 ) -> impl Iterator<Item = V>
 where
     I: IntoIterator<Item = A>,
     A: Send + Automaton<Key = K, Value = V> + 'a,
     A::Message: Clone,
-    K: Hash + Eq + RemoteValue + std::fmt::Debug,
+    K: Hash + Eq + RemoteValue + Clone + std::fmt::Debug,
     V: Send + 'a,
 {
     assert! {
@@ -165,6 +168,7 @@ where
             })
         },
         to_peer,
+        from_peer,
         local_range,
     );
     source.into_iter()
@@ -175,14 +179,15 @@ where
 pub fn execute_par_stupid<I, A, K, V>(
     pool: &crate::thread_pool::ThreadPool,
     flow: I,
-    to_peer: Sender<A::Message>,
+    to_peer: Sender<(A::Key, A::Message)>,
+    from_peer: Receiver<(A::Key, A::Message)>,
     local_range: (i64, i64),
 ) -> impl Iterator<Item = V>
 where
     I: IntoIterator<Item = A>,
     A: 'static + Send + Automaton<Key = K, Value = V>,
     A::Message: Clone,
-    K: 'static + Hash + Eq + RemoteValue + std::fmt::Debug,
+    K: 'static + Hash + Eq + RemoteValue + Clone + std::fmt::Debug,
     V: 'static + Send,
 {
     assert! {
@@ -201,6 +206,7 @@ where
             });
         },
         to_peer,
+        from_peer,
         local_range,
     );
     source.into_iter()
@@ -209,11 +215,16 @@ where
 // TODO: Pass in channels from host to receive and send msgs from and to peers
 // TODO: Key/K is a rectangle<i64> corresponding the the patch's grid range.
 // So that's what the hashmap is keyed on
-fn coordinate<I, A, K, V, S>(flow: I, sink: S, to_peer: Sender<A::Message>, local_range: (i64, i64))
-where
+fn coordinate<I, A, K, V, S>(
+    flow: I,
+    sink: S,
+    to_peer: Sender<(A::Key, A::Message)>,
+    from_peer: Receiver<(A::Key, A::Message)>,
+    local_range: (i64, i64),
+) where
     I: IntoIterator<Item = A>,
     A: Automaton<Key = K, Value = V>,
-    K: Hash + Eq + RemoteValue + std::fmt::Debug,
+    K: Hash + Eq + RemoteValue + Clone + std::fmt::Debug,
     A::Message: Clone, // TODO: This is just temp, to make it easy for me to send data locally and remotely
     S: Fn(A),
 {
@@ -232,7 +243,7 @@ where
         for (dest, data) in a.messages() {
             // TODO: If message is for a remote peer, then post to to_peer channel
             if dest.is_remote(local_range) {
-                to_peer.send(data.clone()).unwrap();
+                to_peer.send((dest.clone(), data.clone())).unwrap();
             } else {
                 //info!("Local Dest: {:?}", dest);
             }
@@ -270,8 +281,33 @@ where
         }
     }
 
+    while seen.len() > 0 {
+        let (dest, data) = from_peer.recv().unwrap();
+
+        match seen.entry(dest) {
+            Entry::Occupied(mut entry) => {
+                if let Status::Eligible = entry.get_mut().receive(data) {
+                    sink(entry.remove())
+                }
+            }
+            Entry::Vacant(none) => {
+                undelivered
+                    .entry(none.into_key())
+                    .or_insert_with(Vec::new)
+                    .push(data);
+            }
+        }
+    }
+
     // TODO: Does this need to be updated? With p2p will this wind up being correct?
     // TODO: Leave for now and think about when p2p is added in
     // TODO: I think that I can still use `seen` to track if remote hosts have been sent to or not?
-    //assert_eq!(seen.len(), 0);
+    // TODO: I think I can use this to monitor for all needed messages by looping on chan until seen.len() is 0
+    // Have two loops: process local then process remote (where I read from the channel)
+    if seen.len() > 0 {
+        for k in seen.keys() {
+            info!("Missing {:?}", k);
+        }
+    }
+    assert_eq!(seen.len(), 0);
 }

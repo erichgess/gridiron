@@ -54,12 +54,12 @@ fn main() {
     let group_size = 10;
 
     rayon::scope_fifo(|scope| {
-        let (s, _r) = crossbeam_channel::unbounded();
+        let (s, r) = crossbeam_channel::unbounded();
         let group = (0..group_size).map(|n| ConcatenateNearestNeighbors::new(n, group_size));
 
         assert_eq! {
             group_size as usize,
-            execute_par(scope, group, s, (0,10))
+            execute_par(scope, group, s, r, (0,10))
             .inspect(|result| println!("{}", result))
             .count()
         };

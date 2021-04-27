@@ -19,9 +19,15 @@ const LINGER_PERIOD_MS: i32 = 10000;
 /// memory and then an Ack sent back to the peer.
 pub mod receiver {
 
+    use std::ops::Range;
+
     use super::*;
 
-    pub fn receiver(port: u32, input_sender: Sender<Patch>, signal: Receiver<Signal>) {
+    pub fn receiver(
+        port: u32,
+        input_sender: Sender<((Range<i64>, Range<i64>), Patch)>,
+        signal: Receiver<Signal>,
+    ) {
         let context = zmq::Context::new();
         let responder = context.socket(zmq::REP).unwrap();
         responder.set_rcvtimeo(POLL_TIMEOUT_MS as i32).unwrap();
@@ -54,7 +60,7 @@ pub mod receiver {
             rcv_count += 1;
 
             // Post message to a channel for processing and then send Ack
-            match input_sender.send(req.data().clone()) {
+            match input_sender.send((req.dest().clone(), req.data().clone())) {
                 Ok(_) => debug!("Sent data to channel"),
                 Err(msg) => error!("Failed to post to channel: {}", msg),
             }
@@ -84,9 +90,11 @@ This will connect to a peer and handle pushing new state data
  I have to remember to `break` after successfully receiving an `Ack` or I will just keep sending messages
 */
 pub mod sender {
+    use std::ops::Range;
+
     use super::*;
 
-    pub fn sender(addr: String, output_rcv: Receiver<Patch>) {
+    pub fn sender(addr: String, output_rcv: Receiver<((Range<i64>, Range<i64>), Patch)>) {
         // setup client to the peer at `port` when new data is ready
         // push that dato to the peer
         // Setup ZeroMQ
@@ -112,7 +120,7 @@ pub mod sender {
             };
 
             debug!("Sending Data ID {}...", request_nbr);
-            let msg = msg::Request::new(request_nbr, &data);
+            let msg = msg::Request::new(request_nbr, data.0, &data.1);
             let mpk = rmp_serde::encode::to_vec(&msg).unwrap();
 
             // Push data to peer

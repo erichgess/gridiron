@@ -131,15 +131,15 @@ fn main() {
     let primitive: Vec<_> = primitive_map
         .into_iter()
         .map(|(_, prim)| prim)
-        /*.filter(|prim| {
+        .filter(|prim| {
             // TODO: filter the primitives to only be half of the grid
             opts.start <= prim.local_rect().0.start && prim.local_rect().0.end <= opts.end
-        })*/
+        })
         .collect();
 
     // TODO: Connect to peer which will have the second half of the grid
     let mut threads = vec![];
-    let (from_peer_s, _from_peer_r) = unbounded(); // i_s goes to the server and i_r goes to the worker
+    let (from_peer_s, from_peer_r) = unbounded(); // i_s goes to the server and i_r goes to the worker
     let (to_peer_s, to_peer_r) = unbounded(); // o_s goes to the worker and o_r goes to the client
     let (rcv_sig_s, rcv_sig_r) = unbounded();
 
@@ -218,17 +218,28 @@ fn main() {
         // TODO: Handle folding with distribution
         for _ in 0..opts.fold {
             let to_peer_s = to_peer_s.clone();
+            let from_peer_r = from_peer_r.clone();
             task_list = match &executor {
                 Execution::Serial => {
-                    automaton::execute(task_list, to_peer_s, local_range).collect()
+                    automaton::execute(task_list, to_peer_s, from_peer_r, local_range).collect()
                 }
-                Execution::Stupid(pool) => {
-                    automaton::execute_par_stupid(&pool, task_list, to_peer_s, local_range)
-                        .collect()
-                }
+                Execution::Stupid(pool) => automaton::execute_par_stupid(
+                    &pool,
+                    task_list,
+                    to_peer_s,
+                    from_peer_r,
+                    local_range,
+                )
+                .collect(),
                 Execution::Rayon(pool) => pool
                     .scope_fifo(|scope| {
-                        automaton::execute_par(scope, task_list, to_peer_s, local_range)
+                        automaton::execute_par(
+                            scope,
+                            task_list,
+                            to_peer_s,
+                            from_peer_r,
+                            local_range,
+                        )
                     })
                     .collect(),
             };
