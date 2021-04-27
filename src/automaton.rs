@@ -5,6 +5,7 @@ use std::{
 };
 
 use crossbeam_channel::Sender;
+use log::info;
 
 /// Returned by [`Automaton::receive`] to indicate whether a task is eligible
 /// to be evaluated.
@@ -26,6 +27,22 @@ impl Status {
             Self::Eligible => true,
             Self::Ineligible => false,
         }
+    }
+}
+
+pub trait RemoteValue {
+    fn is_remote(&self, local_range: (i64, i64)) -> bool;
+}
+
+impl RemoteValue for (Range<i64>, Range<i64>) {
+    fn is_remote(&self, local_range: (i64, i64)) -> bool {
+        !(local_range.0 <= self.0.start && self.0.end <= local_range.1)
+    }
+}
+
+impl RemoteValue for u32 {
+    fn is_remote(&self, local_range: (i64, i64)) -> bool {
+        !(local_range.0 <= *self as i64 && *self as i64 <= local_range.1)
     }
 }
 
@@ -97,7 +114,7 @@ pub fn execute<I, A, K, V>(
 where
     I: IntoIterator<Item = A>,
     A: Automaton<Key = K, Value = V>,
-    K: Hash + Eq,
+    K: Hash + Eq + RemoteValue + std::fmt::Debug,
 {
     let (eligible_sink, eligible_source) = crossbeam_channel::unbounded();
 
@@ -127,7 +144,7 @@ pub fn execute_par<'a, I, A, K, V>(
 where
     I: IntoIterator<Item = A>,
     A: Send + Automaton<Key = K, Value = V> + 'a,
-    K: Hash + Eq,
+    K: Hash + Eq + RemoteValue + std::fmt::Debug,
     V: Send + 'a,
 {
     assert! {
@@ -162,7 +179,7 @@ pub fn execute_par_stupid<I, A, K, V>(
 where
     I: IntoIterator<Item = A>,
     A: 'static + Send + Automaton<Key = K, Value = V>,
-    K: 'static + Hash + Eq,
+    K: 'static + Hash + Eq + RemoteValue + std::fmt::Debug,
     V: 'static + Send,
 {
     assert! {
@@ -193,7 +210,7 @@ fn coordinate<I, A, K, V, S>(flow: I, sink: S, to_peer: Sender<A::Message>, loca
 where
     I: IntoIterator<Item = A>,
     A: Automaton<Key = K, Value = V>,
-    K: Hash + Eq,
+    K: Hash + Eq + RemoteValue + std::fmt::Debug,
     S: Fn(A),
 {
     let mut seen: HashMap<K, A> = HashMap::new();
@@ -210,6 +227,11 @@ where
         // TODO: send any remote messages to peers
         for (dest, data) in a.messages() {
             // TODO: If message is for a remote peer, then post to to_peer channel
+            if dest.is_remote(local_range) {
+                info!("Remote Dest: {:?}", dest);
+            } else {
+                info!("Local Dest: {:?}", dest);
+            }
             match seen.entry(dest) {
                 Entry::Occupied(mut entry) => {
                     if let Status::Eligible = entry.get_mut().receive(data) {
