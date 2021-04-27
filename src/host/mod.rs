@@ -26,12 +26,15 @@ pub mod receiver {
         let responder = context.socket(zmq::REP).unwrap();
         responder.set_rcvtimeo(POLL_TIMEOUT_MS as i32).unwrap();
         let addr = format!("tcp://*:{}", port);
+        info!("Listening to {}", addr);
         assert!(responder.bind(&addr).is_ok());
 
         let mut msg = zmq::Message::new();
+        let mut rcv_count = 0;
+        let mut ack_count = 0;
         loop {
             // Check for stop signal
-            info!("Check for signals");
+            debug!("Check for signals");
             match signal.try_recv() {
                 Ok(Signal::Stop) => {
                     info!("Received shutdown signal");
@@ -42,12 +45,13 @@ pub mod receiver {
 
             // Move this logic behind a channel so that I can run select? But then I am not guaranteed that
             // the Stop signal will be read if there are always messages in the Network channel
-            info!("Listen for message");
+            debug!("Listen for message");
             match responder.recv(&mut msg, 0) {
                 Ok(()) => (),
                 Err(_) => continue, // TODO: I don't like having the continue here because it makes it hard to see the cycles that have no exit
             }
             let req: msg::Request = rmp_serde::decode::from_slice(&msg).unwrap();
+            rcv_count += 1;
 
             // Post message to a channel for processing and then send Ack
             match input_sender.send(req.data().clone()) {
@@ -55,13 +59,18 @@ pub mod receiver {
                 Err(msg) => error!("Failed to post to channel: {}", msg),
             }
 
-            info!("Sending Ack for {}", req.id());
+            debug!("Sending Ack for {}", req.id());
             let response = msg::Response::new(msg::Status::Good(req.id()));
             let mpk = rmp_serde::encode::to_vec(&response).unwrap();
             responder.send(&mpk, 0).unwrap();
-            info!("Ack Sent for {}", req.id());
+            ack_count += 1;
+            debug!("Ack Sent for {}", req.id());
         }
         info!("Stopping server thread");
+        info!(
+            "Received {} Messages. Acked {} Messages",
+            rcv_count, ack_count
+        );
     }
 }
 
@@ -91,6 +100,7 @@ pub mod sender {
         assert!(requester.connect(&addr).is_ok());
 
         let mut request_nbr = 0;
+        let mut ack_count = 0;
         loop {
             request_nbr += 1;
             let data = match output_rcv.recv() {
@@ -101,7 +111,7 @@ pub mod sender {
                 }
             };
 
-            info!("Sending Data ID {}...", request_nbr);
+            debug!("Sending Data ID {}...", request_nbr);
             let msg = msg::Request::new(request_nbr, &data);
             let mpk = rmp_serde::encode::to_vec(&msg).unwrap();
 
@@ -130,7 +140,7 @@ pub mod sender {
                 }
 
                 // Wait for peer to Ack the message
-                info!("Waiting for Ack for {}", request_nbr);
+                debug!("Waiting for Ack for {}", request_nbr);
                 match requester.poll(zmq::PollEvents::POLLIN, POLL_TIMEOUT_MS) {
                     Ok(i) => {
                         //
@@ -146,7 +156,8 @@ pub mod sender {
                                             if id != request_nbr {
                                                 warn!("Received Ack for wrong message.  Got {}, expected {}.", id, request_nbr);
                                             } else {
-                                                info!("Received Ack for {}", request_nbr);
+                                                ack_count += 1;
+                                                debug!("Received Ack for {}", request_nbr);
                                             }
                                         }
                                         msg::Status::Bad => {
@@ -175,5 +186,9 @@ pub mod sender {
             }
         }
         info!("Stopping client thread");
+        info!(
+            "Sent {} Messages.  Received {} Acks",
+            request_nbr, ack_count
+        );
     }
 }

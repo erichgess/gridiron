@@ -141,24 +141,27 @@ fn main() {
     let mut threads = vec![];
     let (from_peer_s, _from_peer_r) = unbounded(); // i_s goes to the server and i_r goes to the worker
     let (to_peer_s, to_peer_r) = unbounded(); // o_s goes to the worker and o_r goes to the client
-    let (_sig_s, sig_r) = unbounded();
+    let (rcv_sig_s, rcv_sig_r) = unbounded();
 
     // start the host receiver
-    let sig_r = sig_r.clone();
-    let port = opts.port;
-    let receiver = std::thread::spawn(move || {
-        receiver::receiver(port, from_peer_s, sig_r);
-        info!("Receiver thread completed");
-    });
-    threads.push(receiver);
-
-    // start the sender thread
-    let peer_addr = opts.peer_addr.clone();
-    let sender = std::thread::spawn(move || {
-        sender::sender(peer_addr, to_peer_r);
-        info!("Sender thread completed");
-    });
-    threads.push(sender);
+    {
+        let rcv_sig_r = rcv_sig_r.clone();
+        let port = opts.port;
+        let receiver = std::thread::spawn(move || {
+            receiver::receiver(port, from_peer_s, rcv_sig_r);
+            info!("Receiver thread completed");
+        });
+        threads.push(receiver);
+    }
+    {
+        // start the sender thread
+        let peer_addr = opts.peer_addr.clone();
+        let sender = std::thread::spawn(move || {
+            sender::sender(peer_addr, to_peer_r);
+            info!("Sender thread completed");
+        });
+        threads.push(sender);
+    }
 
     println!("num blocks .... {}", primitive.len());
     println!("num threads ... {}", opts.num_threads);
@@ -260,6 +263,8 @@ fn main() {
     ciborium::ser::into_writer(&state, &mut buffer).unwrap();
 
     // Wait until all threads are complete to exit the service
+    drop(to_peer_s);
+    rcv_sig_s.send(gridiron::host::msg::Signal::Stop).unwrap();
     for t in threads {
         t.join().unwrap();
     }
