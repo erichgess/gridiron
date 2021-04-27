@@ -17,15 +17,12 @@ impl TcpCommunicator {
     pub fn new(rank: usize, peers: Vec<SocketAddr>) -> Self {
         let listener = TcpListener::bind(peers[rank]).unwrap();
         let num_peers = peers.len();
-        let (send_sink, recv_sink): (
-            mpsc::Sender<(usize, Vec<u8>)>,
-            mpsc::Receiver<(usize, Vec<u8>)>,
-        ) = mpsc::channel();
+        let (send_sink, recv_sink): (Sender, Receiver) = mpsc::channel();
         let send_thread = thread::spawn(move || {
             for (rank, message) in recv_sink {
                 let mut stream = TcpStream::connect(peers[rank]).unwrap();
-                stream.write(&message.len().to_le_bytes()).unwrap();
-                stream.write(&message).unwrap();
+                stream.write_all(&message.len().to_le_bytes()).unwrap();
+                stream.write_all(&message).unwrap();
             }
         });
         Self {
