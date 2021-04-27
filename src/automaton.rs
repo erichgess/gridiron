@@ -268,5 +268,6 @@ where
 
     // TODO: Does this need to be updated? With p2p will this wind up being correct?
     // TODO: Leave for now and think about when p2p is added in
+    // TODO: I think that I can still use `seen` to track if remote hosts have been sent to or not?
     assert_eq!(seen.len(), 0);
 }
