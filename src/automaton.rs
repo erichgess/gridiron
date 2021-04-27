@@ -155,6 +155,7 @@ where
     source.into_iter()
 }
 
+// TODO: Pass in channels from host to receive and send msgs from and to peers
 fn coordinate<I, A, K, V, S>(flow: I, sink: S)
 where
     I: IntoIterator<Item = A>,
@@ -173,6 +174,7 @@ where
         // If any of the recipient peers became eligible upon receiving a
         // message, then send those peers off to be executed.
         //
+        // TODO: send any remote messages to peers
         for (dest, data) in a.messages() {
             match seen.entry(dest) {
                 Entry::Occupied(mut entry) => {
@@ -193,6 +195,8 @@ where
         // A is eligible after receiving its messages, then send it off to be
         // executed. Otherwise mark it as seen and process the next automaton.
         //
+        // TODO: Pull messages from receiver channel.  This will need to be made to handle async messages?
+        // Loop until all the required messages are received and then move forward?
         let eligible = undelivered
             .remove_entry(&a.key())
             .map_or(false, |(_, messages)| {

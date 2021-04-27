@@ -58,10 +58,17 @@ impl State {
 #[clap(version = "1.0", author = "J. Zrake <jzrake@clemson.edu>")]
 #[clap(setting = AppSettings::ColoredHelp)]
 struct Opts {
+    // TODO: Add flags to set which half of the grid this peer owns.
+    // TODO: Add settings for host configuration and peer configuration.
     #[clap(short = 't', long, default_value = "1")]
     num_threads: usize,
 
-    #[clap(short = 's', long, default_value = "serial", about = "serial|stupid|rayon")]
+    #[clap(
+        short = 's',
+        long,
+        default_value = "serial",
+        about = "serial|stupid|rayon"
+    )]
     strategy: String,
 
     #[clap(short = 'n', long, default_value = "1000")]
@@ -103,7 +110,11 @@ fn main() {
         .collect();
     let dt = mesh.cell_spacing().0 * 0.1;
     let edge_list = primitive_map.adjacency_list(1);
+
     let primitive: Vec<_> = primitive_map.into_iter().map(|(_, prim)| prim).collect();
+    // TODO: filter the primitives to only be half of the grid
+
+    // TODO: Connect to peer which will have the second half of the grid
 
     println!("num blocks .... {}", primitive.len());
     println!("num threads ... {}", opts.num_threads);
@@ -112,7 +123,15 @@ fn main() {
     let mut task_list: Vec<_> = primitive
         .into_iter()
         .enumerate()
-        .map(|(n, patch)| PatchUpdate::new(patch, mesh.clone(), dt, Some(n % opts.num_threads), &edge_list))
+        .map(|(n, patch)| {
+            PatchUpdate::new(
+                patch,
+                mesh.clone(),
+                dt,
+                Some(n % opts.num_threads),
+                &edge_list,
+            )
+        })
         .collect();
 
     if opts.grid_resolution % opts.block_size != 0 {
@@ -140,22 +159,20 @@ fn main() {
         }
     };
 
+    // TODO: change this to use an integer counter.  Needs reliable and deterministic ordering.
+    // TODO: then compute the time from the frame counter
     while time < opts.tfinal {
         let start = std::time::Instant::now();
 
         for _ in 0..opts.fold {
             task_list = match &executor {
-                Execution::Serial => {
-                    automaton::execute(task_list).collect()
-                }
+                Execution::Serial => automaton::execute(task_list).collect(),
                 Execution::Stupid(pool) => {
                     automaton::execute_par_stupid(&pool, task_list).collect()
                 }
-                Execution::Rayon(pool) => {
-                    pool.scope_fifo(|scope| {
-                        automaton::execute_par(scope, task_list)
-                    }).collect()
-                }
+                Execution::Rayon(pool) => pool
+                    .scope_fifo(|scope| automaton::execute_par(scope, task_list))
+                    .collect(),
             };
             iteration += 1;
             time += dt;
