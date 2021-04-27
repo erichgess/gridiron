@@ -6,9 +6,9 @@
 //! fine patches may cross coarse patch boundaries. This is in contrast to
 //! more constrained quad-tree / oct-tree mesh topologies used e.g. in the
 //! Flash code.
-//! 
+//!
 //! This library is a work-in-progress in early stages. Its goals are:
-//! 
+//!
 //! - Provide meshing and execution abstractions for hydrodynamics base
 //!   schemes. If you have a scheme that works on logically Cartesian grid
 //!   patches, this library can make that scheme suitable for AMR simulations.
@@ -34,7 +34,7 @@
 //! - Provide examples of stand-alone applications which use the library.
 //!   
 //! It does _not_ attempt to
-//! 
+//!
 //! - Be a complete application framework. Data input/output, user
 //!   configurations, visualization and post-processing should be handled by
 //!   separate crates or by applications written for a specific science
@@ -48,6 +48,7 @@
 pub mod adjacency_list;
 pub mod aug_node;
 pub mod automaton;
+pub mod host;
 pub mod hydro;
 pub mod index_space;
 pub mod interval_map;

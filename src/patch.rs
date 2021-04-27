@@ -31,20 +31,19 @@ pub enum MeshLocation {
     Node,
 }
 
-#[derive(Clone, serde::Serialize)]
-
 /// A patch is a mapping from a rectangular subset of a high-resolution index
 /// space (HRIS), to associated field values. The mapping is backed by an
 /// array of data, which is in general at a coarser level of granularity than
 /// the HRIS; each cell in the backing array stands for (2^level)^rank cells
 /// in the HRIS. The HRIS is at level 0.
-/// 
+///
 /// The patch can be sampled at different granularity levels. If the sampling
 /// level is finer than the patch granularity, then sub-cell sampling is
 /// employed, either with piecewise constant or multi-linear interpolation. If
 /// the sampling level is coarser than the patch granularity, then the result
 /// is obtained by averaging over the region within the patch covered by the
 /// coarse cell.
+#[derive(Clone, Debug, serde::Serialize, serde::Deserialize)]
 pub struct Patch {
     /// The granularity level of this patch. Level 0 is the highest resolution.
     level: u32,
@@ -61,7 +60,6 @@ pub struct Patch {
 }
 
 impl Patch {
- 
     /// Creates a new empty patch.
     pub fn new() -> Self {
         Self {
@@ -158,11 +156,15 @@ impl Patch {
     }
 
     pub fn select(&self, subspace: IndexSpace) -> impl Iterator<Item = &'_ [f64]> {
-        subspace.memory_region_in(self.index_space()).iter_slice(&self.data, self.num_fields)
+        subspace
+            .memory_region_in(self.index_space())
+            .iter_slice(&self.data, self.num_fields)
     }
 
     pub fn select_mut(&mut self, subspace: IndexSpace) -> impl Iterator<Item = &'_ mut [f64]> {
-        subspace.memory_region_in(self.index_space()).iter_slice_mut(&mut self.data, self.num_fields)
+        subspace
+            .memory_region_in(self.index_space())
+            .iter_slice_mut(&mut self.data, self.num_fields)
     }
 
     /// Return this patch's rectangle.
