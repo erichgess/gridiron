@@ -164,9 +164,13 @@ fn main() {
 
     // TODO: change this to use an integer counter.  Needs reliable and deterministic ordering.
     // TODO: then compute the time from the frame counter
-    while time < opts.tfinal {
+    let num_frames = (opts.tfinal / dt).ceil() as u64;
+    info!("Total Frames: {}", num_frames);
+    for frame in 0..num_frames {
+        time = dt * frame as f64;
         let start = std::time::Instant::now();
 
+        // TODO: Handle folding with distribution
         for _ in 0..opts.fold {
             task_list = match &executor {
                 Execution::Serial => automaton::execute(task_list).collect(),
@@ -177,8 +181,8 @@ fn main() {
                     .scope_fifo(|scope| automaton::execute_par(scope, task_list))
                     .collect(),
             };
-            iteration += 1;
             time += dt;
+            iteration += 1;
         }
 
         let step_seconds = start.elapsed().as_secs_f64() / opts.fold as f64;
@@ -186,7 +190,7 @@ fn main() {
 
         println!(
             "[{}] t={:.3} Mzps={:.2} ({:.2}-thread)",
-            iteration,
+            frame,
             time,
             mzps,
             mzps / opts.num_threads as f64
