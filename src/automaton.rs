@@ -196,7 +196,7 @@ where
         // executed. Otherwise mark it as seen and process the next automaton.
         //
         // TODO: Pull messages from receiver channel.  This will need to be made to handle async messages?
-        // Loop until all the required messages are received and then move forward?
+        // TODO: Loop until all the required messages are received and then move forward?
         let eligible = undelivered
             .remove_entry(&a.key())
             .map_or(false, |(_, messages)| {
@@ -209,5 +209,8 @@ where
             seen.insert(a.key(), a);
         }
     }
+
+    // TODO: Does this need to be updated? With p2p will this wind up being correct?
+    // TODO: Leave for now and think about when p2p is added in
     assert_eq!(seen.len(), 0);
 }

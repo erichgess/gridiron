@@ -1,4 +1,7 @@
 use clap::{AppSettings, Clap};
+use log::{info, LevelFilter};
+use simple_logger::SimpleLogger;
+
 use gridiron::automaton;
 use gridiron::hydro::euler2d::Primitive;
 use gridiron::index_space::range2d;
@@ -6,8 +9,6 @@ use gridiron::meshing::GraphTopology;
 use gridiron::patch::Patch;
 use gridiron::rect_map::RectangleMap;
 use gridiron::solvers::euler2d_pcm::{Mesh, PatchUpdate};
-use log::{info, LevelFilter};
-use simple_logger::SimpleLogger;
 
 /// The initial model
 ///
@@ -84,6 +85,12 @@ struct Opts {
 
     #[clap(long, default_value = "0.1")]
     tfinal: f64,
+
+    #[clap(long, default_value = "0")]
+    start: i64,
+
+    #[clap(long, default_value = "1000")]
+    end: i64,
 }
 
 enum Execution {
@@ -114,8 +121,14 @@ fn main() {
     let dt = mesh.cell_spacing().0 * 0.1;
     let edge_list = primitive_map.adjacency_list(1);
 
-    let primitive: Vec<_> = primitive_map.into_iter().map(|(_, prim)| prim).collect();
-    // TODO: filter the primitives to only be half of the grid
+    let primitive: Vec<_> = primitive_map
+        .into_iter()
+        .map(|(_, prim)| prim)
+        .filter(|prim| {
+            // TODO: filter the primitives to only be half of the grid
+            opts.start <= prim.local_rect().0.start && prim.local_rect().0.end <= opts.end
+        })
+        .collect();
 
     // TODO: Connect to peer which will have the second half of the grid
 
