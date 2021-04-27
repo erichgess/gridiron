@@ -6,6 +6,8 @@ use gridiron::meshing::GraphTopology;
 use gridiron::patch::Patch;
 use gridiron::rect_map::RectangleMap;
 use gridiron::solvers::euler2d_pcm::{Mesh, PatchUpdate};
+use log::{info, LevelFilter};
+use simple_logger::SimpleLogger;
 
 /// The initial model
 ///
@@ -92,7 +94,8 @@ enum Execution {
 
 fn main() {
     let opts = Opts::parse();
-    println!("{:?}", opts);
+    init_logging();
+    info!("{:?}", opts);
 
     let mesh = Mesh {
         area: (-1.0..1.0, -1.0..1.0),
@@ -203,4 +206,12 @@ fn main() {
     let file = std::fs::File::create("state.cbor").unwrap();
     let mut buffer = std::io::BufWriter::new(file);
     ciborium::ser::into_writer(&state, &mut buffer).unwrap();
+}
+
+fn init_logging() {
+    // configure logger
+    SimpleLogger::new()
+        .with_level(LevelFilter::Info)
+        .init()
+        .unwrap();
 }
