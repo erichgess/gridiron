@@ -1,14 +1,15 @@
 use clap::{AppSettings, Clap};
+use crossbeam_channel::unbounded;
 use log::{info, LevelFilter};
 use simple_logger::SimpleLogger;
 
-use gridiron::automaton;
-use gridiron::hydro::euler2d::Primitive;
 use gridiron::index_space::range2d;
 use gridiron::meshing::GraphTopology;
 use gridiron::patch::Patch;
 use gridiron::rect_map::RectangleMap;
 use gridiron::solvers::euler2d_pcm::{Mesh, PatchUpdate};
+use gridiron::{automaton, host::receiver};
+use gridiron::{host::sender, hydro::euler2d::Primitive};
 
 /// The initial model
 ///
@@ -91,6 +92,12 @@ struct Opts {
 
     #[clap(long, default_value = "1000")]
     end: i64,
+
+    #[clap(long)]
+    port: u32,
+
+    #[clap(long)]
+    peer_addr: String,
 }
 
 enum Execution {
@@ -131,6 +138,28 @@ fn main() {
         .collect();
 
     // TODO: Connect to peer which will have the second half of the grid
+    let mut threads = vec![];
+    let (i_s, i_r) = unbounded(); // i_s goes to the server and i_r goes to the worker
+    let (o_s, o_r) = unbounded(); // o_s goes to the worker and o_r goes to the client
+    let (sig_s, sig_r) = unbounded();
+
+    // start the host receiver
+    let sig_r = sig_r.clone();
+    let port = opts.port;
+    let receiver = std::thread::spawn(move || {
+        receiver::receiver(port, i_s, sig_r);
+        info!("Receiver thread completed");
+    });
+    threads.push(receiver);
+
+    // start the sender thread
+    let o_r = o_r.clone();
+    let peer_addr = opts.peer_addr.clone();
+    let sender = std::thread::spawn(move || {
+        sender::sender(peer_addr, o_r);
+        info!("Sender thread completed");
+    });
+    threads.push(sender);
 
     println!("num blocks .... {}", primitive.len());
     println!("num threads ... {}", opts.num_threads);
