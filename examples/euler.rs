@@ -98,6 +98,9 @@ struct Opts {
 
     #[clap(long)]
     peer_addr: String,
+
+    #[clap(long, default_value = "-1")]
+    fail_at: i32,
 }
 
 enum Execution {
@@ -257,6 +260,10 @@ fn main() {
             mzps,
             mzps / opts.num_threads as f64
         );
+
+        if frame as i32 == opts.fail_at {
+            panic!("Failing test");
+        }
     }
 
     let primitive = task_list
