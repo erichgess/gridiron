@@ -1,3 +1,5 @@
+use std::time::{SystemTime, UNIX_EPOCH};
+
 use clap::{AppSettings, Clap};
 use crossbeam_channel::unbounded;
 use log::{info, LevelFilter};
@@ -269,7 +271,11 @@ fn main() {
         primitive,
     };
 
-    let file = std::fs::File::create("state.cbor").unwrap();
+    let timestamp_sec = SystemTime::now()
+        .duration_since(UNIX_EPOCH)
+        .unwrap()
+        .as_secs();
+    let file = std::fs::File::create(&format!("state-{}.cbor", timestamp_sec)).unwrap();
     let mut buffer = std::io::BufWriter::new(file);
     ciborium::ser::into_writer(&state, &mut buffer).unwrap();
 
