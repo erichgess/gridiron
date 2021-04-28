@@ -6,7 +6,7 @@ import cbor2
 
 def parse_args():
     parser = argparse.ArgumentParser(
-        description='Stitches two or more Euler output files together into one')
+        description='Stitches two or more Euler output files together into one. This does not check to see if the input files having overlapping patches or if there are missing patches.')
     parser.add_argument('-f', '--files', nargs="+", required=True)
     args = parser.parse_args()
     return args.files
