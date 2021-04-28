@@ -110,7 +110,6 @@ pub mod sender {
         let mut request_nbr = 0;
         let mut ack_count = 0;
         loop {
-            request_nbr += 1;
             let data = match output_rcv.recv() {
                 Ok(d) => d,
                 Err(msg) => {
@@ -119,6 +118,7 @@ pub mod sender {
                 }
             };
 
+            request_nbr += 1;
             debug!("Sending Data ID {}...", request_nbr);
             let msg = msg::Request::new(request_nbr, data.0, &data.1);
             let mpk = rmp_serde::encode::to_vec(&msg).unwrap();
