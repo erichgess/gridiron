@@ -101,6 +101,9 @@ struct Opts {
 
     #[clap(long, default_value = "-1")]
     fail_at: i32,
+
+    #[clap(long, default_value = "-1")]
+    double_at: i32,
 }
 
 enum Execution {
@@ -216,6 +219,9 @@ fn main() {
     let local_range = (opts.start, opts.end);
     for frame in 0..num_frames {
         time = dt * frame as f64;
+        if frame as i32 == opts.double_at {
+            time = dt * (frame - 1) as f64;
+        }
         let start = std::time::Instant::now();
 
         // TODO: Handle folding with distribution
