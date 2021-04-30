@@ -245,19 +245,18 @@ fn coordinate<I, A, K, V, S>(
             if dest.is_remote(local_range) {
                 to_peer.send((dest.clone(), data.clone())).unwrap();
             } else {
-                //info!("Local Dest: {:?}", dest);
-            }
-            match seen.entry(dest) {
-                Entry::Occupied(mut entry) => {
-                    if let Status::Eligible = entry.get_mut().receive(data) {
-                        sink(entry.remove())
+                match seen.entry(dest) {
+                    Entry::Occupied(mut entry) => {
+                        if let Status::Eligible = entry.get_mut().receive(data) {
+                            sink(entry.remove())
+                        }
                     }
-                }
-                Entry::Vacant(none) => {
-                    undelivered
-                        .entry(none.into_key())
-                        .or_insert_with(Vec::new)
-                        .push(data);
+                    Entry::Vacant(none) => {
+                        undelivered
+                            .entry(none.into_key())
+                            .or_insert_with(Vec::new)
+                            .push(data);
+                    }
                 }
             }
         }
