@@ -5,6 +5,7 @@ use std::{
 };
 
 use log::info;
+use serde::Serialize;
 
 use crate::message::comm::Communicator;
 
@@ -115,6 +116,7 @@ pub fn execute<I, A, K, V, C>(
 where
     I: IntoIterator<Item = A>,
     A: Automaton<Key = K, Value = V>,
+    A::Message: Serialize,
     K: Hash + Eq + RemoteValue + Clone + std::fmt::Debug,
     C: Communicator,
 {
@@ -141,6 +143,7 @@ pub fn execute_par<'a, I, A, K, V, C>(
 where
     I: IntoIterator<Item = A>,
     A: Send + Automaton<Key = K, Value = V> + 'a,
+    A::Message: Serialize,
     K: Hash + Eq + RemoteValue + Clone + std::fmt::Debug,
     V: Send + 'a,
     C: Communicator,
@@ -177,6 +180,7 @@ pub fn execute_par_stupid<I, A, K, V, C>(
 where
     I: IntoIterator<Item = A>,
     A: 'static + Send + Automaton<Key = K, Value = V>,
+    A::Message: Serialize,
     K: 'static + Hash + Eq + RemoteValue + Clone + std::fmt::Debug,
     V: 'static + Send,
     C: Communicator,
@@ -209,6 +213,7 @@ fn coordinate<I, A, K, V, S, C>(flow: I, sink: S, client: C, router: HashMap<K, 
 where
     I: IntoIterator<Item = A>,
     A: Automaton<Key = K, Value = V>,
+    A::Message: Serialize,
     K: Hash + Eq + RemoteValue + Clone + std::fmt::Debug,
     S: Fn(A),
     C: Communicator,
@@ -228,11 +233,14 @@ where
             let dest_rank = router[&dest];
             match seen.entry(dest) {
                 Entry::Occupied(mut entry) => {
-                    if let Status::Eligible = entry.get_mut().receive(data) {
-                        if dest_rank == client.rank() {
+                    if dest_rank == client.rank() {
+                        if let Status::Eligible = entry.get_mut().receive(data) {
                             sink(entry.remove())
-                        } else {
-                            client.send(dest_rank, vec![])
+                        }
+                    } else {
+                        match serialize_msg(&data) {
+                            Ok(bytes) => client.send(dest_rank, bytes),
+                            Err(err) => panic!("Failed to serialize message: {}", err),
                         }
                     }
                 }
@@ -269,4 +277,8 @@ where
         }
     }
     assert_eq!(seen.len(), 0);
+}
+
+fn serialize_msg<M: Serialize>(m: &M) -> Result<Vec<u8>, rmp_serde::encode::Error> {
+    rmp_serde::to_vec(m)
 }
