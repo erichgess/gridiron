@@ -4,8 +4,9 @@ use std::{
     ops::Range,
 };
 
-use crossbeam_channel::{Receiver, Sender};
 use log::info;
+
+use crate::message::comm::Communicator;
 
 /// Returned by [`Automaton::receive`] to indicate whether a task is eligible
 /// to be evaluated.
@@ -106,27 +107,20 @@ pub trait Automaton {
 
 /// Execute a group of tasks in serial.
 ///
-pub fn execute<I, A, K, V>(
+pub fn execute<I, A, K, V, C>(
     stage: I,
-    to_peer: Sender<(A::Key, A::Message)>,
-    from_peer: Receiver<(A::Key, A::Message)>,
-    local_range: (i64, i64),
+    client: C,
+    router: HashMap<K, usize>,
 ) -> impl Iterator<Item = V>
 where
     I: IntoIterator<Item = A>,
     A: Automaton<Key = K, Value = V>,
-    A::Message: Clone,
     K: Hash + Eq + RemoteValue + Clone + std::fmt::Debug,
+    C: Communicator,
 {
     let (eligible_sink, eligible_source) = crossbeam_channel::unbounded();
 
-    coordinate(
-        stage,
-        |a: A| eligible_sink.send(a).unwrap(),
-        to_peer,
-        from_peer,
-        local_range,
-    );
+    coordinate(stage, |a: A| eligible_sink.send(a).unwrap(), client, router);
 
     eligible_source.into_iter().map(|peer: A| peer.value())
 }
@@ -138,19 +132,18 @@ where
 /// returns as soon as the input iterator is exhausted. The output iterator
 /// will then yield results until all the tasks have completed in the pool.
 ///
-pub fn execute_par<'a, I, A, K, V>(
+pub fn execute_par<'a, I, A, K, V, C>(
     scope: &rayon::ScopeFifo<'a>,
     flow: I,
-    to_peer: Sender<(A::Key, A::Message)>,
-    from_peer: Receiver<(A::Key, A::Message)>,
-    local_range: (i64, i64),
+    client: C,
+    router: HashMap<K, usize>,
 ) -> impl Iterator<Item = V>
 where
     I: IntoIterator<Item = A>,
     A: Send + Automaton<Key = K, Value = V> + 'a,
-    A::Message: Clone,
     K: Hash + Eq + RemoteValue + Clone + std::fmt::Debug,
     V: Send + 'a,
+    C: Communicator,
 {
     assert! {
         rayon::current_num_threads() >= 2,
@@ -167,28 +160,26 @@ where
                 sink.send(a.value()).unwrap();
             })
         },
-        to_peer,
-        from_peer,
-        local_range,
+        client,
+        router,
     );
     source.into_iter()
 }
 
 /// Execute a group of tasks in parallel using `gridiron`'s stupid scheduler.
 ///
-pub fn execute_par_stupid<I, A, K, V>(
+pub fn execute_par_stupid<I, A, K, V, C>(
     pool: &crate::thread_pool::ThreadPool,
     flow: I,
-    to_peer: Sender<(A::Key, A::Message)>,
-    from_peer: Receiver<(A::Key, A::Message)>,
-    local_range: (i64, i64),
+    client: C,
+    router: HashMap<K, usize>,
 ) -> impl Iterator<Item = V>
 where
     I: IntoIterator<Item = A>,
     A: 'static + Send + Automaton<Key = K, Value = V>,
-    A::Message: Clone,
     K: 'static + Hash + Eq + RemoteValue + Clone + std::fmt::Debug,
     V: 'static + Send,
+    C: Communicator,
 {
     assert! {
         pool.num_threads() >= 2,
@@ -205,9 +196,8 @@ where
                 sink.send(a.value()).unwrap();
             });
         },
-        to_peer,
-        from_peer,
-        local_range,
+        client,
+        router,
     );
     source.into_iter()
 }
@@ -215,18 +205,13 @@ where
 // TODO: Pass in channels from host to receive and send msgs from and to peers
 // TODO: Key/K is a rectangle<i64> corresponding the the patch's grid range.
 // So that's what the hashmap is keyed on
-fn coordinate<I, A, K, V, S>(
-    flow: I,
-    sink: S,
-    to_peer: Sender<(A::Key, A::Message)>,
-    from_peer: Receiver<(A::Key, A::Message)>,
-    local_range: (i64, i64),
-) where
+fn coordinate<I, A, K, V, S, C>(flow: I, sink: S, client: C, router: HashMap<K, usize>)
+where
     I: IntoIterator<Item = A>,
     A: Automaton<Key = K, Value = V>,
     K: Hash + Eq + RemoteValue + Clone + std::fmt::Debug,
-    A::Message: Clone, // TODO: This is just temp, to make it easy for me to send data locally and remotely
     S: Fn(A),
+    C: Communicator,
 {
     let mut seen: HashMap<K, A> = HashMap::new();
     let mut undelivered = HashMap::new();
@@ -239,24 +224,23 @@ fn coordinate<I, A, K, V, S>(
         // If any of the recipient peers became eligible upon receiving a
         // message, then send those peers off to be executed.
         //
-        // TODO: send any remote messages to peers
         for (dest, data) in a.messages() {
-            // TODO: If message is for a remote peer, then post to to_peer channel
-            if dest.is_remote(local_range) {
-                to_peer.send((dest.clone(), data.clone())).unwrap();
-            } else {
-                match seen.entry(dest) {
-                    Entry::Occupied(mut entry) => {
-                        if let Status::Eligible = entry.get_mut().receive(data) {
+            let dest_rank = router[&dest];
+            match seen.entry(dest) {
+                Entry::Occupied(mut entry) => {
+                    if let Status::Eligible = entry.get_mut().receive(data) {
+                        if dest_rank == client.rank() {
                             sink(entry.remove())
+                        } else {
+                            client.send(dest_rank, vec![])
                         }
                     }
-                    Entry::Vacant(none) => {
-                        undelivered
-                            .entry(none.into_key())
-                            .or_insert_with(Vec::new)
-                            .push(data);
-                    }
+                }
+                Entry::Vacant(none) => {
+                    undelivered
+                        .entry(none.into_key())
+                        .or_insert_with(Vec::new)
+                        .push(data);
                 }
             }
         }
@@ -265,8 +249,6 @@ fn coordinate<I, A, K, V, S>(
         // A is eligible after receiving its messages, then send it off to be
         // executed. Otherwise mark it as seen and process the next automaton.
         //
-        // TODO: Pull messages from receiver channel.  This will need to be made to handle async messages?
-        // TODO: Loop until all the required messages are received and then move forward?
         let eligible = undelivered
             .remove_entry(&a.key())
             .map_or(false, |(_, messages)| {
@@ -280,28 +262,6 @@ fn coordinate<I, A, K, V, S>(
         }
     }
 
-    while seen.len() > 0 {
-        let (dest, data) = from_peer.recv().unwrap();
-
-        match seen.entry(dest) {
-            Entry::Occupied(mut entry) => {
-                if let Status::Eligible = entry.get_mut().receive(data) {
-                    sink(entry.remove())
-                }
-            }
-            Entry::Vacant(none) => {
-                undelivered
-                    .entry(none.into_key())
-                    .or_insert_with(Vec::new)
-                    .push(data);
-            }
-        }
-    }
-
-    // TODO: Does this need to be updated? With p2p will this wind up being correct?
-    // TODO: Leave for now and think about when p2p is added in
-    // TODO: I think that I can still use `seen` to track if remote hosts have been sent to or not?
-    // TODO: I think I can use this to monitor for all needed messages by looping on chan until seen.len() is 0
     // Have two loops: process local then process remote (where I read from the channel)
     if seen.len() > 0 {
         for k in seen.keys() {
