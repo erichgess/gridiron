@@ -1,4 +1,9 @@
-use gridiron::automaton::{execute_par, Automaton, Status};
+use std::collections::HashMap;
+
+use gridiron::{
+    automaton::{execute_par, Automaton, Status},
+    message::comm::Communicator,
+};
 
 struct ConcatenateNearestNeighbors {
     key: u32,
@@ -50,16 +55,37 @@ impl Automaton for ConcatenateNearestNeighbors {
     }
 }
 
+struct FakeComm {}
+
+impl Communicator for FakeComm {
+    fn rank(&self) -> usize {
+        todo!()
+    }
+
+    fn size(&self) -> usize {
+        todo!()
+    }
+
+    fn send(&self, rank: usize, message: Vec<u8>) {
+        todo!()
+    }
+
+    fn recv(&self) -> Vec<u8> {
+        todo!()
+    }
+}
+
 fn main() {
     let group_size = 10;
 
     rayon::scope_fifo(|scope| {
-        let (s, r) = crossbeam_channel::unbounded();
         let group = (0..group_size).map(|n| ConcatenateNearestNeighbors::new(n, group_size));
+        let fc = FakeComm {};
+        let router: HashMap<u32, usize> = HashMap::new();
 
         assert_eq! {
             group_size as usize,
-            execute_par(scope, group, s, r, (0,10))
+            execute_par(scope, group, &fc, &router)
             .inspect(|result| println!("{}", result))
             .count()
         };
