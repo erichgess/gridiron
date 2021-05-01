@@ -5,7 +5,7 @@ use std::{
 };
 
 use log::info;
-use serde::Serialize;
+use serde::{de::DeserializeOwned, Deserialize, Serialize};
 
 use crate::message::comm::Communicator;
 
@@ -29,22 +29,6 @@ impl Status {
             Self::Eligible => true,
             Self::Ineligible => false,
         }
-    }
-}
-
-pub trait RemoteValue {
-    fn is_remote(&self, local_range: (i64, i64)) -> bool;
-}
-
-impl RemoteValue for (Range<i64>, Range<i64>) {
-    fn is_remote(&self, local_range: (i64, i64)) -> bool {
-        !(local_range.0 <= self.0.start && self.0.end <= local_range.1)
-    }
-}
-
-impl RemoteValue for u32 {
-    fn is_remote(&self, local_range: (i64, i64)) -> bool {
-        !(local_range.0 <= *self as i64 && *self as i64 <= local_range.1)
     }
 }
 
@@ -110,14 +94,14 @@ pub trait Automaton {
 ///
 pub fn execute<I, A, K, V, C>(
     stage: I,
-    client: C,
-    router: HashMap<K, usize>,
+    client: &C,
+    router: &HashMap<K, usize>,
 ) -> impl Iterator<Item = V>
 where
     I: IntoIterator<Item = A>,
     A: Automaton<Key = K, Value = V>,
-    A::Message: Serialize,
-    K: Hash + Eq + RemoteValue + Clone + std::fmt::Debug,
+    A::Message: Serialize + DeserializeOwned,
+    K: Serialize + DeserializeOwned + Hash + Eq + Clone + std::fmt::Debug,
     C: Communicator,
 {
     let (eligible_sink, eligible_source) = crossbeam_channel::unbounded();
@@ -137,14 +121,14 @@ where
 pub fn execute_par<'a, I, A, K, V, C>(
     scope: &rayon::ScopeFifo<'a>,
     flow: I,
-    client: C,
-    router: HashMap<K, usize>,
+    client: &C,
+    router: &HashMap<K, usize>,
 ) -> impl Iterator<Item = V>
 where
     I: IntoIterator<Item = A>,
     A: Send + Automaton<Key = K, Value = V> + 'a,
-    A::Message: Serialize,
-    K: Hash + Eq + RemoteValue + Clone + std::fmt::Debug,
+    A::Message: Serialize + DeserializeOwned,
+    K: Serialize + DeserializeOwned + Hash + Eq + Clone + std::fmt::Debug,
     V: Send + 'a,
     C: Communicator,
 {
@@ -174,14 +158,14 @@ where
 pub fn execute_par_stupid<I, A, K, V, C>(
     pool: &crate::thread_pool::ThreadPool,
     flow: I,
-    client: C,
-    router: HashMap<K, usize>,
+    client: &C,
+    router: &HashMap<K, usize>,
 ) -> impl Iterator<Item = V>
 where
     I: IntoIterator<Item = A>,
     A: 'static + Send + Automaton<Key = K, Value = V>,
-    A::Message: Serialize,
-    K: 'static + Hash + Eq + RemoteValue + Clone + std::fmt::Debug,
+    A::Message: Serialize + DeserializeOwned,
+    K: Serialize + DeserializeOwned + Hash + Eq + Clone + std::fmt::Debug,
     V: 'static + Send,
     C: Communicator,
 {
@@ -209,12 +193,12 @@ where
 // TODO: Pass in channels from host to receive and send msgs from and to peers
 // TODO: Key/K is a rectangle<i64> corresponding the the patch's grid range.
 // So that's what the hashmap is keyed on
-fn coordinate<I, A, K, V, S, C>(flow: I, sink: S, client: C, router: HashMap<K, usize>)
+fn coordinate<'a, I, A, K, V, S, C>(flow: I, sink: S, client: &C, router: &HashMap<K, usize>)
 where
     I: IntoIterator<Item = A>,
     A: Automaton<Key = K, Value = V>,
-    A::Message: Serialize,
-    K: Hash + Eq + RemoteValue + Clone + std::fmt::Debug,
+    A::Message: Serialize + DeserializeOwned,
+    K: Serialize + DeserializeOwned + Hash + Eq + Clone + std::fmt::Debug,
     S: Fn(A),
     C: Communicator,
 {
@@ -238,7 +222,7 @@ where
                             sink(entry.remove())
                         }
                     } else {
-                        match serialize_msg(&data) {
+                        match serialize_msg(entry.key(), &data) {
                             Ok(bytes) => client.send(dest_rank, bytes),
                             Err(err) => panic!("Failed to serialize message: {}", err),
                         }
@@ -270,6 +254,26 @@ where
         }
     }
 
+    while !seen.is_empty() {
+        let bytes = client.recv();
+        let (dest, data): (K, A::Message) =
+            rmp_serde::from_read_ref(&bytes).expect("Failed to deserialize incoming message");
+
+        match seen.entry(dest) {
+            Entry::Occupied(mut entry) => {
+                if let Status::Eligible = entry.get_mut().receive(data) {
+                    sink(entry.remove())
+                }
+            }
+            Entry::Vacant(none) => {
+                undelivered
+                    .entry(none.into_key())
+                    .or_insert_with(Vec::new)
+                    .push(data);
+            }
+        }
+    }
+
     // Have two loops: process local then process remote (where I read from the channel)
     if seen.len() > 0 {
         for k in seen.keys() {
@@ -279,6 +283,9 @@ where
     assert_eq!(seen.len(), 0);
 }
 
-fn serialize_msg<M: Serialize>(m: &M) -> Result<Vec<u8>, rmp_serde::encode::Error> {
-    rmp_serde::to_vec(m)
+fn serialize_msg<D: Serialize, M: Serialize>(
+    dest: D,
+    m: &M,
+) -> Result<Vec<u8>, rmp_serde::encode::Error> {
+    rmp_serde::to_vec(&(dest, m))
 }
