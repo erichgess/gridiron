@@ -59,19 +59,17 @@ struct FakeComm {}
 
 impl Communicator for FakeComm {
     fn rank(&self) -> usize {
-        todo!()
+        0
     }
 
     fn size(&self) -> usize {
-        todo!()
+        0
     }
 
-    fn send(&self, rank: usize, message: Vec<u8>) {
-        todo!()
-    }
+    fn send(&self, _rank: usize, _message: Vec<u8>) {}
 
     fn recv(&self) -> Vec<u8> {
-        todo!()
+        vec![]
     }
 }
 
@@ -81,7 +79,10 @@ fn main() {
     rayon::scope_fifo(|scope| {
         let group = (0..group_size).map(|n| ConcatenateNearestNeighbors::new(n, group_size));
         let fc = FakeComm {};
-        let router: HashMap<u32, usize> = HashMap::new();
+        let mut router: HashMap<u32, usize> = HashMap::new();
+        for n in 0..group_size {
+            router.insert(n, 0);
+        }
 
         assert_eq! {
             group_size as usize,
