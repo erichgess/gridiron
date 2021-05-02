@@ -1,15 +1,17 @@
+use std::collections::HashMap;
+
 use clap::{AppSettings, Clap};
 use crossbeam_channel::unbounded;
 use log::{info, LevelFilter};
 use simple_logger::SimpleLogger;
 
-use gridiron::index_space::range2d;
-use gridiron::meshing::GraphTopology;
 use gridiron::patch::Patch;
 use gridiron::rect_map::RectangleMap;
 use gridiron::solvers::euler2d_pcm::{Mesh, PatchUpdate};
 use gridiron::{automaton, host::receiver};
 use gridiron::{host::sender, hydro::euler2d::Primitive};
+use gridiron::{index_space::range2d, message::tcp::TcpCommunicator};
+use gridiron::{meshing::GraphTopology, rect_map::Rectangle};
 
 /// The initial model
 ///
@@ -144,24 +146,8 @@ fn main() {
     let (rcv_sig_s, rcv_sig_r) = unbounded();
 
     // start the host receiver
-    {
-        let rcv_sig_r = rcv_sig_r.clone();
-        let port = opts.port;
-        let receiver = std::thread::spawn(move || {
-            receiver::receiver(port, from_peer_s, rcv_sig_r);
-            info!("Receiver thread completed");
-        });
-        threads.push(receiver);
-    }
-    {
-        // start the sender thread
-        let peer_addr = opts.peer_addr.clone();
-        let sender = std::thread::spawn(move || {
-            sender::sender(peer_addr, to_peer_r);
-            info!("Sender thread completed");
-        });
-        threads.push(sender);
-    }
+    let client = TcpCommunicator::new(0, vec![]);
+    let router: HashMap<Rectangle<i64>, usize> = HashMap::new();
 
     println!("num blocks .... {}", primitive.len());
     println!("num threads ... {}", opts.num_threads);
@@ -220,27 +206,12 @@ fn main() {
             let to_peer_s = to_peer_s.clone();
             let from_peer_r = from_peer_r.clone();
             task_list = match &executor {
-                Execution::Serial => {
-                    automaton::execute(task_list, to_peer_s, from_peer_r, local_range).collect()
+                Execution::Serial => automaton::execute(task_list, &client, &router).collect(),
+                Execution::Stupid(pool) => {
+                    automaton::execute_par_stupid(&pool, task_list, &client, &router).collect()
                 }
-                Execution::Stupid(pool) => automaton::execute_par_stupid(
-                    &pool,
-                    task_list,
-                    to_peer_s,
-                    from_peer_r,
-                    local_range,
-                )
-                .collect(),
                 Execution::Rayon(pool) => pool
-                    .scope_fifo(|scope| {
-                        automaton::execute_par(
-                            scope,
-                            task_list,
-                            to_peer_s,
-                            from_peer_r,
-                            local_range,
-                        )
-                    })
+                    .scope_fifo(|scope| automaton::execute_par(scope, task_list, &client, &router))
                     .collect(),
             };
             time += dt;
@@ -276,9 +247,6 @@ fn main() {
     // Wait until all threads are complete to exit the service
     drop(to_peer_s);
     rcv_sig_s.send(gridiron::host::msg::Signal::Stop).unwrap();
-    for t in threads {
-        t.join().unwrap();
-    }
 }
 
 fn init_logging() {
