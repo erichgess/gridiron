@@ -1,4 +1,4 @@
-use log::error;
+use log::{error, info};
 
 use super::comm::Communicator;
 use super::util;
@@ -42,6 +42,7 @@ impl TcpHost {
 
         let (recv_sink, recv_src) = crossbeam_channel::unbounded();
         let listen_thread = thread::spawn(move || {
+            info!("Listening to: {}", peers[rank]);
             let listener = TcpListener::bind(peers[rank]).unwrap();
             loop {
                 let (mut stream, _) = listener.accept().unwrap(); // TODO: There is a race condition here

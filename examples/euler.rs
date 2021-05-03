@@ -88,15 +88,6 @@ struct Opts {
     #[clap(long, default_value = "0.1")]
     tfinal: f64,
 
-    #[clap(long, default_value = "0")]
-    start: i64,
-
-    #[clap(long, default_value = "1000")]
-    end: i64,
-
-    #[clap(long)]
-    port: u32,
-
     #[clap(long, required = true)]
     rank: usize,
 
@@ -114,6 +105,13 @@ fn main() {
     let opts = Opts::parse();
     init_logging();
     info!("{:?}", opts);
+
+    // start the host receiver
+    let peers: Vec<SocketAddr> = opts
+        .peers
+        .iter()
+        .map(|peer| peer.parse::<SocketAddr>().unwrap())
+        .collect();
 
     let mesh = Mesh {
         area: (-1.0..1.0, -1.0..1.0),
@@ -133,34 +131,34 @@ fn main() {
     let edge_list = primitive_map.adjacency_list(1);
 
     let mut router: HashMap<Rectangle<i64>, usize> = HashMap::new();
+    let num_blocks = opts.grid_resolution / opts.block_size;
+
+    let start = (num_blocks / peers.len() * opts.rank * opts.block_size) as i64;
+    let end = (if opts.rank == peers.len() - 1 {
+        num_blocks
+    } else {
+        num_blocks / peers.len() * (opts.rank + 1)
+    } * opts.block_size) as i64;
+    info!("Start: {}; End: {}", start, end);
+
     let primitive: Vec<_> = primitive_map
         .into_iter()
         .map(|(_, prim)| prim)
         .filter(|prim| {
-            let local =
-                opts.start <= prim.local_rect().0.start && prim.local_rect().0.end <= opts.end;
+            let mut rank = (prim.local_rect().0.start / opts.block_size as i64)
+                / (num_blocks / peers.len()) as i64;
+            if rank == peers.len() as i64 {
+                rank -= 1;
+            }
+            router.insert(prim.local_rect().clone(), rank as usize);
 
-            let rank = if local {
-                opts.rank
-            } else {
-                (opts.rank + 1) % 2
-            };
-            router.insert(prim.local_rect().clone(), rank);
-
-            local
+            rank == opts.rank as i64
         })
         .collect();
 
     for (k, v) in &router {
-        println!("{:?}: {}", k, v);
+        println!("{:?} -> {}", k, v);
     }
-
-    // start the host receiver
-    let peers: Vec<SocketAddr> = opts
-        .peers
-        .iter()
-        .map(|peer| peer.parse::<SocketAddr>().unwrap())
-        .collect();
 
     // TODO: Connect to peer which will have the second half of the grid
     let (mut tcp_host, send, receive) = TcpHost::new(opts.rank, peers.clone());
