@@ -259,6 +259,9 @@ where
     }
 
     let mut num_received = 0;
+    // TODO: CRITICAL: if the messages come through in a specific order then `seen` will be emptied
+    // TODO: BEFORE all the required messages are received.  I  have put the `num_received < num_sent`
+    // TODO: here as a place holder hack.  But it will need to be fixed before going on.
     while !seen.is_empty() || num_received < num_sent {
         num_received += 1;
         let bytes = client.recv();
