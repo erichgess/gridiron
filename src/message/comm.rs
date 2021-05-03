@@ -22,7 +22,9 @@ pub trait Communicator {
     /// method is allowed to block until a message is ready to be received
     fn recv(&self) -> Vec<u8>;
 
-    fn requeue(&self, bytes: Vec<u8>);
+    // TODO: This is a placeholder that I added to get a simple buffer implementation
+    /// Requeue a received message which is not yet needed.
+    fn requeue_recv(&self, bytes: Vec<u8>);
 
     /// Implements a binomial tree broadcast from the root node. The message
     /// buffer must be `Some` if this is the root node, and it must be `None`

@@ -286,7 +286,7 @@ fn coordinate<'a, I, A, K, V, S, C>(
 
         if msg_iteration != iteration {
             let bytes = serialize_msg(dest, src_rank, msg_iteration, &data).unwrap();
-            client.requeue(bytes);
+            client.requeue_recv(bytes);
             continue;
         }
 

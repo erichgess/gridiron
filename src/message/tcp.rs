@@ -122,7 +122,7 @@ impl Communicator for TcpCommunicator {
         self.recv_src.as_ref().unwrap().recv().unwrap()
     }
 
-    fn requeue(&self, bytes: Vec<u8>) {
+    fn requeue_recv(&self, bytes: Vec<u8>) {
         self.recv_sink.as_ref().unwrap().send(bytes).unwrap();
     }
 }
