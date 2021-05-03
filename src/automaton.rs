@@ -217,31 +217,24 @@ where
                     panic!("Could not find peer for {:?}", &dest);
                 }
             };
-            match seen.entry(dest) {
-                Entry::Occupied(mut entry) => {
-                    if dest_rank == client.rank() {
+            if dest_rank == client.rank() {
+                match seen.entry(dest) {
+                    Entry::Occupied(mut entry) => {
                         if let Status::Eligible = entry.get_mut().receive(data) {
                             sink(entry.remove())
                         }
-                    } else {
-                        match serialize_msg(entry.key(), &data) {
-                            Ok(bytes) => client.send(dest_rank, bytes),
-                            Err(err) => panic!("Failed to serialize message: {}", err),
-                        }
                     }
-                }
-                Entry::Vacant(none) => {
-                    if dest_rank == client.rank() {
+                    Entry::Vacant(none) => {
                         undelivered
                             .entry(none.into_key())
                             .or_insert_with(Vec::new)
                             .push(data);
-                    } else {
-                        match serialize_msg(none.into_key(), &data) {
-                            Ok(bytes) => client.send(dest_rank, bytes),
-                            Err(err) => panic!("Failed to serialize message: {}", err),
-                        }
                     }
+                }
+            } else {
+                match serialize_msg(dest, &data) {
+                    Ok(bytes) => client.send(dest_rank, bytes),
+                    Err(err) => panic!("Failed to serialize message: {}", err),
                 }
             }
         }
