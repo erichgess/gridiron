@@ -234,7 +234,6 @@ where
                 }
             } else {
                 num_sent += 1;
-                info!("Sending to: {:?}", dest);
                 match serialize_msg(dest, &data) {
                     Ok(bytes) => client.send(dest_rank, bytes),
                     Err(err) => panic!("Failed to serialize message: {}", err),
@@ -265,7 +264,6 @@ where
         let bytes = client.recv();
         let (dest, data): (K, A::Message) =
             rmp_serde::from_read_ref(&bytes).expect("Failed to deserialize incoming message");
-        info!("Received for: {:?}", dest);
 
         match seen.entry(dest) {
             Entry::Occupied(mut entry) => {
