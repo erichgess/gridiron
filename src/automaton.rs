@@ -1,7 +1,7 @@
 use core::hash::Hash;
 use std::collections::hash_map::{Entry, HashMap};
 
-use log::info;
+use log::{debug, info};
 use serde::{de::DeserializeOwned, Serialize};
 
 use crate::message::comm::Communicator;
@@ -280,7 +280,7 @@ where
         }
     }
 
-    info!("Sent: {}; Received: {}", num_sent, num_received);
+    debug!("Sent: {}; Received: {}", num_sent, num_received);
 
     // Have two loops: process local then process remote (where I read from the channel)
     if seen.len() > 0 {
