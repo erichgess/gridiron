@@ -4,28 +4,19 @@ use super::comm::Communicator;
 use super::util;
 use std::io::prelude::*;
 use std::net::{SocketAddr, TcpListener, TcpStream};
-use std::sync::mpsc;
 use std::thread;
 
-type Sender = mpsc::Sender<(usize, Vec<u8>)>;
-type Receiver = mpsc::Receiver<(usize, Vec<u8>)>;
+type Sender = crossbeam_channel::Sender<(usize, Vec<u8>)>;
+type Receiver = crossbeam_channel::Receiver<Vec<u8>>;
 
 pub struct TcpHost {
-    listen_thread: thread::JoinHandle<()>,
+    listen_thread: Option<thread::JoinHandle<()>>,
     send_thread: Option<thread::JoinHandle<()>>,
 }
 
 impl TcpHost {
-    pub fn new(
-        rank: usize,
-        peers: Vec<SocketAddr>,
-    ) -> (
-        Self,
-        crossbeam_channel::Sender<(usize, Vec<u8>)>,
-        crossbeam_channel::Receiver<Vec<u8>>,
-    ) {
-        let (send_sink, send_src): (crossbeam_channel::Sender<(usize, Vec<u8>)>, _) =
-            crossbeam_channel::unbounded();
+    pub fn new(rank: usize, peers: Vec<SocketAddr>) -> (Self, Sender, Receiver) {
+        let (send_sink, send_src): (Sender, _) = crossbeam_channel::unbounded();
         let peers_cpy = peers.clone();
         let send_thread = thread::spawn(move || {
             for (rank, message) in send_src {
@@ -66,7 +57,7 @@ impl TcpHost {
         (
             TcpHost {
                 send_thread: Some(send_thread),
-                listen_thread,
+                listen_thread: Some(listen_thread),
             },
             send_sink,
             recv_src,
