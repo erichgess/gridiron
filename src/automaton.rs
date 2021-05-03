@@ -1,4 +1,4 @@
-use core::hash::Hash;
+use core::{hash::Hash, num};
 use std::collections::hash_map::{Entry, HashMap};
 
 use log::{debug, info};
@@ -258,15 +258,17 @@ where
         }
     }
 
-    let mut num_received = 0;
+    let mut total = 0;
+    let mut num_received: HashMap<K, usize> = HashMap::new();
     // TODO: CRITICAL: if the messages come through in a specific order then `seen` will be emptied
     // TODO: BEFORE all the required messages are received.  I  have put the `num_received < num_sent`
     // TODO: here as a place holder hack.  But it will need to be fixed before going on.
-    while !seen.is_empty() || num_received < num_sent {
-        num_received += 1;
+    while !seen.is_empty() || total < num_sent {
         let bytes = client.recv();
         let (dest, data): (K, A::Message) =
             deserialize_msg(&bytes).expect("Failed to deserialize incoming message");
+        *num_received.entry(dest.clone()).or_insert(0) += 1;
+        total += 1;
 
         match seen.entry(dest) {
             Entry::Occupied(mut entry) => {
@@ -283,7 +285,8 @@ where
         }
     }
 
-    info!("Sent: {}; Received: {}", num_sent, num_received);
+    info!("Sent: {}; Received: {}", num_sent, total);
+    info!("Breakdown {:?}", num_received);
 
     // Have two loops: process local then process remote (where I read from the channel)
     if seen.len() > 0 {

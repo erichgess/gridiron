@@ -20,10 +20,8 @@ impl TcpHost {
         let peers_cpy = peers.clone();
         let send_thread = thread::spawn(move || {
             for (rank, message) in send_src {
-                let mut attempts = 0;
-                let mut sleep_ms = 1000;
-                while attempts < 3 {
-                    attempts += 1;
+                let mut sleep_ms = 250;
+                loop {
                     match TcpStream::connect(peers_cpy[rank]) {
                         Ok(mut stream) => {
                             stream.write_all(&message.len().to_le_bytes()).unwrap();
@@ -31,9 +29,10 @@ impl TcpHost {
                             break;
                         }
                         Err(msg) => {
-                            error!("Send failed, retrying: {}", msg);
+                            error!("Send failed: {}", msg);
+                            info!("Retrying in {}ms", sleep_ms);
                             thread::sleep(std::time::Duration::from_millis(sleep_ms));
-                            sleep_ms *= 2;
+                            sleep_ms = if sleep_ms < 5000 { 2 * sleep_ms } else { 5000 };
                         }
                     }
                 }
