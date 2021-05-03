@@ -145,17 +145,20 @@ fn main() {
             let local =
                 opts.start <= prim.local_rect().0.start && prim.local_rect().0.end <= opts.end;
 
-            if local {
-                router.insert(prim.local_rect().clone(), opts.rank);
+            let rank = if local {
+                opts.rank
             } else {
-                router.insert(prim.local_rect().clone(), (opts.rank + 1) % 2);
-            }
+                (opts.rank + 1) % 2
+            };
+            router.insert(prim.local_rect().clone(), rank);
 
             local
         })
         .collect();
 
-    println!("Routing Table:\n{:?}", router);
+    for (k, v) in &router {
+        println!("{:?}: {}", k, v);
+    }
 
     // start the host receiver
     let peers: Vec<SocketAddr> = opts

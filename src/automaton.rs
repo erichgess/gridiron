@@ -201,6 +201,7 @@ where
 {
     let mut seen: HashMap<K, A> = HashMap::new();
     let mut undelivered = HashMap::new();
+    let mut num_sent = 0;
 
     for mut a in flow {
         // For each of A's messages, either deliver it to the recipient peer,
@@ -232,6 +233,7 @@ where
                     }
                 }
             } else {
+                num_sent += 1;
                 match serialize_msg(dest, &data) {
                     Ok(bytes) => client.send(dest_rank, bytes),
                     Err(err) => panic!("Failed to serialize message: {}", err),
@@ -256,7 +258,9 @@ where
         }
     }
 
+    let mut num_received = 0;
     while !seen.is_empty() {
+        num_received += 1;
         let bytes = client.recv();
         let (dest, data): (K, A::Message) =
             rmp_serde::from_read_ref(&bytes).expect("Failed to deserialize incoming message");
@@ -267,11 +271,16 @@ where
                     sink(entry.remove())
                 }
             }
-            Entry::Vacant(_) => {
-                panic!("Receiving event for a non-local patch");
+            Entry::Vacant(none) => {
+                undelivered
+                    .entry(none.into_key())
+                    .or_insert_with(Vec::new)
+                    .push(data);
             }
         }
     }
+
+    info!("Sent: {}; Received: {}", num_sent, num_received);
 
     // Have two loops: process local then process remote (where I read from the channel)
     if seen.len() > 0 {
@@ -280,6 +289,7 @@ where
         }
     }
     assert_eq!(seen.len(), 0);
+    assert_eq!(undelivered.len(), 0);
 }
 
 fn serialize_msg<D: Serialize, M: Serialize>(
