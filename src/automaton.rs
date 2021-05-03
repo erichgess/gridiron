@@ -1,7 +1,7 @@
 use core::{hash::Hash, num};
 use std::collections::hash_map::{Entry, HashMap};
 
-use log::{debug, info};
+use log::{debug, error, info};
 use serde::{de::DeserializeOwned, Serialize};
 
 use crate::{host::msg, message::comm::Communicator};
@@ -274,12 +274,8 @@ fn coordinate<'a, I, A, K, V, S, C>(
         }
     }
 
-    let mut total = 0;
     let mut num_received: HashMap<(usize, usize), usize> = HashMap::new();
-    // TODO: CRITICAL: if the messages come through in a specific order then `seen` will be emptied
-    // TODO: BEFORE all the required messages are received.  I  have put the `num_received < num_sent`
-    // TODO: here as a place holder hack.  But it will need to be fixed before going on.
-    while !seen.is_empty() || total < num_sent {
+    while !seen.is_empty() {
         let bytes = client.recv();
         let (dest, src_rank, msg_iteration, data) =
             deserialize_msg(&bytes).expect("Failed to deserialize incoming message");
@@ -291,7 +287,6 @@ fn coordinate<'a, I, A, K, V, S, C>(
         }
 
         *num_received.entry((src_rank, msg_iteration)).or_insert(0) += 1;
-        total += 1;
 
         match seen.entry(dest) {
             Entry::Occupied(mut entry) => {
@@ -300,16 +295,13 @@ fn coordinate<'a, I, A, K, V, S, C>(
                 }
             }
             Entry::Vacant(none) => {
-                undelivered
-                    .entry(none.into_key())
-                    .or_insert_with(Vec::new)
-                    .push(data);
+                panic!("Received message for vacant entry: {:?}", none.into_key());
             }
         }
     }
 
-    info!("Sent: {}; Received: {}", num_sent, total);
-    info!("Breakdown {:?}", num_received);
+    info!("Sent: {}", num_sent);
+    info!("Received: {:?}", num_received);
 
     // Have two loops: process local then process remote (where I read from the channel)
     if seen.len() > 0 {
