@@ -231,10 +231,17 @@ where
                     }
                 }
                 Entry::Vacant(none) => {
-                    undelivered
-                        .entry(none.into_key())
-                        .or_insert_with(Vec::new)
-                        .push(data);
+                    if dest_rank == client.rank() {
+                        undelivered
+                            .entry(none.into_key())
+                            .or_insert_with(Vec::new)
+                            .push(data);
+                    } else {
+                        match serialize_msg(none.into_key(), &data) {
+                            Ok(bytes) => client.send(dest_rank, bytes),
+                            Err(err) => panic!("Failed to serialize message: {}", err),
+                        }
+                    }
                 }
             }
         }
