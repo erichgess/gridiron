@@ -283,7 +283,7 @@ where
         }
     }
 
-    debug!("Sent: {}; Received: {}", num_sent, num_received);
+    info!("Sent: {}; Received: {}", num_sent, num_received);
 
     // Have two loops: process local then process remote (where I read from the channel)
     if seen.len() > 0 {

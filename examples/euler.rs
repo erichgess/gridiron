@@ -156,10 +156,6 @@ fn main() {
         })
         .collect();
 
-    for (k, v) in &router {
-        println!("{:?} -> {}", k, v);
-    }
-
     // TODO: Connect to peer which will have the second half of the grid
     let (mut tcp_host, send, receive) = TcpHost::new(opts.rank, peers.clone());
     let client = TcpCommunicator::new(opts.rank, peers, send.clone(), receive.clone());
