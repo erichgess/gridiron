@@ -234,7 +234,7 @@ where
                 }
             } else {
                 num_sent += 1;
-                match serialize_msg(dest, &data) {
+                match serialize_msg(dest, client.rank(), &data) {
                     Ok(bytes) => client.send(dest_rank, bytes),
                     Err(err) => panic!("Failed to serialize message: {}", err),
                 }
@@ -259,15 +259,15 @@ where
     }
 
     let mut total = 0;
-    let mut num_received: HashMap<K, usize> = HashMap::new();
+    let mut num_received: HashMap<usize, usize> = HashMap::new();
     // TODO: CRITICAL: if the messages come through in a specific order then `seen` will be emptied
     // TODO: BEFORE all the required messages are received.  I  have put the `num_received < num_sent`
     // TODO: here as a place holder hack.  But it will need to be fixed before going on.
     while !seen.is_empty() || total < num_sent {
         let bytes = client.recv();
-        let (dest, data): (K, A::Message) =
+        let (dest, src_rank, data): (K, usize, A::Message) =
             deserialize_msg(&bytes).expect("Failed to deserialize incoming message");
-        *num_received.entry(dest.clone()).or_insert(0) += 1;
+        *num_received.entry(src_rank).or_insert(0) += 1;
         total += 1;
 
         match seen.entry(dest) {
@@ -300,13 +300,14 @@ where
 
 fn serialize_msg<D: Serialize, M: Serialize>(
     dest: D,
+    dest_rank: usize,
     m: &M,
 ) -> Result<Vec<u8>, rmp_serde::encode::Error> {
-    rmp_serde::to_vec(&(dest, m))
+    rmp_serde::to_vec(&(dest, dest_rank, m))
 }
 
 fn deserialize_msg<D: DeserializeOwned, M: DeserializeOwned>(
     bytes: &[u8],
-) -> Result<(D, M), rmp_serde::decode::Error> {
+) -> Result<(D, usize, M), rmp_serde::decode::Error> {
     rmp_serde::from_read_ref(&bytes)
 }
