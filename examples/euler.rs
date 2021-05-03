@@ -102,9 +102,6 @@ struct Opts {
     #[clap(long)]
     port: u32,
 
-    #[clap(long)]
-    peer_addr: String,
-
     #[clap(long, required = true)]
     rank: usize,
 
@@ -140,28 +137,36 @@ fn main() {
     let dt = mesh.cell_spacing().0 * 0.1;
     let edge_list = primitive_map.adjacency_list(1);
 
+    let mut router: HashMap<Rectangle<i64>, usize> = HashMap::new();
     let primitive: Vec<_> = primitive_map
         .into_iter()
         .map(|(_, prim)| prim)
         .filter(|prim| {
-            opts.start <= prim.local_rect().0.start && prim.local_rect().0.end <= opts.end
+            let local =
+                opts.start <= prim.local_rect().0.start && prim.local_rect().0.end <= opts.end;
+
+            if local {
+                router.insert(prim.local_rect().clone(), opts.rank);
+            } else {
+                router.insert(prim.local_rect().clone(), (opts.rank + 1) % 2);
+            }
+
+            local
         })
         .collect();
 
-    let router: HashMap<Rectangle<i64>, usize> = HashMap::new();
     println!("Routing Table:\n{:?}", router);
 
-    // TODO: Connect to peer which will have the second half of the grid
-    let addr = SocketAddr::new(IpAddr::V4(Ipv4Addr::new(127, 0, 0, 1)), opts.port as u16);
-    let (mut tcp_host, send, receive) = TcpHost::new(0, vec![addr]);
-
     // start the host receiver
-    let peers = opts
+    let peers: Vec<SocketAddr> = opts
         .peers
         .iter()
-        .map(|peer| SocketAddr::from_str(peer).unwrap())
+        .map(|peer| peer.parse::<SocketAddr>().unwrap())
         .collect();
-    let client = TcpCommunicator::new(0, peers, send.clone(), receive.clone());
+
+    // TODO: Connect to peer which will have the second half of the grid
+    let (mut tcp_host, send, receive) = TcpHost::new(opts.rank, peers.clone());
+    let client = TcpCommunicator::new(opts.rank, peers, send.clone(), receive.clone());
 
     println!("num blocks .... {}", primitive.len());
     println!("num threads ... {}", opts.num_threads);
