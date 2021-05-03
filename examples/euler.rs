@@ -1,6 +1,7 @@
 use std::{
     collections::HashMap,
     net::{IpAddr, Ipv4Addr, SocketAddr},
+    str::FromStr,
 };
 
 use clap::{AppSettings, Clap};
@@ -103,6 +104,9 @@ struct Opts {
 
     #[clap(long)]
     peer_addr: String,
+
+    #[clap(long)]
+    peers: Vec<String>,
 }
 
 enum Execution {
@@ -133,33 +137,28 @@ fn main() {
     let dt = mesh.cell_spacing().0 * 0.1;
     let edge_list = primitive_map.adjacency_list(1);
 
-    let mut router: HashMap<Rectangle<i64>, usize> = HashMap::new();
     let primitive: Vec<_> = primitive_map
         .into_iter()
         .map(|(_, prim)| prim)
         .filter(|prim| {
-            // TODO: filter the primitives to only be half of the grid
-            let local =
-                opts.start <= prim.local_rect().0.start && prim.local_rect().0.end <= opts.end;
-            if local {
-                router.insert(prim.local_rect().clone(), 0);
-            } else {
-                router.insert(prim.local_rect().clone(), 1);
-            }
-
-            local
+            opts.start <= prim.local_rect().0.start && prim.local_rect().0.end <= opts.end
         })
         .collect();
+
+    let router: HashMap<Rectangle<i64>, usize> = HashMap::new();
+    println!("Routing Table:\n{:?}", router);
 
     // TODO: Connect to peer which will have the second half of the grid
     let addr = SocketAddr::new(IpAddr::V4(Ipv4Addr::new(127, 0, 0, 1)), opts.port as u16);
     let (mut tcp_host, send, receive) = TcpHost::new(0, vec![addr]);
 
     // start the host receiver
-    let client = TcpCommunicator::new(0, vec![], send.clone(), receive.clone());
-    for p in &primitive {
-        router.insert(p.local_rect().clone(), 0);
-    }
+    let peers = opts
+        .peers
+        .iter()
+        .map(|peer| SocketAddr::from_str(peer).unwrap())
+        .collect();
+    let client = TcpCommunicator::new(0, peers, send.clone(), receive.clone());
 
     println!("num blocks .... {}", primitive.len());
     println!("num threads ... {}", opts.num_threads);

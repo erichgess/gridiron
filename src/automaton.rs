@@ -220,10 +220,12 @@ where
             match seen.entry(dest) {
                 Entry::Occupied(mut entry) => {
                     if dest_rank == client.rank() {
+                        info!("Local Message");
                         if let Status::Eligible = entry.get_mut().receive(data) {
                             sink(entry.remove())
                         }
                     } else {
+                        info!("Remote Message");
                         match serialize_msg(entry.key(), &data) {
                             Ok(bytes) => client.send(dest_rank, bytes),
                             Err(err) => panic!("Failed to serialize message: {}", err),

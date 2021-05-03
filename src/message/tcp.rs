@@ -1,4 +1,4 @@
-use log::error;
+use log::{error, info};
 
 use super::comm::Communicator;
 use super::util;
@@ -29,6 +29,7 @@ impl TcpHost {
         let peers_cpy = peers.clone();
         let send_thread = thread::spawn(move || {
             for (rank, message) in send_src {
+                info!("Sending Message");
                 let mut attempts = 0;
                 let mut sleep_ms = 1000;
                 while attempts < 3 {
@@ -111,6 +112,7 @@ impl Communicator for TcpCommunicator {
     }
 
     fn send(&self, rank: usize, message: Vec<u8>) {
+        info!("Sending message");
         self.send_sink
             .as_ref()
             .unwrap()
