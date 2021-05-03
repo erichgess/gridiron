@@ -267,11 +267,8 @@ where
                     sink(entry.remove())
                 }
             }
-            Entry::Vacant(none) => {
-                undelivered
-                    .entry(none.into_key())
-                    .or_insert_with(Vec::new)
-                    .push(data);
+            Entry::Vacant(_) => {
+                panic!("Receiving event for a non-local patch");
             }
         }
     }
