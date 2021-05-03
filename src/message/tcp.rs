@@ -119,7 +119,7 @@ impl Communicator for TcpCommunicator {
     }
 
     fn recv(&self) -> Vec<u8> {
-        vec![]
+        self.recv_src.as_ref().unwrap().recv().unwrap()
     }
 }
 

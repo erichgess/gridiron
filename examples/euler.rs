@@ -133,12 +133,21 @@ fn main() {
     let dt = mesh.cell_spacing().0 * 0.1;
     let edge_list = primitive_map.adjacency_list(1);
 
+    let mut router: HashMap<Rectangle<i64>, usize> = HashMap::new();
     let primitive: Vec<_> = primitive_map
         .into_iter()
         .map(|(_, prim)| prim)
         .filter(|prim| {
             // TODO: filter the primitives to only be half of the grid
-            opts.start <= prim.local_rect().0.start && prim.local_rect().0.end <= opts.end
+            let local =
+                opts.start <= prim.local_rect().0.start && prim.local_rect().0.end <= opts.end;
+            if local {
+                router.insert(prim.local_rect().clone(), 0);
+            } else {
+                router.insert(prim.local_rect().clone(), 1);
+            }
+
+            local
         })
         .collect();
 
@@ -148,7 +157,6 @@ fn main() {
 
     // start the host receiver
     let client = TcpCommunicator::new(0, vec![], send.clone(), receive.clone());
-    let mut router: HashMap<Rectangle<i64>, usize> = HashMap::new();
     for p in &primitive {
         router.insert(p.local_rect().clone(), 0);
     }

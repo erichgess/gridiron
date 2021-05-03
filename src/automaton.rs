@@ -1,7 +1,7 @@
 use core::hash::Hash;
 use std::collections::hash_map::{Entry, HashMap};
 
-use log::info;
+use log::{error, info};
 use serde::{de::DeserializeOwned, Serialize};
 
 use crate::message::comm::Communicator;
@@ -211,7 +211,12 @@ where
         // message, then send those peers off to be executed.
         //
         for (dest, data) in a.messages() {
-            let dest_rank = router[&dest];
+            let dest_rank = match router.get(&dest) {
+                Some(d) => *d,
+                None => {
+                    panic!("Could not find peer for {:?}", &dest);
+                }
+            };
             match seen.entry(dest) {
                 Entry::Occupied(mut entry) => {
                     if dest_rank == client.rank() {
