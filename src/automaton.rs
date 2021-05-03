@@ -266,7 +266,7 @@ where
         num_received += 1;
         let bytes = client.recv();
         let (dest, data): (K, A::Message) =
-            rmp_serde::from_read_ref(&bytes).expect("Failed to deserialize incoming message");
+            deserialize_msg(&bytes).expect("Failed to deserialize incoming message");
 
         match seen.entry(dest) {
             Entry::Occupied(mut entry) => {
@@ -300,4 +300,10 @@ fn serialize_msg<D: Serialize, M: Serialize>(
     m: &M,
 ) -> Result<Vec<u8>, rmp_serde::encode::Error> {
     rmp_serde::to_vec(&(dest, m))
+}
+
+fn deserialize_msg<D: DeserializeOwned, M: DeserializeOwned>(
+    bytes: &[u8],
+) -> Result<(D, M), rmp_serde::decode::Error> {
+    rmp_serde::from_read_ref(&bytes)
 }
