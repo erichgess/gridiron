@@ -90,6 +90,7 @@ pub trait Automaton {
 /// Execute a group of tasks in serial.
 ///
 pub fn execute<I, A, K, V, C>(
+    iteration: usize,
     stage: I,
     client: &C,
     router: &HashMap<K, usize>,
@@ -103,7 +104,13 @@ where
 {
     let (eligible_sink, eligible_source) = crossbeam_channel::unbounded();
 
-    coordinate(stage, |a: A| eligible_sink.send(a).unwrap(), client, router);
+    coordinate(
+        iteration,
+        stage,
+        |a: A| eligible_sink.send(a).unwrap(),
+        client,
+        router,
+    );
 
     eligible_source.into_iter().map(|peer: A| peer.value())
 }
@@ -117,6 +124,7 @@ where
 ///
 pub fn execute_par<'a, I, A, K, V, C>(
     scope: &rayon::ScopeFifo<'a>,
+    iteration: usize,
     flow: I,
     client: &C,
     router: &HashMap<K, usize>,
@@ -137,6 +145,7 @@ where
     let (sink, source) = crossbeam_channel::unbounded();
 
     coordinate(
+        iteration,
         flow,
         |a: A| {
             let sink = sink.clone();
@@ -154,6 +163,7 @@ where
 ///
 pub fn execute_par_stupid<I, A, K, V, C>(
     pool: &crate::thread_pool::ThreadPool,
+    iteration: usize,
     flow: I,
     client: &C,
     router: &HashMap<K, usize>,
@@ -174,6 +184,7 @@ where
     let (sink, source) = crossbeam_channel::unbounded();
 
     coordinate(
+        iteration,
         flow,
         |a: A| {
             let sink = sink.clone();
@@ -190,8 +201,13 @@ where
 // TODO: Pass in channels from host to receive and send msgs from and to peers
 // TODO: Key/K is a rectangle<i64> corresponding the the patch's grid range.
 // So that's what the hashmap is keyed on
-fn coordinate<'a, I, A, K, V, S, C>(flow: I, sink: S, client: &C, router: &HashMap<K, usize>)
-where
+fn coordinate<'a, I, A, K, V, S, C>(
+    iteration: usize,
+    flow: I,
+    sink: S,
+    client: &C,
+    router: &HashMap<K, usize>,
+) where
     I: IntoIterator<Item = A>,
     A: Automaton<Key = K, Value = V>,
     A::Message: Serialize + DeserializeOwned,
@@ -234,7 +250,7 @@ where
                 }
             } else {
                 num_sent += 1;
-                match serialize_msg(dest, client.rank(), &data) {
+                match serialize_msg(dest, client.rank(), iteration, &data) {
                     Ok(bytes) => client.send(dest_rank, bytes),
                     Err(err) => panic!("Failed to serialize message: {}", err),
                 }
@@ -259,15 +275,15 @@ where
     }
 
     let mut total = 0;
-    let mut num_received: HashMap<usize, usize> = HashMap::new();
+    let mut num_received: HashMap<(usize, usize), usize> = HashMap::new();
     // TODO: CRITICAL: if the messages come through in a specific order then `seen` will be emptied
     // TODO: BEFORE all the required messages are received.  I  have put the `num_received < num_sent`
     // TODO: here as a place holder hack.  But it will need to be fixed before going on.
     while !seen.is_empty() || total < num_sent {
         let bytes = client.recv();
-        let (dest, src_rank, data): (K, usize, A::Message) =
+        let (dest, src_rank, msg_iteration, data) =
             deserialize_msg(&bytes).expect("Failed to deserialize incoming message");
-        *num_received.entry(src_rank).or_insert(0) += 1;
+        *num_received.entry((src_rank, msg_iteration)).or_insert(0) += 1;
         total += 1;
 
         match seen.entry(dest) {
@@ -301,13 +317,14 @@ where
 fn serialize_msg<D: Serialize, M: Serialize>(
     dest: D,
     dest_rank: usize,
+    frame: usize,
     m: &M,
 ) -> Result<Vec<u8>, rmp_serde::encode::Error> {
-    rmp_serde::to_vec(&(dest, dest_rank, m))
+    rmp_serde::to_vec(&(dest, dest_rank, frame, m))
 }
 
 fn deserialize_msg<D: DeserializeOwned, M: DeserializeOwned>(
     bytes: &[u8],
-) -> Result<(D, usize, M), rmp_serde::decode::Error> {
+) -> Result<(D, usize, usize, M), rmp_serde::decode::Error> {
     rmp_serde::from_read_ref(&bytes)
 }

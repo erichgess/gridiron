@@ -214,12 +214,21 @@ fn main() {
         // TODO: Handle folding with distribution
         for _ in 0..opts.fold {
             task_list = match &executor {
-                Execution::Serial => automaton::execute(task_list, &client, &router).collect(),
-                Execution::Stupid(pool) => {
-                    automaton::execute_par_stupid(&pool, task_list, &client, &router).collect()
+                Execution::Serial => {
+                    automaton::execute(frame as usize, task_list, &client, &router).collect()
                 }
+                Execution::Stupid(pool) => automaton::execute_par_stupid(
+                    &pool,
+                    frame as usize,
+                    task_list,
+                    &client,
+                    &router,
+                )
+                .collect(),
                 Execution::Rayon(pool) => pool
-                    .scope_fifo(|scope| automaton::execute_par(scope, task_list, &client, &router))
+                    .scope_fifo(|scope| {
+                        automaton::execute_par(scope, frame as usize, task_list, &client, &router)
+                    })
                     .collect(),
             };
             time += dt;
