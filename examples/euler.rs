@@ -157,8 +157,14 @@ fn main() {
         .collect();
 
     // TODO: Connect to peer which will have the second half of the grid
-    let (mut tcp_host, send, receive) = TcpHost::new(opts.rank, peers.clone());
-    let client = TcpCommunicator::new(opts.rank, peers, send.clone(), receive.clone());
+    let (mut tcp_host, send, recv_sink, receive) = TcpHost::new(opts.rank, peers.clone());
+    let client = TcpCommunicator::new(
+        opts.rank,
+        peers,
+        send.clone(),
+        recv_sink.clone(),
+        receive.clone(),
+    );
 
     println!("num blocks .... {}", primitive.len());
     println!("num threads ... {}", opts.num_threads);

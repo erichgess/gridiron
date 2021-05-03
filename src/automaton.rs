@@ -4,7 +4,7 @@ use std::collections::hash_map::{Entry, HashMap};
 use log::{debug, info};
 use serde::{de::DeserializeOwned, Serialize};
 
-use crate::message::comm::Communicator;
+use crate::{host::msg, message::comm::Communicator};
 
 /// Returned by [`Automaton::receive`] to indicate whether a task is eligible
 /// to be evaluated.
@@ -283,6 +283,13 @@ fn coordinate<'a, I, A, K, V, S, C>(
         let bytes = client.recv();
         let (dest, src_rank, msg_iteration, data) =
             deserialize_msg(&bytes).expect("Failed to deserialize incoming message");
+
+        if msg_iteration != iteration {
+            let bytes = serialize_msg(dest, src_rank, msg_iteration, &data).unwrap();
+            client.requeue(bytes);
+            continue;
+        }
+
         *num_received.entry((src_rank, msg_iteration)).or_insert(0) += 1;
         total += 1;
 

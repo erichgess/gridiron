@@ -15,7 +15,10 @@ pub struct TcpHost {
 }
 
 impl TcpHost {
-    pub fn new(rank: usize, peers: Vec<SocketAddr>) -> (Self, Sender, Receiver) {
+    pub fn new(
+        rank: usize,
+        peers: Vec<SocketAddr>,
+    ) -> (Self, Sender, crossbeam_channel::Sender<Vec<u8>>, Receiver) {
         let (send_sink, send_src): (Sender, _) = crossbeam_channel::unbounded();
         let peers_cpy = peers.clone();
         let send_thread = thread::spawn(move || {
@@ -40,6 +43,7 @@ impl TcpHost {
         });
 
         let (recv_sink, recv_src) = crossbeam_channel::unbounded();
+        let recv_sink_cpy = recv_sink.clone();
         let listen_thread = thread::spawn(move || {
             info!("Listening to: {}", peers[rank]);
             let listener = TcpListener::bind(peers[rank]).unwrap();
@@ -47,7 +51,7 @@ impl TcpHost {
                 let (mut stream, _) = listener.accept().unwrap(); // TODO: There is a race condition here
                 let size = util::read_usize(&mut stream);
                 let bytes = util::read_bytes_vec(&mut stream, size);
-                match recv_sink.send(bytes) {
+                match recv_sink_cpy.send(bytes) {
                     Ok(_) => (),
                     Err(_) => break,
                 }
@@ -60,6 +64,7 @@ impl TcpHost {
                 listen_thread: Some(listen_thread),
             },
             send_sink,
+            recv_sink,
             recv_src,
         )
     }
@@ -73,6 +78,7 @@ pub struct TcpCommunicator {
     rank: usize,
     num_peers: usize,
     send_sink: Option<crossbeam_channel::Sender<(usize, Vec<u8>)>>,
+    recv_sink: Option<crossbeam_channel::Sender<Vec<u8>>>,
     recv_src: Option<crossbeam_channel::Receiver<Vec<u8>>>,
 }
 
@@ -81,6 +87,7 @@ impl TcpCommunicator {
         rank: usize,
         peers: Vec<SocketAddr>,
         send_sink: crossbeam_channel::Sender<(usize, Vec<u8>)>,
+        recv_sink: crossbeam_channel::Sender<Vec<u8>>,
         recv_src: crossbeam_channel::Receiver<Vec<u8>>,
     ) -> Self {
         let num_peers = peers.len();
@@ -88,6 +95,7 @@ impl TcpCommunicator {
             rank,
             num_peers,
             send_sink: Some(send_sink),
+            recv_sink: Some(recv_sink),
             recv_src: Some(recv_src),
         }
     }
@@ -112,6 +120,10 @@ impl Communicator for TcpCommunicator {
 
     fn recv(&self) -> Vec<u8> {
         self.recv_src.as_ref().unwrap().recv().unwrap()
+    }
+
+    fn requeue(&self, bytes: Vec<u8>) {
+        self.recv_sink.as_ref().unwrap().send(bytes).unwrap();
     }
 }
 
