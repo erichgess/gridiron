@@ -1,3 +1,5 @@
+use log::error;
+
 use super::comm::Communicator;
 use super::util;
 use std::io::prelude::*;
@@ -9,29 +11,48 @@ type Sender = mpsc::Sender<(usize, Vec<u8>)>;
 type Receiver = mpsc::Receiver<(usize, Vec<u8>)>;
 
 pub struct TcpHost {
-    send_sink: mpsc::Sender<(usize, Vec<u8>)>,
-    recv_src: mpsc::Receiver<Vec<u8>>,
     listen_thread: thread::JoinHandle<()>,
-    send_thread: thread::JoinHandle<()>,
+    send_thread: Option<thread::JoinHandle<()>>,
 }
 
 impl TcpHost {
-    pub fn new(rank: usize, peers: Vec<SocketAddr>) -> Self {
-        let (send_sink, send_src): (Sender, Receiver) = mpsc::channel();
+    pub fn new(
+        rank: usize,
+        peers: Vec<SocketAddr>,
+    ) -> (
+        Self,
+        crossbeam_channel::Sender<(usize, Vec<u8>)>,
+        crossbeam_channel::Receiver<Vec<u8>>,
+    ) {
+        let (send_sink, send_src): (crossbeam_channel::Sender<(usize, Vec<u8>)>, _) =
+            crossbeam_channel::unbounded();
         let peers_cpy = peers.clone();
         let send_thread = thread::spawn(move || {
             for (rank, message) in send_src {
-                let mut stream = TcpStream::connect(peers_cpy[rank]).unwrap();
-                stream.write_all(&message.len().to_le_bytes()).unwrap();
-                stream.write_all(&message).unwrap();
+                let mut attempts = 0;
+                let mut sleep_ms = 1000;
+                while attempts < 3 {
+                    attempts += 1;
+                    match TcpStream::connect(peers_cpy[rank]) {
+                        Ok(mut stream) => {
+                            stream.write_all(&message.len().to_le_bytes()).unwrap();
+                            stream.write_all(&message).unwrap();
+                        }
+                        Err(msg) => {
+                            error!("Send failed, retrying: {}", msg);
+                            thread::sleep(std::time::Duration::from_millis(sleep_ms));
+                            sleep_ms *= 2;
+                        }
+                    }
+                }
             }
         });
 
-        let (recv_sink, recv_src) = mpsc::channel();
+        let (recv_sink, recv_src) = crossbeam_channel::unbounded();
         let listen_thread = thread::spawn(move || {
             let listener = TcpListener::bind(peers[rank]).unwrap();
             loop {
-                let (mut stream, _) = listener.accept().unwrap(); // There is a race condition here
+                let (mut stream, _) = listener.accept().unwrap(); // TODO: There is a race condition here
                 let size = util::read_usize(&mut stream);
                 let bytes = util::read_bytes_vec(&mut stream, size);
                 match recv_sink.send(bytes) {
@@ -41,38 +62,41 @@ impl TcpHost {
             }
         });
 
-        TcpHost {
+        (
+            TcpHost {
+                send_thread: Some(send_thread),
+                listen_thread,
+            },
             send_sink,
             recv_src,
-            send_thread,
-            listen_thread,
-        }
+        )
+    }
+
+    pub fn join(&mut self) {
+        self.send_thread.take().unwrap().join().unwrap()
     }
 }
 
 pub struct TcpCommunicator {
     rank: usize,
     num_peers: usize,
-    send_sink: Option<mpsc::Sender<(usize, Vec<u8>)>>,
-    send_thread: Option<thread::JoinHandle<()>>,
+    send_sink: Option<crossbeam_channel::Sender<(usize, Vec<u8>)>>,
+    recv_src: Option<crossbeam_channel::Receiver<Vec<u8>>>,
 }
 
 impl TcpCommunicator {
-    pub fn new(rank: usize, peers: Vec<SocketAddr>) -> Self {
+    pub fn new(
+        rank: usize,
+        peers: Vec<SocketAddr>,
+        send_sink: crossbeam_channel::Sender<(usize, Vec<u8>)>,
+        recv_src: crossbeam_channel::Receiver<Vec<u8>>,
+    ) -> Self {
         let num_peers = peers.len();
-        let (send_sink, recv_sink): (Sender, Receiver) = mpsc::channel();
-        let send_thread = thread::spawn(move || {
-            for (rank, message) in recv_sink {
-                let mut stream = TcpStream::connect(peers[rank]).unwrap();
-                stream.write_all(&message.len().to_le_bytes()).unwrap();
-                stream.write_all(&message).unwrap();
-            }
-        });
         Self {
             rank,
             num_peers,
             send_sink: Some(send_sink),
-            send_thread: Some(send_thread),
+            recv_src: Some(recv_src),
         }
     }
 }
@@ -102,6 +126,6 @@ impl Communicator for TcpCommunicator {
 impl Drop for TcpCommunicator {
     fn drop(&mut self) {
         self.send_sink.take().unwrap();
-        self.send_thread.take().unwrap().join().unwrap();
+        self.recv_src.take().unwrap();
     }
 }

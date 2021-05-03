@@ -1,17 +1,20 @@
-use std::collections::HashMap;
+use std::{
+    collections::HashMap,
+    net::{IpAddr, Ipv4Addr, SocketAddr},
+};
 
 use clap::{AppSettings, Clap};
 use crossbeam_channel::unbounded;
 use log::{info, LevelFilter};
 use simple_logger::SimpleLogger;
 
-use gridiron::patch::Patch;
 use gridiron::rect_map::RectangleMap;
 use gridiron::solvers::euler2d_pcm::{Mesh, PatchUpdate};
 use gridiron::{automaton, host::receiver};
 use gridiron::{host::sender, hydro::euler2d::Primitive};
 use gridiron::{index_space::range2d, message::tcp::TcpCommunicator};
 use gridiron::{meshing::GraphTopology, rect_map::Rectangle};
+use gridiron::{message::tcp::TcpHost, patch::Patch};
 
 /// The initial model
 ///
@@ -140,14 +143,15 @@ fn main() {
         .collect();
 
     // TODO: Connect to peer which will have the second half of the grid
-    let mut threads = vec![];
-    let (from_peer_s, from_peer_r) = unbounded(); // i_s goes to the server and i_r goes to the worker
-    let (to_peer_s, to_peer_r) = unbounded(); // o_s goes to the worker and o_r goes to the client
-    let (rcv_sig_s, rcv_sig_r) = unbounded();
+    let addr = SocketAddr::new(IpAddr::V4(Ipv4Addr::new(127, 0, 0, 1)), opts.port as u16);
+    let (mut tcp_host, send, receive) = TcpHost::new(0, vec![addr]);
 
     // start the host receiver
-    let client = TcpCommunicator::new(0, vec![]);
-    let router: HashMap<Rectangle<i64>, usize> = HashMap::new();
+    let client = TcpCommunicator::new(0, vec![], send.clone(), receive.clone());
+    let mut router: HashMap<Rectangle<i64>, usize> = HashMap::new();
+    for p in &primitive {
+        router.insert(p.local_rect().clone(), 0);
+    }
 
     println!("num blocks .... {}", primitive.len());
     println!("num threads ... {}", opts.num_threads);
@@ -196,15 +200,12 @@ fn main() {
     // TODO: then compute the time from the frame counter
     let num_frames = (opts.tfinal / dt).ceil() as u64;
     info!("Total Frames: {}", num_frames);
-    let local_range = (opts.start, opts.end);
     for frame in 0..num_frames {
         time = dt * frame as f64;
         let start = std::time::Instant::now();
 
         // TODO: Handle folding with distribution
         for _ in 0..opts.fold {
-            let to_peer_s = to_peer_s.clone();
-            let from_peer_r = from_peer_r.clone();
             task_list = match &executor {
                 Execution::Serial => automaton::execute(task_list, &client, &router).collect(),
                 Execution::Stupid(pool) => {
@@ -244,9 +245,12 @@ fn main() {
     let mut buffer = std::io::BufWriter::new(file);
     ciborium::ser::into_writer(&state, &mut buffer).unwrap();
 
-    // Wait until all threads are complete to exit the service
-    drop(to_peer_s);
-    rcv_sig_s.send(gridiron::host::msg::Signal::Stop).unwrap();
+    info!("Messages to send: {}", send.len());
+    info!("Messages to be processed: {}", receive.len());
+    drop(send);
+    drop(client);
+    drop(receive);
+    tcp_host.join();
 }
 
 fn init_logging() {
