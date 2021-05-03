@@ -22,7 +22,7 @@ pub trait Communicator {
     /// method is allowed to block until a message is ready to be received
     fn recv(&self) -> Vec<u8>;
 
-    // TODO: This is a placeholder that I added to get a simple buffer implementation
+    // TODO: This is a placeholder that I added to get a simple buffer implementation.  (This should happen in the TCP layer)
     /// Requeue a received message which is not yet needed.
     fn requeue_recv(&self, bytes: Vec<u8>);
 
