@@ -105,6 +105,9 @@ struct Opts {
     #[clap(long)]
     peer_addr: String,
 
+    #[clap(long, required = true)]
+    rank: usize,
+
     #[clap(long)]
     peers: Vec<String>,
 }
