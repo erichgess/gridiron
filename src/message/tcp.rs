@@ -28,6 +28,7 @@ impl TcpHost {
                         Ok(mut stream) => {
                             stream.write_all(&message.len().to_le_bytes()).unwrap();
                             stream.write_all(&message).unwrap();
+                            break;
                         }
                         Err(msg) => {
                             error!("Send failed, retrying: {}", msg);
