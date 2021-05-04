@@ -305,13 +305,13 @@ fn coordinate<'a, I, A, K, V, S, C>(
         }
     }
 
-    info!("Sent: {}", num_sent);
-    info!("Received: {:?}", num_received);
+    debug!("Sent: {}", num_sent);
+    debug!("Received: {:?}", num_received);
 
     // Have two loops: process local then process remote (where I read from the channel)
     if seen.len() > 0 {
         for k in seen.keys() {
-            info!("Missing {:?}", k);
+            error!("Missing {:?}", k);
         }
     }
     assert_eq!(seen.len(), 0);
