@@ -2,9 +2,12 @@ use log::{error, info};
 
 use super::comm::Communicator;
 use super::util;
-use std::net::{SocketAddr, TcpListener, TcpStream};
-use std::thread;
+use std::{collections::HashMap, thread};
 use std::{io::prelude::*, thread::JoinHandle};
+use std::{
+    net::{SocketAddr, TcpListener, TcpStream},
+    time::Duration,
+};
 
 type Sender = crossbeam_channel::Sender<(usize, Vec<u8>)>;
 type Receiver = crossbeam_channel::Receiver<Vec<u8>>;
@@ -45,17 +48,24 @@ impl TcpHost {
         send_src: crossbeam_channel::Receiver<(usize, Vec<u8>)>,
     ) -> thread::JoinHandle<()> {
         thread::spawn(move || {
+            let mut table: HashMap<usize, TcpStream> = HashMap::new();
+
             for (rank, message) in send_src {
                 let mut sleep_ms = 250;
+                if !table.contains_key(&rank) {
+                    table.insert(rank, connect(peers[rank]).unwrap());
+                }
+                let client = table.get_mut(&rank);
+
                 loop {
-                    match TcpStream::connect(peers[rank]) {
-                        Ok(mut stream) => {
+                    match client {
+                        Some(stream) => {
                             stream.write_all(&message.len().to_le_bytes()).unwrap();
                             stream.write_all(&message).unwrap();
                             break;
                         }
-                        Err(msg) => {
-                            error!("Send failed: {}", msg);
+                        None => {
+                            error!("Failed to get connection from cache");
                             info!("Retrying in {}ms", sleep_ms);
                             thread::sleep(std::time::Duration::from_millis(sleep_ms));
                             sleep_ms = if sleep_ms < 5000 { 2 * sleep_ms } else { 5000 };
@@ -101,6 +111,80 @@ impl TcpHost {
                     )
                 })?
         })
+    }
+}
+
+fn connect(addr: SocketAddr) -> Option<TcpStream> {
+    println!("Connecting...");
+    let mut with_retries = ExponentialBackoff::new(
+        Duration::from_millis(250),
+        Duration::from_millis(5000),
+        2,
+        None,
+    );
+
+    with_retries.find_map(|sleep| match TcpStream::connect(&addr) {
+        Ok(s) => {
+            s.set_read_timeout(Some(Duration::from_millis(250)))
+                .unwrap();
+            s.set_write_timeout(Some(Duration::from_millis(250)))
+                .unwrap();
+            Some(s)
+        }
+        Err(msg) => {
+            println!("Connect Failed: {}", msg);
+            thread::sleep(sleep);
+            None
+        }
+    })
+}
+
+struct ExponentialBackoff {
+    curr: Duration,
+    max: Duration,
+    factor: u32,
+    iterations: usize,
+    max_iterations: Option<usize>,
+}
+
+impl ExponentialBackoff {
+    pub fn new(
+        start: Duration,
+        max: Duration,
+        factor: u32,
+        max_iterations: Option<usize>,
+    ) -> ExponentialBackoff {
+        ExponentialBackoff {
+            curr: start,
+            max,
+            factor,
+            iterations: 0,
+            max_iterations,
+        }
+    }
+}
+
+impl Iterator for ExponentialBackoff {
+    type Item = Duration;
+
+    fn next(&mut self) -> Option<Self::Item> {
+        if self
+            .max_iterations
+            .map_or(false, |max| self.iterations >= max)
+        {
+            None
+        } else {
+            let new_next = self.curr * self.factor;
+
+            self.curr = if new_next > self.max {
+                self.max
+            } else {
+                new_next
+            };
+
+            self.iterations += 1;
+            Some(self.curr)
+        }
     }
 }
 
