@@ -2,6 +2,18 @@ use std::time::Duration;
 
 use log::info;
 
+/// Provides a mechanism for managing attempting to complete an operation
+/// and retrying the operation, which a backoff, if it fails.
+///
+/// This iterator provides an infinite stream of back off durations, where
+/// the duration increases an exponential factor up to some maximum delay.
+/// Upon reaching the maximum delay, that value will be returned from then
+/// on.
+///
+/// Higher order functions are provided which will manage the attempt to
+/// execute a function and the retry and sleep logic.  These functions use
+/// [std::thread::sleep] for the delay; so, in its current design, do NOT
+/// use this with asynchronous code (e.g. `tokio`).
 pub struct ExponentialBackoff {
     curr: Duration,
     max: Duration,
@@ -35,6 +47,13 @@ impl Iterator for ExponentialBackoff {
 }
 
 impl ExponentialBackoff {
+    /// Retry the given function until it returns `Ok`. On an error, execute
+    /// the `on_err` closure; this allows you to provide additional logic, like
+    /// logging, on the error event which would otherwise be hidden by this
+    /// function.
+    ///
+    /// Uses [std::thread::sleep] for the delay; so, in its current design, do NOT
+    /// use this with asynchronous code (e.g. `tokio`).
     pub fn retry_forever<F, H, T, E>(&mut self, mut f: F, mut on_err: H) -> Option<T>
     where
         F: FnMut() -> Result<T, E>,
@@ -54,6 +73,10 @@ impl ExponentialBackoff {
         None
     }
 
+    /// Retry the given function until it returns `Ok` or `max_attempts` have been made.
+    ///
+    /// Uses [std::thread::sleep] for the delay; so, in its current design, do NOT
+    /// use this with asynchronous code (e.g. `tokio`).
     pub fn retry_upto<F, T, E>(&mut self, max_attempts: usize, mut f: F) -> Result<T, E>
     where
         F: FnMut() -> Result<T, E>,
@@ -73,6 +96,11 @@ impl ExponentialBackoff {
         }
     }
 
+    /// Retry the given function until it returns `Ok` or the `do_retry` predicate
+    /// returns `false`.
+    ///
+    /// Uses [std::thread::sleep] for the delay; so, in its current design, do NOT
+    /// use this with asynchronous code (e.g. `tokio`).
     pub fn retry_while<F, P, T, E>(&mut self, do_retry: P, f: F) -> Result<T, E>
     where
         F: Fn() -> Result<T, E>,
