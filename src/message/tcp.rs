@@ -95,9 +95,9 @@ impl TcpHost {
         addr: SocketAddr,
         recv_sink: crossbeam_channel::Sender<Vec<u8>>,
     ) -> thread::JoinHandle<()> {
+        let listener = TcpListener::bind(addr).unwrap();
         thread::spawn(move || {
             info!("Listening to: {}", addr);
-            let listener = TcpListener::bind(addr).unwrap();
             loop {
                 let (stream, remote) = listener.accept().unwrap(); // TODO: There is a race condition here
                 Self::handle_connection(stream, remote, recv_sink.clone());
