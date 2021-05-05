@@ -139,7 +139,6 @@ impl TcpHost {
         })
     }
 
-    // TODO: move these to an actual defined structure that with serde
     fn write_ack(stream: &mut TcpStream, ack: Ack) -> Result<(), io::Error> {
         rmp_serde::encode::write(stream, &ack).map_err(|e| io::Error::new(io::ErrorKind::Other, e))
     }
