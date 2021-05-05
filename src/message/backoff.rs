@@ -35,10 +35,10 @@ impl Iterator for ExponentialBackoff {
 }
 
 impl ExponentialBackoff {
-    pub fn retry_forever<F, H, T, E>(&mut self, f: F, on_err: H) -> Option<T>
+    pub fn retry_forever<F, H, T, E>(&mut self, mut f: F, mut on_err: H) -> Option<T>
     where
-        F: Fn() -> Result<T, E>,
-        H: Fn(E),
+        F: FnMut() -> Result<T, E>,
+        H: FnMut(E),
     {
         for delay in self {
             match f() {
@@ -54,21 +54,23 @@ impl ExponentialBackoff {
         None
     }
 
-    pub fn retry_upto<F, T, E>(&mut self, max_attempts: usize, f: F) -> Option<T>
+    pub fn retry_upto<F, T, E>(&mut self, max_attempts: usize, mut f: F) -> Result<T, E>
     where
-        F: Fn() -> Result<T, E>,
+        F: FnMut() -> Result<T, E>,
     {
-        for (i, delay) in self.enumerate() {
-            if i >= max_attempts {
-                break;
-            }
+        let mut enumerate = self.enumerate();
+        loop {
+            let (i, delay) = enumerate.next().unwrap();
             match f() {
-                Ok(t) => return Some(t),
-                Err(_) => std::thread::sleep(delay),
+                Ok(t) => return Ok(t),
+                Err(e) => {
+                    if i >= max_attempts {
+                        return Err(e);
+                    }
+                    std::thread::sleep(delay)
+                }
             }
         }
-
-        None
     }
 
     pub fn retry_while<F, P, T, E>(&mut self, do_retry: P, f: F) -> Result<T, E>

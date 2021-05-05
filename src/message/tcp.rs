@@ -65,28 +65,27 @@ impl TcpHost {
                 }
                 let cxn = table.get_mut(&rank).unwrap();
 
-                loop {
-                    // TODO: This will create a tight loop, don't use connect to create the backoff
-                    // TODO: Need to distinguish retrying from a failed said and retrying from a broken connection
-                    let msg_sz = message.len();
-                    match cxn
-                        .write_all(&msg_sz.to_le_bytes())
-                        .and_then(|()| cxn.write_all(&message))
-                        .and_then(|()| Self::read_ack(cxn))
-                        .and_then(|ack|
-                            if ack.bytes_read != msg_sz {
-                                panic!("Bytes read by receiver did not match bytes sent by this node.  Sent {} bytes but receiver Acked {} bytes", msg_sz, ack.bytes_read)
-                            } else {
-                                Ok(())
-                            }
-                        ) {
-                        Ok(()) => break,
-                        Err(msg) => {
-                            error!("Failed to send message to {}: {}", peers[rank], msg);
-                            *cxn = Self::connect_with_retry(peers[rank], RETRY_WAIT_MS, RETRY_MAX_WAIT_MS).unwrap();
-                        }
-                    }
-                }
+                let msg_sz = message.len();
+
+                // TODO: This is getting better.  Next step is to use the connection state to determine whether to delay and resend or to reconnect
+                let mut attempts = ExponentialBackoff::new(RETRY_WAIT_MS, RETRY_MAX_WAIT_MS, 2);
+                while let Err(e) = attempts.retry_upto(3, || {
+                        cxn
+                            .write_all(&msg_sz.to_le_bytes())
+                            .and_then(|()| cxn.write_all(&message))
+                            .and_then(|()| Self::read_ack(cxn))
+                            .and_then(|ack|
+                                if ack.bytes_read != msg_sz {
+                                    panic!("Bytes read by receiver did not match bytes sent by this node.  Sent {} bytes but receiver Acked {} bytes", msg_sz, ack.bytes_read)
+                                } else {
+                                    Ok(())
+                                }
+                            )
+                }) {
+                     error!("Failed to send message to {}: {}", peers[rank], e);
+                     info!("Reconnecting to {}", peers[rank]);
+                    *cxn = Self::connect_with_retry(peers[rank], RETRY_WAIT_MS, RETRY_MAX_WAIT_MS).unwrap();
+                };
             }
         })
     }
