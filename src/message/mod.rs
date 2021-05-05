@@ -5,6 +5,7 @@
 //! reduce, and reduce-all operations.
 //!
 
+mod backoff;
 pub mod comm;
 pub mod tcp;
 pub mod util;

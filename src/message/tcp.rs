@@ -1,13 +1,13 @@
-use log::{error, info};
-
-use super::comm::Communicator;
-use super::util;
-use std::{collections::HashMap, thread};
+use std::{collections::HashMap, io, thread};
 use std::{io::prelude::*, thread::JoinHandle};
 use std::{
     net::{SocketAddr, TcpListener, TcpStream},
     time::Duration,
 };
+
+use log::{error, info};
+
+use super::{backoff::ExponentialBackoff, comm::Communicator, util};
 
 const CXN_R_TIMEOUT_MS: u64 = 250;
 const CXN_W_TIMEOUT_MS: u64 = 250;
@@ -55,7 +55,7 @@ impl TcpHost {
 
             for (rank, message) in send_src {
                 if !table.contains_key(&rank) {
-                    table.insert(rank, connect(peers[rank]).unwrap());
+                    table.insert(rank, Self::connect(peers[rank]).unwrap());
                 }
                 let client = table.get_mut(&rank).unwrap();
 
@@ -77,7 +77,7 @@ impl TcpHost {
                         Ok(()) => break,
                         Err(msg) => {
                             error!("Failed to send message to {}: {}", peers[rank], msg);
-                            *client = connect(peers[rank]).unwrap();
+                            *client = Self::connect(peers[rank]).unwrap();
                         }
                     }
                 }
@@ -119,7 +119,7 @@ impl TcpHost {
                     recv_sink
                         .send(bytes)
                         .map(|()| num_bytes)
-                        .map_err(|msg| std::io::Error::new(std::io::ErrorKind::Other, msg))
+                        .map_err(|msg| io::Error::new(io::ErrorKind::Other, msg))
                 })
                 .and_then(|size| stream.write(&size.to_le_bytes()).map(|_| ()))
                 .map_err(|e| {
@@ -130,79 +130,30 @@ impl TcpHost {
                 })?
         })
     }
-}
 
-fn connect(addr: SocketAddr) -> Option<TcpStream> {
-    println!("Connecting...");
-    let mut with_retries = ExponentialBackoff::new(
-        Duration::from_millis(250),
-        Duration::from_millis(5000),
-        2,
-        None,
-    );
+    fn connect(addr: SocketAddr) -> Option<TcpStream> {
+        println!("Connecting...");
+        let mut with_retries = ExponentialBackoff::new(
+            Duration::from_millis(250),
+            Duration::from_millis(5000),
+            2,
+            None,
+        );
 
-    with_retries.find_map(|sleep| match TcpStream::connect(&addr) {
-        Ok(s) => {
-            s.set_read_timeout(Some(Duration::from_millis(CXN_R_TIMEOUT_MS)))
-                .unwrap();
-            s.set_write_timeout(Some(Duration::from_millis(CXN_W_TIMEOUT_MS)))
-                .unwrap();
-            Some(s)
-        }
-        Err(msg) => {
-            println!("Connect Failed: {}", msg);
-            thread::sleep(sleep);
-            None
-        }
-    })
-}
-
-struct ExponentialBackoff {
-    curr: Duration,
-    max: Duration,
-    factor: u32,
-    iterations: usize,
-    max_iterations: Option<usize>,
-}
-
-impl ExponentialBackoff {
-    pub fn new(
-        start: Duration,
-        max: Duration,
-        factor: u32,
-        max_iterations: Option<usize>,
-    ) -> ExponentialBackoff {
-        ExponentialBackoff {
-            curr: start,
-            max,
-            factor,
-            iterations: 0,
-            max_iterations,
-        }
-    }
-}
-
-impl Iterator for ExponentialBackoff {
-    type Item = Duration;
-
-    fn next(&mut self) -> Option<Self::Item> {
-        if self
-            .max_iterations
-            .map_or(false, |max| self.iterations >= max)
-        {
-            None
-        } else {
-            let new_next = self.curr * self.factor;
-
-            self.curr = if new_next > self.max {
-                self.max
-            } else {
-                new_next
-            };
-
-            self.iterations += 1;
-            Some(self.curr)
-        }
+        with_retries.find_map(|sleep| match TcpStream::connect(&addr) {
+            Ok(s) => {
+                s.set_read_timeout(Some(Duration::from_millis(CXN_R_TIMEOUT_MS)))
+                    .unwrap();
+                s.set_write_timeout(Some(Duration::from_millis(CXN_W_TIMEOUT_MS)))
+                    .unwrap();
+                Some(s)
+            }
+            Err(msg) => {
+                println!("Connect Failed: {}", msg);
+                thread::sleep(sleep);
+                None
+            }
+        })
     }
 }
 
