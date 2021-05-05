@@ -71,6 +71,10 @@ impl Communicator for FakeComm {
     fn recv(&self) -> Vec<u8> {
         vec![]
     }
+
+    fn requeue_recv(&self, bytes: Vec<u8>) {
+        todo!()
+    }
 }
 
 fn main() {
@@ -86,7 +90,7 @@ fn main() {
 
         assert_eq! {
             group_size as usize,
-            execute_par(scope, group, &fc, &router)
+            execute_par(scope, 0, group, &fc, &router)
             .inspect(|result| println!("{}", result))
             .count()
         };
