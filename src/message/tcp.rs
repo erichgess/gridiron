@@ -9,8 +9,8 @@ use log::{error, info};
 
 use super::{backoff::ExponentialBackoff, comm::Communicator, util};
 
-const CXN_R_TIMEOUT_MS: Duration = Duration::from_millis(250);
-const CXN_W_TIMEOUT_MS: Duration = Duration::from_millis(250);
+const CXN_R_TIMEOUT_MS: Duration = Duration::from_millis(5000);
+const CXN_W_TIMEOUT_MS: Duration = Duration::from_millis(5000);
 const RETRY_WAIT_MS: Duration = Duration::from_millis(250);
 const RETRY_MAX_WAIT_MS: Duration = Duration::from_millis(5000);
 
