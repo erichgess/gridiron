@@ -9,8 +9,10 @@ use log::{error, info};
 
 use super::{backoff::ExponentialBackoff, comm::Communicator, util};
 
-const CXN_R_TIMEOUT_MS: u64 = 250;
-const CXN_W_TIMEOUT_MS: u64 = 250;
+const CXN_R_TIMEOUT_MS: Duration = Duration::from_millis(250);
+const CXN_W_TIMEOUT_MS: Duration = Duration::from_millis(250);
+const RETRY_WAIT_MS: Duration = Duration::from_millis(250);
+const RETRY_MAX_WAIT_MS: Duration = Duration::from_millis(5000);
 
 type Sender = crossbeam_channel::Sender<(usize, Vec<u8>)>;
 type Receiver = crossbeam_channel::Receiver<Vec<u8>>;
@@ -55,7 +57,11 @@ impl TcpHost {
 
             for (rank, message) in send_src {
                 if !table.contains_key(&rank) {
-                    table.insert(rank, Self::connect(peers[rank]).unwrap());
+                    table.insert(
+                        rank,
+                        Self::connect_with_retry(peers[rank], RETRY_WAIT_MS, RETRY_MAX_WAIT_MS)
+                            .unwrap(),
+                    );
                 }
                 let client = table.get_mut(&rank).unwrap();
 
@@ -77,7 +83,7 @@ impl TcpHost {
                         Ok(()) => break,
                         Err(msg) => {
                             error!("Failed to send message to {}: {}", peers[rank], msg);
-                            *client = Self::connect(peers[rank]).unwrap();
+                            *client = Self::connect_with_retry(peers[rank], RETRY_WAIT_MS, RETRY_MAX_WAIT_MS).unwrap();
                         }
                     }
                 }
@@ -105,12 +111,8 @@ impl TcpHost {
         recv_sink: crossbeam_channel::Sender<Vec<u8>>,
     ) -> JoinHandle<Result<(), std::io::Error>> {
         info!("Receiving connection from {}", remote);
-        stream
-            .set_read_timeout(Some(Duration::from_millis(CXN_R_TIMEOUT_MS)))
-            .unwrap();
-        stream
-            .set_write_timeout(Some(Duration::from_millis(CXN_W_TIMEOUT_MS)))
-            .unwrap();
+        stream.set_read_timeout(Some(CXN_R_TIMEOUT_MS)).unwrap();
+        stream.set_write_timeout(Some(CXN_W_TIMEOUT_MS)).unwrap();
         thread::spawn(move || loop {
             util::read_usize(&mut stream)
                 .and_then(|size| util::read_bytes_vec(&mut stream, size))
@@ -131,21 +133,18 @@ impl TcpHost {
         })
     }
 
-    fn connect(addr: SocketAddr) -> Option<TcpStream> {
+    fn connect_with_retry(
+        addr: SocketAddr,
+        initial_wait: Duration,
+        max_wait: Duration,
+    ) -> Option<TcpStream> {
         println!("Connecting...");
-        let mut with_retries = ExponentialBackoff::new(
-            Duration::from_millis(250),
-            Duration::from_millis(5000),
-            2,
-            None,
-        );
+        let mut with_retries = ExponentialBackoff::new(initial_wait, max_wait, 2, None);
 
         with_retries.find_map(|sleep| match TcpStream::connect(&addr) {
             Ok(s) => {
-                s.set_read_timeout(Some(Duration::from_millis(CXN_R_TIMEOUT_MS)))
-                    .unwrap();
-                s.set_write_timeout(Some(Duration::from_millis(CXN_W_TIMEOUT_MS)))
-                    .unwrap();
+                s.set_read_timeout(Some(CXN_R_TIMEOUT_MS)).unwrap();
+                s.set_write_timeout(Some(CXN_W_TIMEOUT_MS)).unwrap();
                 Some(s)
             }
             Err(msg) => {
