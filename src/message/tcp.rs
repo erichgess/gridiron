@@ -75,21 +75,22 @@ impl TcpHost {
             let listener = TcpListener::bind(addr).unwrap();
             loop {
                 let (mut stream, _) = listener.accept().unwrap(); // TODO: There is a race condition here
-                Self::handle_connection(&mut stream, recv_sink.clone());
+                Self::handle_connection(&mut stream, recv_sink.clone()).unwrap();
             }
         })
     }
 
-    fn handle_connection(stream: &mut TcpStream, recv_sink: crossbeam_channel::Sender<Vec<u8>>) {
-        let size = util::read_usize(stream);
-        let bytes = util::read_bytes_vec(stream, size);
-        match recv_sink.send(bytes) {
-            Ok(_) => (),
-            Err(msg) => {
-                error!("Connection failed: {}", msg);
-                return;
-            }
-        }
+    fn handle_connection(
+        stream: &mut TcpStream,
+        recv_sink: crossbeam_channel::Sender<Vec<u8>>,
+    ) -> Result<(), std::io::Error> {
+        util::read_usize(stream)
+            .and_then(|size| util::read_bytes_vec(stream, size))
+            .and_then(|bytes| {
+                recv_sink
+                    .send(bytes)
+                    .map_err(|msg| std::io::Error::new(std::io::ErrorKind::Other, msg))
+            })
     }
 }
 
