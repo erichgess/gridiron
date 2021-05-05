@@ -67,7 +67,7 @@ impl TcpHost {
 
                 loop {
                     // TODO: This will create a tight loop, don't use connect to create the backoff
-                    // Need to distinguish retrying from a failed said and retrying from a broken connection
+                    // TODO: Need to distinguish retrying from a failed said and retrying from a broken connection
                     let msg_sz = message.len();
                     match cxn
                         .write_all(&msg_sz.to_le_bytes())
