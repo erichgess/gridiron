@@ -1,9 +1,6 @@
-use core::ops::{Range, RangeBounds};
-use core::iter::FromIterator;
 use crate::aug_node::{self, Node};
-
-
-
+use core::iter::FromIterator;
+use core::ops::{Range, RangeBounds};
 
 /**
  * A set type where the keys are `Range` objects. Supports point and range-based
@@ -11,15 +8,11 @@ use crate::aug_node::{self, Node};
  */
 #[derive(Clone)]
 pub struct IntervalSet<T: Ord + Copy> {
-    root: Option<Box<Node<T, ()>>>
+    root: Option<Box<Node<T, ()>>>,
 }
-
-
-
 
 // ============================================================================
 impl<T: Ord + Copy> IntervalSet<T> {
-
     pub fn new() -> Self {
         Self { root: None }
     }
@@ -50,7 +43,9 @@ impl<T: Ord + Copy> IntervalSet<T> {
 
     pub fn into_balanced(self) -> Self {
         let mut data: Vec<_> = self.into_sorted().map(|r| Some((r, ()))).collect();
-        Self { root: Node::from_sorted_slice(&mut data[..]) }
+        Self {
+            root: Node::from_sorted_slice(&mut data[..]),
+        }
     }
 
     pub fn iter(&self) -> impl Iterator<Item = &Range<T>> {
@@ -73,9 +68,6 @@ impl<T: Ord + Copy> IntervalSet<T> {
         aug_node::IterRangeQuery::new(&self.root, range).map(|(k, _)| k)
     }
 
-
-
-
     // ========================================================================
     #[cfg(test)]
     fn validate_max(&self) {
@@ -92,18 +84,12 @@ impl<T: Ord + Copy> IntervalSet<T> {
     }
 }
 
-
-
-
 // ============================================================================
 impl<T: Ord + Copy> Default for IntervalSet<T> {
     fn default() -> Self {
         Self::new()
     }
 }
-
-
-
 
 // ============================================================================
 impl<T: Ord + Copy> IntoIterator for IntervalSet<T> {
@@ -115,27 +101,21 @@ impl<T: Ord + Copy> IntoIterator for IntervalSet<T> {
     }
 }
 
-
-
-
 // ============================================================================
 impl<T: Ord + Copy> FromIterator<Range<T>> for IntervalSet<T> {
     fn from_iter<I: IntoIterator<Item = Range<T>>>(iter: I) -> Self {
         Self {
-            root: Node::from_iter(iter.into_iter().map(|r| (r, ())))
+            root: Node::from_iter(iter.into_iter().map(|r| (r, ()))),
         }
     }
 }
-
-
-
 
 // ============================================================================
 #[cfg(test)]
 mod test {
 
-    use core::ops::Range;
     use super::IntervalSet;
+    use core::ops::Range;
 
     /**
      * A simple deterministic linear congruential generator:
@@ -163,8 +143,8 @@ mod test {
         set.insert(-6..2);
         set.insert(-1..2);
         assert_eq!(set.len(), 5);
-        assert!( set.contains(&(-1..2)));
-        assert!( set.contains(&(-6..2)));
+        assert!(set.contains(&(-1..2)));
+        assert!(set.contains(&(-6..2)));
         assert!(!set.contains(&(-6..3)));
         set.validate_max();
         set.validate_order();
@@ -238,10 +218,19 @@ mod test {
         assert!(set.query_point(-1).count() == 0);
         assert_eq!(set.query_point(0).collect::<Vec<_>>(), [&(0..10)]);
         assert_eq!(set.query_point(1).collect::<Vec<_>>(), [&(0..10), &(1..17)]);
-        assert_eq!(set.query_point(2).collect::<Vec<_>>(), [&(0..10), &(2..3), &(1..17)]);
+        assert_eq!(
+            set.query_point(2).collect::<Vec<_>>(),
+            [&(0..10), &(2..3), &(1..17)]
+        );
         assert_eq!(set.query_point(3).collect::<Vec<_>>(), [&(0..10), &(1..17)]);
-        assert_eq!(set.query_point(4).collect::<Vec<_>>(), [&(0..10), &(4..7), &(1..17)]);
-        assert_eq!(set.query_point(11).collect::<Vec<_>>(), [&(1..17), &(8..12)]);
+        assert_eq!(
+            set.query_point(4).collect::<Vec<_>>(),
+            [&(0..10), &(4..7), &(1..17)]
+        );
+        assert_eq!(
+            set.query_point(11).collect::<Vec<_>>(),
+            [&(1..17), &(8..12)]
+        );
     }
 
     #[test]
@@ -251,6 +240,9 @@ mod test {
         set.insert(4..10);
         set.insert(6..12);
         set.insert(2..5);
-        assert_eq!(set.query_range(5..10).collect::<Vec<_>>(), [&(4..10), &(6..12)]);
+        assert_eq!(
+            set.query_range(5..10).collect::<Vec<_>>(),
+            [&(4..10), &(6..12)]
+        );
     }
 }

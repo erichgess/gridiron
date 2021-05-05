@@ -1,20 +1,13 @@
-use std::ops::{Add, Sub, Mul, Div};
 use super::error::Error;
 use super::geometry::{Direction, Vector3d};
-
-
-
+use std::ops::{Add, Div, Mul, Sub};
 
 // ============================================================================
 pub struct Conserved(f64, f64, f64, f64, f64);
 pub struct Primitive(f64, f64, f64, f64, f64);
 
-
-
-
 // ============================================================================
 impl Conserved {
-
     fn from_slice(cons: &[f64]) -> Self {
         Self(cons[0], cons[1], cons[2], cons[3], cons[4])
     }
@@ -51,7 +44,7 @@ impl Conserved {
         self.4
     }
 
-    pub fn momentum_vector(&self)  -> Vector3d {
+    pub fn momentum_vector(&self) -> Vector3d {
         Vector3d::new(self.momentum_1(), self.momentum_2(), self.momentum_3())
     }
 
@@ -85,12 +78,8 @@ impl Conserved {
     }
 }
 
-
-
-
 // ============================================================================
 impl Primitive {
-
     fn from_slice(prim: &[f64]) -> Self {
         Self(prim[0], prim[1], prim[2], prim[3], prim[4])
     }
@@ -170,8 +159,8 @@ impl Primitive {
     }
 
     pub fn to_conserved(&self, gamma_law_index: f64) -> Conserved {
-        let d   = self.mass_density();
-        let p   = self.gas_pressure();
+        let d = self.mass_density();
+        let p = self.gas_pressure();
         let vsq = self.velocity_squared();
 
         Conserved(
@@ -179,7 +168,7 @@ impl Primitive {
             d * self.velocity_1(),
             d * self.velocity_2(),
             d * self.velocity_3(),
-            d * vsq * 0.5 + p / (gamma_law_index - 1.0)
+            d * vsq * 0.5 + p / (gamma_law_index - 1.0),
         )
     }
 
@@ -189,11 +178,12 @@ impl Primitive {
         let u = self.to_conserved(gamma_law_index);
 
         Conserved(
-             u.0 * vn,
-             u.1 * vn + pg * direction.along(Direction::I),
-             u.2 * vn + pg * direction.along(Direction::J),
-             u.3 * vn + pg * direction.along(Direction::K),
-             u.4 * vn + pg * vn)
+            u.0 * vn,
+            u.1 * vn + pg * direction.along(Direction::I),
+            u.2 * vn + pg * direction.along(Direction::J),
+            u.3 * vn + pg * direction.along(Direction::K),
+            u.4 * vn + pg * vn,
+        )
     }
 
     pub fn reflect(&self, direction: Direction) -> Primitive {
@@ -204,9 +194,6 @@ impl Primitive {
         }
     }
 }
-
-
-
 
 // ============================================================================
 impl From<&[f64]> for Conserved {
@@ -221,21 +208,30 @@ impl From<&[f64]> for Primitive {
     }
 }
 
-
-
-
 // ============================================================================
 impl Add<Conserved> for Conserved {
     type Output = Conserved;
     fn add(self, u: Self) -> Conserved {
-        Conserved(self.0 + u.0, self.1 + u.1, self.2 + u.2, self.3 + u.3, self.4 + u.4)
+        Conserved(
+            self.0 + u.0,
+            self.1 + u.1,
+            self.2 + u.2,
+            self.3 + u.3,
+            self.4 + u.4,
+        )
     }
 }
 
 impl Sub<Conserved> for Conserved {
     type Output = Self;
     fn sub(self, u: Self) -> Self {
-        Self(self.0 - u.0, self.1 - u.1, self.2 - u.2, self.3 - u.3, self.4 - u.4)
+        Self(
+            self.0 - u.0,
+            self.1 - u.1,
+            self.2 - u.2,
+            self.3 - u.3,
+            self.4 - u.4,
+        )
     }
 }
 
@@ -253,11 +249,13 @@ impl Div<f64> for Conserved {
     }
 }
 
-
-
-
 // ============================================================================
-pub fn riemann_hlle(pl: Primitive, pr: Primitive, direction: Direction, gamma_law_index: f64) -> Conserved {
+pub fn riemann_hlle(
+    pl: Primitive,
+    pr: Primitive,
+    direction: Direction,
+    gamma_law_index: f64,
+) -> Conserved {
     let ul = pl.to_conserved(gamma_law_index);
     let ur = pr.to_conserved(gamma_law_index);
     let fl = pl.flux_vector(direction, gamma_law_index);

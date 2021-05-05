@@ -1,7 +1,7 @@
+use core_affinity::{get_core_ids, set_for_current};
+use crossbeam_channel::{unbounded, Receiver, Sender};
 use std::cell;
 use std::thread;
-use crossbeam_channel::{Sender, Receiver, unbounded};
-use core_affinity::{get_core_ids, set_for_current};
 
 type Job = Box<dyn FnOnce() + Send + 'static>;
 

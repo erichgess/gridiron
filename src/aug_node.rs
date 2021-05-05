@@ -1,9 +1,6 @@
-use core::ops::{Range, RangeBounds};
-use core::cmp::Ordering::{self, Less, Greater, Equal};
 use crate::overlap::Overlap;
-
-
-
+use core::cmp::Ordering::{self, Equal, Greater, Less};
+use core::ops::{Range, RangeBounds};
 
 /**
  * A node in an augmented binary search tree
@@ -17,24 +14,20 @@ pub struct Node<T: Ord + Copy, V> {
     r: Option<Box<Node<T, V>>>,
 }
 
-
-
-
 // ============================================================================
 impl<T: Ord + Copy, V> Node<T, V> {
-
-
-
-
     /**
      * Create an empty sub-tree with the given key.
      */
     pub(crate) fn new(key: Range<T>, value: V) -> Self {
-        Self { max: key.end, key, value, l: None, r: None }
+        Self {
+            max: key.end,
+            key,
+            value,
+            l: None,
+            r: None,
+        }
     }
-
-
-
 
     /**
      * Create a balanced sub-tree from a sorted slice. If the slice is not
@@ -50,12 +43,15 @@ impl<T: Ord + Copy, V> Node<T, V> {
             let l = Self::from_sorted_slice(&mut slice[..mid]);
             let r = Self::from_sorted_slice(&mut slice[mid + 1..]);
             let max = Self::local_max(key.end, &l, &r);
-            Some(Box::new(Self { key, value, max, l, r }))
+            Some(Box::new(Self {
+                key,
+                value,
+                max,
+                l,
+                r,
+            }))
         }
     }
-
-
-
 
     /**
      * Create a balanced sub-tree from a possibly unsorted iterator.
@@ -68,30 +64,23 @@ impl<T: Ord + Copy, V> Node<T, V> {
         Self::from_sorted_slice(&mut values[..])
     }
 
-
-
-
     /**
      * Return the number of nodes contained in this sub-tree (including self).
      */
     pub(crate) fn len(&self) -> usize {
-        self.l.as_ref().map_or(0, |l| l.len()) +
-        self.r.as_ref().map_or(0, |r| r.len()) + 1
+        self.l.as_ref().map_or(0, |l| l.len()) + self.r.as_ref().map_or(0, |r| r.len()) + 1
     }
-
-
-
 
     /**
      * Return the height of this sub-tree.
      */
     pub(crate) fn height(&self) -> usize {
-        self.l.as_ref().map_or(0, |l| l.height()).max(
-        self.r.as_ref().map_or(0, |r| r.height())) + 1
+        self.l
+            .as_ref()
+            .map_or(0, |l| l.height())
+            .max(self.r.as_ref().map_or(0, |r| r.height()))
+            + 1
     }
-
-
-
 
     /**
      * Return true if the given key exists in this sub-tree.
@@ -100,36 +89,27 @@ impl<T: Ord + Copy, V> Node<T, V> {
         self.get(key).is_some()
     }
 
-
-
-
     /**
      * Return an immutable reference to this node's value.
      */
     pub(crate) fn get(&self, key: &Range<T>) -> Option<&V> {
         match Self::compare(key, &self.key) {
-            Less    => self.l.as_ref().and_then(|l| l.get(key)),
+            Less => self.l.as_ref().and_then(|l| l.get(key)),
             Greater => self.r.as_ref().and_then(|r| r.get(key)),
-            Equal   => Some(&self.value)
-        }       
+            Equal => Some(&self.value),
+        }
     }
-
-
-
 
     /**
      * Return a mutable reference to this node's value.
      */
     pub(crate) fn get_mut(&mut self, key: &Range<T>) -> Option<&mut V> {
         match Self::compare(key, &self.key) {
-            Less    => self.l.as_mut().and_then(|l| l.get_mut(key)),
+            Less => self.l.as_mut().and_then(|l| l.get_mut(key)),
             Greater => self.r.as_mut().and_then(|r| r.get_mut(key)),
-            Equal   => Some(&mut self.value)
-        }       
+            Equal => Some(&mut self.value),
+        }
     }
-
-
-
 
     /**
      * Insert a node with the given key into this sub-tree. If a node with that
@@ -137,13 +117,12 @@ impl<T: Ord + Copy, V> Node<T, V> {
      */
     pub(crate) fn insert(node: &mut Option<Box<Self>>, key: Range<T>, value: V) -> &mut V {
         if let Some(n) = node {
-
             n.max = key.end.max(n.max);
 
             match Self::compare(&key, &n.key) {
-                Less    => Self::insert(&mut n.l, key, value),
+                Less => Self::insert(&mut n.l, key, value),
                 Greater => Self::insert(&mut n.r, key, value),
-                Equal   => {
+                Equal => {
                     n.value = value;
                     &mut n.value
                 }
@@ -154,9 +133,6 @@ impl<T: Ord + Copy, V> Node<T, V> {
         }
     }
 
-
-
-
     /**
      * Return a mutable reference to the value with the given key if it exists.
      * If the key does not exist, then create it with the default value and
@@ -164,16 +140,15 @@ impl<T: Ord + Copy, V> Node<T, V> {
      */
     pub(crate) fn require(node: &mut Option<Box<Self>>, key: Range<T>) -> &mut V
     where
-        V: Default
+        V: Default,
     {
         if let Some(n) = node {
-
             n.max = key.end.max(n.max);
 
             match Self::compare(&key, &n.key) {
-                Less    => Self::require(&mut n.l, key),
+                Less => Self::require(&mut n.l, key),
                 Greater => Self::require(&mut n.r, key),
-                Equal   => &mut n.value
+                Equal => &mut n.value,
             }
         } else {
             *node = Some(Box::new(Self::new(key, V::default())));
@@ -181,27 +156,18 @@ impl<T: Ord + Copy, V> Node<T, V> {
         }
     }
 
-
-
-
     /**
      * Remove a node with the given key from this sub-tree.
      */
     pub(crate) fn remove(node: &mut Option<Box<Self>>, key: &Range<T>) {
         if let Some(n) = node {
             match Self::compare(key, &n.key) {
-                Less    => Self::remove(&mut n.l, key),
+                Less => Self::remove(&mut n.l, key),
                 Greater => Self::remove(&mut n.r, key),
-                Equal   => match (n.l.take(), n.r.take()) {
-                    (None, None) => {
-                        *node = None
-                    }
-                    (Some(l), None) => {
-                        *node = Some(l)
-                    }
-                    (None, Some(r)) => {
-                        *node = Some(r)
-                    }
+                Equal => match (n.l.take(), n.r.take()) {
+                    (None, None) => *node = None,
+                    (Some(l), None) => *node = Some(l),
+                    (None, Some(r)) => *node = Some(r),
                     (Some(l), Some(r)) => {
                         if r.len() > l.len() {
                             let (new_r, r_key) = r.take_lmost();
@@ -215,16 +181,13 @@ impl<T: Ord + Copy, V> Node<T, V> {
                             n.r = Some(r);
                         }
                     }
-                }
+                },
             }
         }
         if let Some(n) = node {
             n.max = Self::local_max(n.key.end, &n.l, &n.r);
         }
     }
-
-
-
 
     /**
      * Return this sub-tree, but with the left-most descendant node removed.
@@ -247,9 +210,6 @@ impl<T: Ord + Copy, V> Node<T, V> {
         }
     }
 
-
-
-
     /**
      * Return this sub-tree, but with the right-most descendant node removed.
      * Also return the key of that node.
@@ -271,9 +231,6 @@ impl<T: Ord + Copy, V> Node<T, V> {
         }
     }
 
-
-
-
     /**
      * Consume this node and return a list of nodes forming a path from this
      * node to its leftmost node. This function is to facilitate consuming
@@ -287,9 +244,6 @@ impl<T: Ord + Copy, V> Node<T, V> {
         }
         path
     }
-
-
-
 
     /**
      * Panic unless a node is storing the maximum endpoint of its subtree. This
@@ -308,17 +262,23 @@ impl<T: Ord + Copy, V> Node<T, V> {
         }
     }
 
-
-
-
     /**
      * Panic unless a node and its entire subtree is properly ordered. This
      * function is for testing purposes.
      */
     #[cfg(test)]
     pub(crate) fn validate_order(&self) {
-        if self.l.as_ref().map_or(Less,    |l| Self::compare(&l.key, &self.key)) != Less ||
-           self.r.as_ref().map_or(Greater, |r| Self::compare(&r.key, &self.key)) != Greater {
+        if self
+            .l
+            .as_ref()
+            .map_or(Less, |l| Self::compare(&l.key, &self.key))
+            != Less
+            || self
+                .r
+                .as_ref()
+                .map_or(Greater, |r| Self::compare(&r.key, &self.key))
+                != Greater
+        {
             panic!("unordered node")
         }
         if let Some(l) = &self.l {
@@ -328,9 +288,6 @@ impl<T: Ord + Copy, V> Node<T, V> {
             r.validate_order()
         }
     }
-
-
-
 
     /**
      * Return the maximum upper bound on this sub-tree. This *should* be the
@@ -344,11 +301,9 @@ impl<T: Ord + Copy, V> Node<T, V> {
             (Some(l), None) => l.compute_max(),
             (None, Some(r)) => r.compute_max(),
             (None, None) => self.key.end,
-        }.max(self.key.end)
+        }
+        .max(self.key.end)
     }
-
-
-
 
     /**
      * Determine the maximum upper bound based on the given endpoint, and two
@@ -361,11 +316,9 @@ impl<T: Ord + Copy, V> Node<T, V> {
             (Some(l), None) => l.max,
             (None, Some(r)) => r.max,
             (None, None) => upper,
-        }.max(upper)
+        }
+        .max(upper)
     }
-
-
-
 
     /**
      * Utility function to dictionary-compare two range objects.
@@ -374,9 +327,6 @@ impl<T: Ord + Copy, V> Node<T, V> {
         (a.start, a.end).cmp(&(b.start, b.end))
     }
 
-
-
-
     /**
      * Utility function to dictionary-compare two Option<(Range<T>, V)> objects.
      */
@@ -384,15 +334,11 @@ impl<T: Ord + Copy, V> Node<T, V> {
         Self::compare(&a.as_ref().unwrap().0, &b.as_ref().unwrap().0)
     }
 
-
-
-
     /**
      * Utility function enabling in-order consuming traversals, for use by
      * the consuming in-order traversal iterator.
      */
     fn next(stack: &mut Vec<Self>) -> Option<Self> {
-
         /*
          * Pop the last node on the stack (A).
          *
@@ -402,32 +348,29 @@ impl<T: Ord + Copy, V> Node<T, V> {
          * Yield the key of A.
          */
 
-         if let Some(mut a) = stack.pop() {
-             if let Some(r) = a.r.take() {
-                 stack.extend(r.into_lmost_path())
-             }
-             Some(a)
-         } else {
-             None
-         }
+        if let Some(mut a) = stack.pop() {
+            if let Some(r) = a.r.take() {
+                stack.extend(r.into_lmost_path())
+            }
+            Some(a)
+        } else {
+            None
+        }
     }
 }
-
-
-
 
 /**
  * Consuming iterator that traveres an entire sub-tree in-order, returning
  * key-value pairs.
  */
-pub (crate) struct IntoIterInOrder<T: Ord + Copy, V> {
-    stack: Vec<Node<T, V>>
+pub(crate) struct IntoIterInOrder<T: Ord + Copy, V> {
+    stack: Vec<Node<T, V>>,
 }
 
 impl<T: Ord + Copy, V> IntoIterInOrder<T, V> {
-    pub (crate) fn new(node: Option<Box<Node<T, V>>>) -> Self {
+    pub(crate) fn new(node: Option<Box<Node<T, V>>>) -> Self {
         Self {
-            stack: node.map_or(Vec::new(), |node| node.into_lmost_path())
+            stack: node.map_or(Vec::new(), |node| node.into_lmost_path()),
         }
     }
 }
@@ -440,21 +383,18 @@ impl<T: Ord + Copy, V> Iterator for IntoIterInOrder<T, V> {
     }
 }
 
-
-
-
 /**
  * Consuming iterator that does a pre-order traveral of the sub-tree, returning
  * key-value pairs.
  */
 pub struct IntoIter<T: Ord + Copy, V> {
-    stack: Vec<Node<T, V>>
+    stack: Vec<Node<T, V>>,
 }
 
 impl<T: Ord + Copy, V> IntoIter<T, V> {
     pub(crate) fn new(node: Option<Box<Node<T, V>>>) -> Self {
         Self {
-            stack: node.into_iter().map(|n| *n).collect()
+            stack: node.into_iter().map(|n| *n).collect(),
         }
     }
 }
@@ -475,21 +415,18 @@ impl<T: Ord + Copy, V> Iterator for IntoIter<T, V> {
     }
 }
 
-
-
-
 /**
  * Consuming iterator that does a pre-order traveral of the sub-tree, returning
  * only the keys.
  */
 pub struct IntoIterKey<T: Ord + Copy, V> {
-    stack: Vec<Node<T, V>>
+    stack: Vec<Node<T, V>>,
 }
 
 impl<T: Ord + Copy, V> IntoIterKey<T, V> {
     pub(crate) fn new(node: Option<Box<Node<T, V>>>) -> Self {
         Self {
-            stack: node.into_iter().map(|n| *n).collect()
+            stack: node.into_iter().map(|n| *n).collect(),
         }
     }
 }
@@ -510,20 +447,17 @@ impl<T: Ord + Copy, V> Iterator for IntoIterKey<T, V> {
     }
 }
 
-
-
-
 /**
  * Iterator over immutable values in this sub-tree. The traversal is pre-order.
  */
 pub struct Iter<'a, T: Ord + Copy, V> {
-    stack: Vec<&'a Node<T, V>>
+    stack: Vec<&'a Node<T, V>>,
 }
 
 impl<'a, T: Ord + Copy, V> Iter<'a, T, V> {
     pub(crate) fn new(node: &'a Option<Box<Node<T, V>>>) -> Self {
         Self {
-            stack: node.iter().map(|n| &**n).collect()
+            stack: node.iter().map(|n| &**n).collect(),
         }
     }
 }
@@ -544,20 +478,17 @@ impl<'a, T: Ord + Copy, V> Iterator for Iter<'a, T, V> {
     }
 }
 
-
-
-
 /**
  * Iterator over mutable values in this sub-tree. The traversal is pre-order.
  */
 pub struct IterMut<'a, T: Ord + Copy, V> {
-    stack: Vec<&'a mut Node<T, V>>
+    stack: Vec<&'a mut Node<T, V>>,
 }
 
 impl<'a, T: Ord + Copy, V> IterMut<'a, T, V> {
     pub(crate) fn new(node: &'a mut Option<Box<Node<T, V>>>) -> Self {
         Self {
-            stack: node.iter_mut().map(|n| &mut **n).collect()
+            stack: node.iter_mut().map(|n| &mut **n).collect(),
         }
     }
 }
@@ -578,16 +509,13 @@ impl<'a, T: Ord + Copy, V> Iterator for IterMut<'a, T, V> {
     }
 }
 
-
-
-
 /**
  * Iterator that visits, by reference in pre-order, only those key-value pairs
  * for which the interval contains the given point.
  */
-pub (crate) struct IterPointQuery<'a, T: Ord + Copy, V> {
+pub(crate) struct IterPointQuery<'a, T: Ord + Copy, V> {
     stack: Vec<&'a Node<T, V>>,
-    point: T
+    point: T,
 }
 
 impl<'a, T: Ord + Copy, V> IterPointQuery<'a, T, V> {
@@ -617,20 +545,17 @@ impl<'a, T: Ord + Copy, V> Iterator for IterPointQuery<'a, T, V> {
                 }
             }
             if node.key.contains(&self.point) {
-                return Some((&node.key, &node.value))
+                return Some((&node.key, &node.value));
             }
         }
     }
 }
 
-
-
-
 /**
  * Iterator that visits, by reference in pre-order, only those key-value pairs
  * for which the interval intersects the given range boudns object.
  */
-pub (crate) struct IterRangeQuery<'a, T: Ord + Copy, V, R: RangeBounds<T>> {
+pub(crate) struct IterRangeQuery<'a, T: Ord + Copy, V, R: RangeBounds<T>> {
     stack: Vec<&'a Node<T, V>>,
     range: R,
 }
@@ -662,21 +587,18 @@ impl<'a, T: Ord + Copy, V, R: RangeBounds<T>> Iterator for IterRangeQuery<'a, T,
                 }
             }
             if self.range.overlaps(&node.key) {
-                return Some((&node.key, &node.value))
+                return Some((&node.key, &node.value));
             }
         }
     }
 }
 
-
-
-
 // ============================================================================
 #[cfg(test)]
 mod test {
 
-    use core::ops::Range;
     use super::Node;
+    use core::ops::Range;
 
     /**
      * A simple deterministic linear congruential generator:
@@ -697,7 +619,12 @@ mod test {
 
     #[test]
     fn max_value_is_correctly_recorded_for_random_collected_tree() {
-        let node: Node<_, ()> = *Node::from_iter(stupid_random_intervals(1000, 666).into_iter().map(|x| (x, ()))).unwrap();
+        let node: Node<_, ()> = *Node::from_iter(
+            stupid_random_intervals(1000, 666)
+                .into_iter()
+                .map(|x| (x, ())),
+        )
+        .unwrap();
         node.validate_max();
         node.validate_order();
     }

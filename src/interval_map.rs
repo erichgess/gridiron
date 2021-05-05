@@ -1,9 +1,6 @@
-use core::ops::{Range, RangeBounds};
-use core::iter::FromIterator;
 use crate::aug_node::{self, Node};
-
-
-
+use core::iter::FromIterator;
+use core::ops::{Range, RangeBounds};
 
 /**
  * An associative map where the keys are `Range` objects. Supports point and
@@ -11,15 +8,11 @@ use crate::aug_node::{self, Node};
  */
 #[derive(Clone)]
 pub struct IntervalMap<T: Ord + Copy, V> {
-    root: Option<Box<Node<T, V>>>
+    root: Option<Box<Node<T, V>>>,
 }
-
-
-
 
 // ============================================================================
 impl<T: Ord + Copy, V> IntervalMap<T, V> {
-
     pub fn new() -> Self {
         Self { root: None }
     }
@@ -52,7 +45,10 @@ impl<T: Ord + Copy, V> IntervalMap<T, V> {
         Node::insert(&mut self.root, key, value)
     }
 
-    pub fn require(&mut self, key: Range<T>) -> &mut V where V: Default {
+    pub fn require(&mut self, key: Range<T>) -> &mut V
+    where
+        V: Default,
+    {
         Node::require(&mut self.root, key)
     }
 
@@ -62,7 +58,9 @@ impl<T: Ord + Copy, V> IntervalMap<T, V> {
 
     pub fn into_balanced(self) -> Self {
         let mut data: Vec<_> = self.into_sorted().map(Some).collect();
-        Self { root: Node::from_sorted_slice(&mut data[..]) }
+        Self {
+            root: Node::from_sorted_slice(&mut data[..]),
+        }
     }
 
     pub fn into_sorted(self) -> impl Iterator<Item = (Range<T>, V)> {
@@ -85,13 +83,13 @@ impl<T: Ord + Copy, V> IntervalMap<T, V> {
         aug_node::IterPointQuery::new(&self.root, point)
     }
 
-    pub fn query_range<R: RangeBounds<T>>(&self, range: R) -> impl Iterator<Item = (&Range<T>, &V)> {
+    pub fn query_range<R: RangeBounds<T>>(
+        &self,
+        range: R,
+    ) -> impl Iterator<Item = (&Range<T>, &V)> {
         aug_node::IterRangeQuery::new(&self.root, range)
     }
 }
-
-
-
 
 // ============================================================================
 impl<T: Ord + Copy, V> Default for IntervalMap<T, V> {
@@ -99,9 +97,6 @@ impl<T: Ord + Copy, V> Default for IntervalMap<T, V> {
         Self::new()
     }
 }
-
-
-
 
 // ============================================================================
 impl<T: Ord + Copy, V> IntoIterator for IntervalMap<T, V> {
@@ -113,9 +108,6 @@ impl<T: Ord + Copy, V> IntoIterator for IntervalMap<T, V> {
     }
 }
 
-
-
-
 // ============================================================================
 impl<'a, T: Ord + Copy, V> IntoIterator for &'a IntervalMap<T, V> {
     type Item = (&'a Range<T>, &'a V);
@@ -125,9 +117,6 @@ impl<'a, T: Ord + Copy, V> IntoIterator for &'a IntervalMap<T, V> {
         aug_node::Iter::new(&self.root)
     }
 }
-
-
-
 
 // ============================================================================
 impl<'a, T: Ord + Copy, V> IntoIterator for &'a mut IntervalMap<T, V> {
@@ -139,14 +128,11 @@ impl<'a, T: Ord + Copy, V> IntoIterator for &'a mut IntervalMap<T, V> {
     }
 }
 
-
-
-
 // ============================================================================
 impl<T: Ord + Copy, V> FromIterator<(Range<T>, V)> for IntervalMap<T, V> {
     fn from_iter<I: IntoIterator<Item = (Range<T>, V)>>(iter: I) -> Self {
         Self {
-            root: Node::from_iter(iter)
+            root: Node::from_iter(iter),
         }
     }
 }

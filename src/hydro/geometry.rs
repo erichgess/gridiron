@@ -1,14 +1,7 @@
-
-
-
-
 /**
  * A 3D vector
  */
 pub struct Vector3d(f64, f64, f64);
-
-
-
 
 // ============================================================================
 impl Vector3d {
@@ -17,17 +10,15 @@ impl Vector3d {
     }
 }
 
-
-
-
 /**
  * Enum to hold a unit vector in 3D space
  */
 #[derive(Clone, Copy)]
-pub enum Direction { I, J, K }
-
-
-
+pub enum Direction {
+    I,
+    J,
+    K,
+}
 
 // ============================================================================
 impl Direction {

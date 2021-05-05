@@ -1,12 +1,8 @@
 #![allow(unused)]
-use std::fmt;
 use std::error;
-
-
-
+use std::fmt;
 
 #[derive(Debug)]
-
 
 /**
  * Error to represent invalid hydrodynamics data or primitive variable recovery.
@@ -15,7 +11,6 @@ pub enum Error {
     NegativeGasPressure(f64),
     NegativeMassDensity(f64),
 }
-
 
 impl fmt::Display for Error {
     fn fmt(&self, fmt: &mut fmt::Formatter<'_>) -> Result<(), fmt::Error> {
@@ -27,6 +22,5 @@ impl fmt::Display for Error {
         }
     }
 }
-
 
 impl error::Error for Error {}
