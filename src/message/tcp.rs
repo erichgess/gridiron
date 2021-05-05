@@ -57,12 +57,17 @@ impl TcpHost {
                 let client = table.get_mut(&rank).unwrap();
 
                 loop {
+                    // TODO: This will create a tight loop, don't use connect to create the backoff
+                    // Need to distinguish retrying from a failed said and retrying from a broken connection
                     match client
                         .write_all(&message.len().to_le_bytes())
-                        .and_then(|_| client.write_all(&message))
+                        .and_then(|()| client.write_all(&message))
                     {
                         Ok(_) => break,
-                        Err(_) => *client = connect(peers[rank]).unwrap(),
+                        Err(msg) => {
+                            error!("Failed to send message to {}: {}", peers[rank], msg);
+                            *client = connect(peers[rank]).unwrap();
+                        }
                     }
                 }
             }
