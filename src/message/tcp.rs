@@ -74,16 +74,18 @@ impl TcpHost {
             info!("Listening to: {}", addr);
             let listener = TcpListener::bind(addr).unwrap();
             loop {
-                let (stream, _) = listener.accept().unwrap(); // TODO: There is a race condition here
-                Self::handle_connection(stream, recv_sink.clone());
+                let (stream, remote) = listener.accept().unwrap(); // TODO: There is a race condition here
+                Self::handle_connection(stream, remote, recv_sink.clone());
             }
         })
     }
 
     fn handle_connection(
         mut stream: TcpStream,
+        remote: SocketAddr,
         recv_sink: crossbeam_channel::Sender<Vec<u8>>,
     ) -> JoinHandle<Result<(), std::io::Error>> {
+        info!("Receiving connection from {}", remote);
         thread::spawn(move || loop {
             util::read_usize(&mut stream)
                 .and_then(|size| util::read_bytes_vec(&mut stream, size))
@@ -91,6 +93,12 @@ impl TcpHost {
                     recv_sink
                         .send(bytes)
                         .map_err(|msg| std::io::Error::new(std::io::ErrorKind::Other, msg))
+                })
+                .map_err(|e| {
+                    std::io::Error::new(
+                        e.kind(),
+                        format!("Connection from {} failed: {}", remote, e),
+                    )
                 })?
         })
     }
