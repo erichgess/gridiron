@@ -9,6 +9,9 @@ use std::{
     time::Duration,
 };
 
+const CXN_R_TIMEOUT_MS: u64 = 250;
+const CXN_W_TIMEOUT_MS: u64 = 250;
+
 type Sender = crossbeam_channel::Sender<(usize, Vec<u8>)>;
 type Receiver = crossbeam_channel::Receiver<Vec<u8>>;
 
@@ -59,11 +62,19 @@ impl TcpHost {
                 loop {
                     // TODO: This will create a tight loop, don't use connect to create the backoff
                     // Need to distinguish retrying from a failed said and retrying from a broken connection
+                    let msg_sz = message.len();
                     match client
-                        .write_all(&message.len().to_le_bytes())
+                        .write_all(&msg_sz.to_le_bytes())
                         .and_then(|()| client.write_all(&message))
-                    {
-                        Ok(_) => break,
+                        .and_then(|()| {
+                            util::read_usize(client).and_then(|ack| {
+                                if ack != msg_sz {
+                                    panic!("Bytes read by receiver did not match bytes sent by this node.  Sent {} bytes but receiver Acked {} bytes", msg_sz, ack)
+                                }
+                                Ok(())
+                            })
+                        }) {
+                        Ok(()) => break,
                         Err(msg) => {
                             error!("Failed to send message to {}: {}", peers[rank], msg);
                             *client = connect(peers[rank]).unwrap();
@@ -94,14 +105,23 @@ impl TcpHost {
         recv_sink: crossbeam_channel::Sender<Vec<u8>>,
     ) -> JoinHandle<Result<(), std::io::Error>> {
         info!("Receiving connection from {}", remote);
+        stream
+            .set_read_timeout(Some(Duration::from_millis(CXN_R_TIMEOUT_MS)))
+            .unwrap();
+        stream
+            .set_write_timeout(Some(Duration::from_millis(CXN_W_TIMEOUT_MS)))
+            .unwrap();
         thread::spawn(move || loop {
             util::read_usize(&mut stream)
                 .and_then(|size| util::read_bytes_vec(&mut stream, size))
                 .and_then(|bytes| {
+                    let num_bytes = bytes.len();
                     recv_sink
                         .send(bytes)
+                        .map(|()| num_bytes)
                         .map_err(|msg| std::io::Error::new(std::io::ErrorKind::Other, msg))
                 })
+                .and_then(|size| stream.write(&size.to_le_bytes()).map(|_| ()))
                 .map_err(|e| {
                     std::io::Error::new(
                         e.kind(),
@@ -123,9 +143,9 @@ fn connect(addr: SocketAddr) -> Option<TcpStream> {
 
     with_retries.find_map(|sleep| match TcpStream::connect(&addr) {
         Ok(s) => {
-            s.set_read_timeout(Some(Duration::from_millis(250))) // TODO: move to constants
+            s.set_read_timeout(Some(Duration::from_millis(CXN_R_TIMEOUT_MS)))
                 .unwrap();
-            s.set_write_timeout(Some(Duration::from_millis(250)))
+            s.set_write_timeout(Some(Duration::from_millis(CXN_W_TIMEOUT_MS)))
                 .unwrap();
             Some(s)
         }
