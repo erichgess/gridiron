@@ -73,7 +73,7 @@ impl TcpHost {
                         .write_all(&msg_sz.to_le_bytes())
                         .and_then(|()| cxn.write_all(&message))
                         .and_then(|()| Self::read_ack(cxn))
-                        .and_then(|ack| 
+                        .and_then(|ack|
                             if ack != msg_sz {
                                 panic!("Bytes read by receiver did not match bytes sent by this node.  Sent {} bytes but receiver Acked {} bytes", msg_sz, ack)
                             } else {
@@ -113,6 +113,12 @@ impl TcpHost {
         info!("Receiving connection from {}", remote);
         stream.set_read_timeout(Some(CXN_R_TIMEOUT_MS)).unwrap();
         stream.set_write_timeout(Some(CXN_W_TIMEOUT_MS)).unwrap();
+        info!(
+            "Read timeout {}ms.  Write timeout {}ms",
+            CXN_R_TIMEOUT_MS.as_millis(),
+            CXN_W_TIMEOUT_MS.as_millis()
+        );
+
         thread::spawn(move || loop {
             util::read_usize(&mut stream)
                 .and_then(|size| util::read_bytes_vec(&mut stream, size))
@@ -133,6 +139,7 @@ impl TcpHost {
         })
     }
 
+    // TODO: move these to an actual defined structure that with serde
     fn write_ack(stream: &mut TcpStream, bytes_read: usize) -> Result<(), std::io::Error> {
         stream.write(&bytes_read.to_le_bytes()).map(|_| ())
     }
@@ -146,13 +153,19 @@ impl TcpHost {
         initial_wait: Duration,
         max_wait: Duration,
     ) -> Option<TcpStream> {
-        println!("Connecting...");
+        println!("Connecting to {}", addr);
         let mut with_retries = ExponentialBackoff::new(initial_wait, max_wait, 2, None);
 
         with_retries.find_map(|sleep| match TcpStream::connect(&addr) {
             Ok(s) => {
                 s.set_read_timeout(Some(CXN_R_TIMEOUT_MS)).unwrap();
                 s.set_write_timeout(Some(CXN_W_TIMEOUT_MS)).unwrap();
+                info!(
+                    "Connected to {} with: Read timeout {}ms.  Write timeout {}ms",
+                    addr,
+                    CXN_R_TIMEOUT_MS.as_millis(),
+                    CXN_W_TIMEOUT_MS.as_millis()
+                );
                 Some(s)
             }
             Err(msg) => {
