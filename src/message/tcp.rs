@@ -109,7 +109,7 @@ impl TcpHost {
         mut stream: TcpStream,
         remote: SocketAddr,
         recv_sink: crossbeam_channel::Sender<Vec<u8>>,
-    ) -> JoinHandle<Result<(), std::io::Error>> {
+    ) -> JoinHandle<Result<(), io::Error>> {
         info!("Receiving connection from {}", remote);
         stream.set_read_timeout(Some(CXN_R_TIMEOUT_MS)).unwrap();
         stream.set_write_timeout(Some(CXN_W_TIMEOUT_MS)).unwrap();
@@ -131,7 +131,7 @@ impl TcpHost {
                 })
                 .and_then(|size| Self::write_ack(&mut stream, Ack::new(size)))
                 .map_err(|e| {
-                    std::io::Error::new(
+                    io::Error::new(
                         e.kind(),
                         format!("Connection from {} failed: {}", remote, e),
                     )
@@ -140,14 +140,12 @@ impl TcpHost {
     }
 
     // TODO: move these to an actual defined structure that with serde
-    fn write_ack(stream: &mut TcpStream, ack: Ack) -> Result<(), std::io::Error> {
-        rmp_serde::encode::write(stream, &ack)
-            .map_err(|e| std::io::Error::new(std::io::ErrorKind::Other, e))
+    fn write_ack(stream: &mut TcpStream, ack: Ack) -> Result<(), io::Error> {
+        rmp_serde::encode::write(stream, &ack).map_err(|e| io::Error::new(io::ErrorKind::Other, e))
     }
 
-    fn read_ack(stream: &mut TcpStream) -> Result<Ack, std::io::Error> {
-        rmp_serde::decode::from_read(stream)
-            .map_err(|e| std::io::Error::new(std::io::ErrorKind::Other, e))
+    fn read_ack(stream: &mut TcpStream) -> Result<Ack, io::Error> {
+        rmp_serde::decode::from_read(stream).map_err(|e| io::Error::new(io::ErrorKind::Other, e))
     }
 
     fn connect_with_retry(
