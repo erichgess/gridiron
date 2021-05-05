@@ -74,8 +74,8 @@ impl TcpHost {
                         .and_then(|()| cxn.write_all(&message))
                         .and_then(|()| Self::read_ack(cxn))
                         .and_then(|ack|
-                            if ack != msg_sz {
-                                panic!("Bytes read by receiver did not match bytes sent by this node.  Sent {} bytes but receiver Acked {} bytes", msg_sz, ack)
+                            if ack.bytes_read != msg_sz {
+                                panic!("Bytes read by receiver did not match bytes sent by this node.  Sent {} bytes but receiver Acked {} bytes", msg_sz, ack.bytes_read)
                             } else {
                                 Ok(())
                             }
@@ -129,7 +129,7 @@ impl TcpHost {
                         .map(|()| num_bytes)
                         .map_err(|msg| io::Error::new(io::ErrorKind::Other, msg))
                 })
-                .and_then(|size| Self::write_ack(&mut stream, size))
+                .and_then(|size| Self::write_ack(&mut stream, Ack::new(size)))
                 .map_err(|e| {
                     std::io::Error::new(
                         e.kind(),
@@ -140,12 +140,14 @@ impl TcpHost {
     }
 
     // TODO: move these to an actual defined structure that with serde
-    fn write_ack(stream: &mut TcpStream, bytes_read: usize) -> Result<(), std::io::Error> {
-        stream.write(&bytes_read.to_le_bytes()).map(|_| ())
+    fn write_ack(stream: &mut TcpStream, ack: Ack) -> Result<(), std::io::Error> {
+        rmp_serde::encode::write(stream, &ack)
+            .map_err(|e| std::io::Error::new(std::io::ErrorKind::Other, e))
     }
 
-    fn read_ack(stream: &mut TcpStream) -> Result<usize, std::io::Error> {
-        util::read_usize(stream)
+    fn read_ack(stream: &mut TcpStream) -> Result<Ack, std::io::Error> {
+        rmp_serde::decode::from_read(stream)
+            .map_err(|e| std::io::Error::new(std::io::ErrorKind::Other, e))
     }
 
     fn connect_with_retry(
@@ -174,6 +176,17 @@ impl TcpHost {
                 None
             }
         })
+    }
+}
+
+#[derive(serde::Serialize, serde::Deserialize)]
+struct Ack {
+    bytes_read: usize,
+}
+
+impl Ack {
+    fn new(bytes_read: usize) -> Ack {
+        Ack { bytes_read }
     }
 }
 
