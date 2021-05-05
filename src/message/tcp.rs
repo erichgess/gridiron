@@ -43,20 +43,7 @@ impl TcpHost {
         });
 
         let (recv_sink, recv_src) = crossbeam_channel::unbounded();
-        let recv_sink_cpy = recv_sink.clone();
-        let listen_thread = thread::spawn(move || {
-            info!("Listening to: {}", peers[rank]);
-            let listener = TcpListener::bind(peers[rank]).unwrap();
-            loop {
-                let (mut stream, _) = listener.accept().unwrap(); // TODO: There is a race condition here
-                let size = util::read_usize(&mut stream);
-                let bytes = util::read_bytes_vec(&mut stream, size);
-                match recv_sink_cpy.send(bytes) {
-                    Ok(_) => (),
-                    Err(_) => break,
-                }
-            }
-        });
+        let listen_thread = Self::start_listener(peers[rank], recv_sink.clone());
 
         (
             TcpHost {
@@ -72,7 +59,31 @@ impl TcpHost {
     pub fn join(&mut self) {
         self.send_thread.take().unwrap().join().unwrap()
     }
+
+    fn start_listener(
+        addr: SocketAddr,
+        recv_sink: crossbeam_channel::Sender<Vec<u8>>,
+    ) -> thread::JoinHandle<()> {
+        thread::spawn(move || {
+            info!("Listening to: {}", addr);
+            let listener = TcpListener::bind(addr).unwrap();
+            loop {
+                let (mut stream, _) = listener.accept().unwrap(); // TODO: There is a race condition here
+                let size = util::read_usize(&mut stream);
+                let bytes = util::read_bytes_vec(&mut stream, size);
+                match recv_sink.send(bytes) {
+                    Ok(_) => (),
+                    Err(_) => break,
+                }
+            }
+        })
+    }
 }
+
+/////////////////////////////////////////////////////
+/////////////////////////////////////////////////////
+/////////////////////////////////////////////////////
+/////////////////////////////////////////////////////
 
 pub struct TcpCommunicator {
     rank: usize,
