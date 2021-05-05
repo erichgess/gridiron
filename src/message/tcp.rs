@@ -63,27 +63,27 @@ impl TcpHost {
                             .unwrap(),
                     );
                 }
-                let client = table.get_mut(&rank).unwrap();
+                let cxn = table.get_mut(&rank).unwrap();
 
                 loop {
                     // TODO: This will create a tight loop, don't use connect to create the backoff
                     // Need to distinguish retrying from a failed said and retrying from a broken connection
                     let msg_sz = message.len();
-                    match client
+                    match cxn
                         .write_all(&msg_sz.to_le_bytes())
-                        .and_then(|()| client.write_all(&message))
-                        .and_then(|()| {
-                            util::read_usize(client).and_then(|ack| {
-                                if ack != msg_sz {
-                                    panic!("Bytes read by receiver did not match bytes sent by this node.  Sent {} bytes but receiver Acked {} bytes", msg_sz, ack)
-                                }
+                        .and_then(|()| cxn.write_all(&message))
+                        .and_then(|()| Self::read_ack(cxn))
+                        .and_then(|ack| 
+                            if ack != msg_sz {
+                                panic!("Bytes read by receiver did not match bytes sent by this node.  Sent {} bytes but receiver Acked {} bytes", msg_sz, ack)
+                            } else {
                                 Ok(())
-                            })
-                        }) {
+                            }
+                        ) {
                         Ok(()) => break,
                         Err(msg) => {
                             error!("Failed to send message to {}: {}", peers[rank], msg);
-                            *client = Self::connect_with_retry(peers[rank], RETRY_WAIT_MS, RETRY_MAX_WAIT_MS).unwrap();
+                            *cxn = Self::connect_with_retry(peers[rank], RETRY_WAIT_MS, RETRY_MAX_WAIT_MS).unwrap();
                         }
                     }
                 }
@@ -123,7 +123,7 @@ impl TcpHost {
                         .map(|()| num_bytes)
                         .map_err(|msg| io::Error::new(io::ErrorKind::Other, msg))
                 })
-                .and_then(|size| stream.write(&size.to_le_bytes()).map(|_| ()))
+                .and_then(|size| Self::write_ack(&mut stream, size))
                 .map_err(|e| {
                     std::io::Error::new(
                         e.kind(),
@@ -131,6 +131,14 @@ impl TcpHost {
                     )
                 })?
         })
+    }
+
+    fn write_ack(stream: &mut TcpStream, bytes_read: usize) -> Result<(), std::io::Error> {
+        stream.write(&bytes_read.to_le_bytes()).map(|_| ())
+    }
+
+    fn read_ack(stream: &mut TcpStream) -> Result<usize, std::io::Error> {
+        util::read_usize(stream)
     }
 
     fn connect_with_retry(
