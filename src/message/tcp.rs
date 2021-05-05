@@ -68,17 +68,16 @@ impl TcpHost {
                 let msg_sz = message.len();
 
                 // TODO: This is getting better.  Next step is to use the connection state to determine whether to delay and resend or to reconnect
-                let mut attempts = ExponentialBackoff::new(RETRY_WAIT_MS, RETRY_MAX_WAIT_MS, 2);
-                while let Err(e) = attempts.retry_upto(3, || {
+                while let Err(e) = ExponentialBackoff::new(RETRY_WAIT_MS, RETRY_MAX_WAIT_MS, 2).retry_upto(3, || {
                         cxn
                             .write_all(&msg_sz.to_le_bytes())
                             .and_then(|()| cxn.write_all(&message))
                             .and_then(|()| Self::read_ack(cxn))
                             .and_then(|ack|
-                                if ack.bytes_read != msg_sz {
-                                    panic!("Bytes read by receiver did not match bytes sent by this node.  Sent {} bytes but receiver Acked {} bytes", msg_sz, ack.bytes_read)
-                                } else {
-                                    Ok(())
+                                match ack {
+                                    Ack::Success(bytes_read) if bytes_read == msg_sz => Ok(()),
+                                    Ack::Success(bytes_read) => 
+                                    panic!("Bytes read by receiver did not match bytes sent by this node.  Sent {} bytes but receiver Acked {} bytes", msg_sz, bytes_read),
                                 }
                             )
                 }) {
@@ -128,7 +127,7 @@ impl TcpHost {
                         .map(|()| num_bytes)
                         .map_err(|msg| io::Error::new(io::ErrorKind::Other, msg))
                 })
-                .and_then(|size| Self::write_ack(&mut stream, Ack::new(size)))
+                .and_then(|size| Self::write_ack(&mut stream, Ack::Success(size)))
                 .map_err(|e| {
                     io::Error::new(
                         e.kind(),
@@ -174,14 +173,8 @@ impl TcpHost {
 }
 
 #[derive(serde::Serialize, serde::Deserialize)]
-struct Ack {
-    bytes_read: usize,
-}
-
-impl Ack {
-    fn new(bytes_read: usize) -> Ack {
-        Ack { bytes_read }
-    }
+enum Ack {
+    Success(usize),
 }
 
 /////////////////////////////////////////////////////
