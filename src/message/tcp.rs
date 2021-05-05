@@ -2,9 +2,9 @@ use log::{error, info};
 
 use super::comm::Communicator;
 use super::util;
-use std::io::prelude::*;
 use std::net::{SocketAddr, TcpListener, TcpStream};
 use std::thread;
+use std::{io::prelude::*, thread::JoinHandle};
 
 type Sender = crossbeam_channel::Sender<(usize, Vec<u8>)>;
 type Receiver = crossbeam_channel::Receiver<Vec<u8>>;
@@ -74,23 +74,25 @@ impl TcpHost {
             info!("Listening to: {}", addr);
             let listener = TcpListener::bind(addr).unwrap();
             loop {
-                let (mut stream, _) = listener.accept().unwrap(); // TODO: There is a race condition here
-                Self::handle_connection(&mut stream, recv_sink.clone()).unwrap();
+                let (stream, _) = listener.accept().unwrap(); // TODO: There is a race condition here
+                Self::handle_connection(stream, recv_sink.clone());
             }
         })
     }
 
     fn handle_connection(
-        stream: &mut TcpStream,
+        mut stream: TcpStream,
         recv_sink: crossbeam_channel::Sender<Vec<u8>>,
-    ) -> Result<(), std::io::Error> {
-        util::read_usize(stream)
-            .and_then(|size| util::read_bytes_vec(stream, size))
-            .and_then(|bytes| {
-                recv_sink
-                    .send(bytes)
-                    .map_err(|msg| std::io::Error::new(std::io::ErrorKind::Other, msg))
-            })
+    ) -> JoinHandle<Result<(), std::io::Error>> {
+        thread::spawn(move || loop {
+            util::read_usize(&mut stream)
+                .and_then(|size| util::read_bytes_vec(&mut stream, size))
+                .and_then(|bytes| {
+                    recv_sink
+                        .send(bytes)
+                        .map_err(|msg| std::io::Error::new(std::io::ErrorKind::Other, msg))
+                })?
+        })
     }
 }
 
