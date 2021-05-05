@@ -26,7 +26,7 @@ impl TcpHost {
         peers: Vec<SocketAddr>,
     ) -> (Self, Sender, crossbeam_channel::Sender<Vec<u8>>, Receiver) {
         let (send_sink, send_src): (Sender, _) = crossbeam_channel::unbounded();
-        let send_thread = Self::start_sender(peers.clone(), send_src);
+        let send_thread = Self::start_serial_sender(peers.clone(), send_src);
 
         let (recv_sink, recv_src) = crossbeam_channel::unbounded();
         let listen_thread = Self::start_listener(peers[rank], recv_sink.clone());
@@ -46,7 +46,7 @@ impl TcpHost {
         self.send_thread.take().unwrap().join().unwrap()
     }
 
-    fn start_sender(
+    fn start_serial_sender(
         peers: Vec<SocketAddr>,
         send_src: crossbeam_channel::Receiver<(usize, Vec<u8>)>,
     ) -> thread::JoinHandle<()> {
