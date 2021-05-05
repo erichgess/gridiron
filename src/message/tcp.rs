@@ -75,14 +75,23 @@ impl TcpHost {
             let listener = TcpListener::bind(addr).unwrap();
             loop {
                 let (mut stream, _) = listener.accept().unwrap(); // TODO: There is a race condition here
-                let size = util::read_usize(&mut stream);
-                let bytes = util::read_bytes_vec(&mut stream, size);
-                match recv_sink.send(bytes) {
-                    Ok(_) => (),
-                    Err(_) => break,
-                }
+                Self::handle_connection(&mut stream, recv_sink.clone());
             }
         })
+    }
+
+    fn handle_connection(stream: &mut TcpStream, recv_sink: crossbeam_channel::Sender<Vec<u8>>) {
+        loop {
+            let size = util::read_usize(stream);
+            let bytes = util::read_bytes_vec(stream, size);
+            match recv_sink.send(bytes) {
+                Ok(_) => (),
+                Err(msg) => {
+                    error!("Connection failed: {}", msg);
+                    break;
+                }
+            }
+        }
     }
 }
 
