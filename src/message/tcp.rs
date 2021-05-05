@@ -153,10 +153,14 @@ impl TcpHost {
         max_wait: Duration,
     ) -> Option<TcpStream> {
         println!("Connecting to {}", addr);
-        let mut with_retries = ExponentialBackoff::new(initial_wait, max_wait, 2, None);
+        let mut with_retries = ExponentialBackoff::new(initial_wait, max_wait, 2);
 
-        with_retries.find_map(|sleep| match TcpStream::connect(&addr) {
-            Ok(s) => {
+        with_retries
+            .retry_forever(
+                || TcpStream::connect(&addr),
+                |e| error!("Failed to connect: {}", e),
+            )
+            .map(|s| {
                 s.set_read_timeout(Some(CXN_R_TIMEOUT_MS)).unwrap();
                 s.set_write_timeout(Some(CXN_W_TIMEOUT_MS)).unwrap();
                 info!(
@@ -165,14 +169,8 @@ impl TcpHost {
                     CXN_R_TIMEOUT_MS.as_millis(),
                     CXN_W_TIMEOUT_MS.as_millis()
                 );
-                Some(s)
-            }
-            Err(msg) => {
-                println!("Connect Failed: {}", msg);
-                thread::sleep(sleep);
-                None
-            }
-        })
+                s
+            })
     }
 }
 

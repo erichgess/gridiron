@@ -1,26 +1,19 @@
 use std::time::Duration;
 
+use log::info;
+
 pub struct ExponentialBackoff {
     curr: Duration,
     max: Duration,
     factor: u32,
-    iterations: usize,
-    max_iterations: Option<usize>,
 }
 
 impl ExponentialBackoff {
-    pub fn new(
-        start: Duration,
-        max: Duration,
-        factor: u32,
-        max_iterations: Option<usize>,
-    ) -> ExponentialBackoff {
+    pub fn new(start: Duration, max: Duration, factor: u32) -> ExponentialBackoff {
         ExponentialBackoff {
             curr: start,
             max,
             factor,
-            iterations: 0,
-            max_iterations,
         }
     }
 }
@@ -29,22 +22,74 @@ impl Iterator for ExponentialBackoff {
     type Item = Duration;
 
     fn next(&mut self) -> Option<Self::Item> {
-        if self
-            .max_iterations
-            .map_or(false, |max| self.iterations >= max)
-        {
-            None
+        let new_next = self.curr * self.factor;
+
+        self.curr = if new_next > self.max {
+            self.max
         } else {
-            let new_next = self.curr * self.factor;
+            new_next
+        };
 
-            self.curr = if new_next > self.max {
-                self.max
-            } else {
-                new_next
-            };
+        Some(self.curr)
+    }
+}
 
-            self.iterations += 1;
-            Some(self.curr)
+impl ExponentialBackoff {
+    pub fn retry_forever<F, H, T, E>(&mut self, f: F, on_err: H) -> Option<T>
+    where
+        F: Fn() -> Result<T, E>,
+        H: Fn(E),
+    {
+        for delay in self {
+            match f() {
+                Ok(t) => return Some(t),
+                Err(e) => {
+                    on_err(e);
+                    info!("Retrying in {}ms...", delay.as_millis());
+                    std::thread::sleep(delay);
+                }
+            }
+        }
+
+        None
+    }
+
+    pub fn retry_upto<F, T, E>(&mut self, max_attempts: usize, f: F) -> Option<T>
+    where
+        F: Fn() -> Result<T, E>,
+    {
+        for (i, delay) in self.enumerate() {
+            if i >= max_attempts {
+                break;
+            }
+            match f() {
+                Ok(t) => return Some(t),
+                Err(_) => std::thread::sleep(delay),
+            }
+        }
+
+        None
+    }
+
+    pub fn retry_while<F, P, T, E>(&mut self, do_retry: P, f: F) -> Result<T, E>
+    where
+        F: Fn() -> Result<T, E>,
+        P: Fn(usize, E) -> bool,
+        E: Copy,
+    {
+        let mut enumerate = self.enumerate();
+        loop {
+            let (i, delay) = enumerate.next().unwrap();
+            match f() {
+                Ok(t) => return Ok(t),
+                Err(e) => {
+                    if do_retry(i, e) {
+                        std::thread::sleep(delay);
+                    } else {
+                        return Err(e);
+                    }
+                }
+            }
         }
     }
 }
