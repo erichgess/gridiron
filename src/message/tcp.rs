@@ -51,25 +51,18 @@ impl TcpHost {
             let mut table: HashMap<usize, TcpStream> = HashMap::new();
 
             for (rank, message) in send_src {
-                let mut sleep_ms = 250;
                 if !table.contains_key(&rank) {
                     table.insert(rank, connect(peers[rank]).unwrap());
                 }
-                let client = table.get_mut(&rank);
+                let client = table.get_mut(&rank).unwrap();
 
                 loop {
-                    match client {
-                        Some(stream) => {
-                            stream.write_all(&message.len().to_le_bytes()).unwrap();
-                            stream.write_all(&message).unwrap();
-                            break;
-                        }
-                        None => {
-                            error!("Failed to get connection from cache");
-                            info!("Retrying in {}ms", sleep_ms);
-                            thread::sleep(std::time::Duration::from_millis(sleep_ms));
-                            sleep_ms = if sleep_ms < 5000 { 2 * sleep_ms } else { 5000 };
-                        }
+                    match client
+                        .write_all(&message.len().to_le_bytes())
+                        .and_then(|_| client.write_all(&message))
+                    {
+                        Ok(_) => break,
+                        Err(_) => *client = connect(peers[rank]).unwrap(),
                     }
                 }
             }
@@ -125,7 +118,7 @@ fn connect(addr: SocketAddr) -> Option<TcpStream> {
 
     with_retries.find_map(|sleep| match TcpStream::connect(&addr) {
         Ok(s) => {
-            s.set_read_timeout(Some(Duration::from_millis(250)))
+            s.set_read_timeout(Some(Duration::from_millis(250))) // TODO: move to constants
                 .unwrap();
             s.set_write_timeout(Some(Duration::from_millis(250)))
                 .unwrap();
