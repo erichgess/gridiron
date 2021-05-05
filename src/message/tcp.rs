@@ -81,15 +81,13 @@ impl TcpHost {
     }
 
     fn handle_connection(stream: &mut TcpStream, recv_sink: crossbeam_channel::Sender<Vec<u8>>) {
-        loop {
-            let size = util::read_usize(stream);
-            let bytes = util::read_bytes_vec(stream, size);
-            match recv_sink.send(bytes) {
-                Ok(_) => (),
-                Err(msg) => {
-                    error!("Connection failed: {}", msg);
-                    break;
-                }
+        let size = util::read_usize(stream);
+        let bytes = util::read_bytes_vec(stream, size);
+        match recv_sink.send(bytes) {
+            Ok(_) => (),
+            Err(msg) => {
+                error!("Connection failed: {}", msg);
+                return;
             }
         }
     }
