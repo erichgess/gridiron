@@ -20,27 +20,7 @@ impl TcpHost {
         peers: Vec<SocketAddr>,
     ) -> (Self, Sender, crossbeam_channel::Sender<Vec<u8>>, Receiver) {
         let (send_sink, send_src): (Sender, _) = crossbeam_channel::unbounded();
-        let peers_cpy = peers.clone();
-        let send_thread = thread::spawn(move || {
-            for (rank, message) in send_src {
-                let mut sleep_ms = 250;
-                loop {
-                    match TcpStream::connect(peers_cpy[rank]) {
-                        Ok(mut stream) => {
-                            stream.write_all(&message.len().to_le_bytes()).unwrap();
-                            stream.write_all(&message).unwrap();
-                            break;
-                        }
-                        Err(msg) => {
-                            error!("Send failed: {}", msg);
-                            info!("Retrying in {}ms", sleep_ms);
-                            thread::sleep(std::time::Duration::from_millis(sleep_ms));
-                            sleep_ms = if sleep_ms < 5000 { 2 * sleep_ms } else { 5000 };
-                        }
-                    }
-                }
-            }
-        });
+        let send_thread = Self::start_sender(peers.clone(), send_src);
 
         let (recv_sink, recv_src) = crossbeam_channel::unbounded();
         let listen_thread = Self::start_listener(peers[rank], recv_sink.clone());
@@ -58,6 +38,32 @@ impl TcpHost {
 
     pub fn join(&mut self) {
         self.send_thread.take().unwrap().join().unwrap()
+    }
+
+    fn start_sender(
+        peers: Vec<SocketAddr>,
+        send_src: crossbeam_channel::Receiver<(usize, Vec<u8>)>,
+    ) -> thread::JoinHandle<()> {
+        thread::spawn(move || {
+            for (rank, message) in send_src {
+                let mut sleep_ms = 250;
+                loop {
+                    match TcpStream::connect(peers[rank]) {
+                        Ok(mut stream) => {
+                            stream.write_all(&message.len().to_le_bytes()).unwrap();
+                            stream.write_all(&message).unwrap();
+                            break;
+                        }
+                        Err(msg) => {
+                            error!("Send failed: {}", msg);
+                            info!("Retrying in {}ms", sleep_ms);
+                            thread::sleep(std::time::Duration::from_millis(sleep_ms));
+                            sleep_ms = if sleep_ms < 5000 { 2 * sleep_ms } else { 5000 };
+                        }
+                    }
+                }
+            }
+        })
     }
 
     fn start_listener(
