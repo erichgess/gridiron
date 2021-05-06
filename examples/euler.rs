@@ -1,4 +1,3 @@
-use core::num;
 use std::{collections::HashMap, net::SocketAddr};
 
 use clap::{AppSettings, Clap};

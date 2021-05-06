@@ -93,7 +93,7 @@ impl TcpHost {
         thread::spawn(move || {
             let mut table: HashMap<usize, TcpStream> = HashMap::new();
 
-            for (rank, message) in send_src {
+            for (rank, message) in &send_src {
                 if !table.contains_key(&rank) {
                     table.insert(
                         rank,
@@ -123,6 +123,7 @@ impl TcpHost {
                     if shutdown_signal.load(Ordering::SeqCst) {
                         // Note: if there are a lot of outgoing messages and all peers are down, then this could take awhile
                         info!("Shutdown signal received, will drop this message");
+                        info!("There are {} messages remaining in the channel", &send_src.len());
                         break;
                     } else {
                         info!("Reconnecting to {}", peers[rank]);
