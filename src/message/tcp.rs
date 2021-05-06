@@ -44,7 +44,10 @@ impl TcpHost {
         )
     }
 
+    // TODO: Change this to shutdown, it will send the shutdown signal to all threads and then
+    // wait until every listener and sender thread has stopped and return to the user
     pub fn join(&mut self) {
+        info!("Shutting down TCP layer");
         self.send_thread.take().unwrap().join().unwrap()
     }
 
@@ -75,8 +78,8 @@ impl TcpHost {
                             .and_then(|()| Self::read_ack(cxn))
                             .and_then(|ack|
                                 match ack {
-                                    Ack::Success(bytes_read) if bytes_read == msg_sz => Ok(()),
-                                    Ack::Success(bytes_read) => 
+                                    Ack::Accept(bytes_read) if bytes_read == msg_sz => Ok(()),
+                                    Ack::Accept(bytes_read) => 
                                     panic!("Bytes read by receiver did not match bytes sent by this node.  Sent {} bytes but receiver Acked {} bytes", msg_sz, bytes_read),
                                 }
                             )
@@ -86,6 +89,8 @@ impl TcpHost {
                     *cxn = Self::connect_with_retry(peers[rank], RETRY_WAIT_MS, RETRY_MAX_WAIT_MS).unwrap();
                 };
             }
+
+            info!("Stopped Sending Messages");
         })
     }
 
@@ -97,7 +102,10 @@ impl TcpHost {
         thread::spawn(move || {
             info!("Listening to: {}", addr);
             loop {
-                let (stream, remote) = listener.accept().unwrap(); // TODO: There is a race condition here
+                let (stream, remote) = listener.accept().unwrap(); 
+                
+                // TODO: Add a conditional which will exit out of this thread and not create the connection
+                // TODO: when the process is exiting
                 Self::handle_connection(stream, remote, recv_sink.clone());
             }
         })
@@ -118,6 +126,7 @@ impl TcpHost {
         );
 
         thread::spawn(move || loop {
+            // TODO: Stop thread if shutdown event is received
             util::read_usize(&mut stream)
                 .and_then(|size| util::read_bytes_vec(&mut stream, size))
                 .and_then(|bytes| {
@@ -127,7 +136,8 @@ impl TcpHost {
                         .map(|()| num_bytes)
                         .map_err(|msg| io::Error::new(io::ErrorKind::Other, msg))
                 })
-                .and_then(|size| Self::write_ack(&mut stream, Ack::Success(size)))
+                .and_then(|size| Self::write_ack(&mut stream, Ack::Accept(size)))
+                // TODO: if a reading error happens then send back a Failure message to the sender
                 .map_err(|e| {
                     io::Error::new(
                         e.kind(),
@@ -174,7 +184,7 @@ impl TcpHost {
 
 #[derive(serde::Serialize, serde::Deserialize)]
 enum Ack {
-    Success(usize),
+    Accept(usize),
 }
 
 /////////////////////////////////////////////////////
