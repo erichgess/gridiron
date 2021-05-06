@@ -43,7 +43,12 @@ impl TcpHost {
         let (recv_sink, recv_src) = crossbeam_channel::unbounded();
         let wg = Arc::new((Mutex::new(0), Condvar::new()));
         let shutdown_signal = Arc::new(AtomicBool::new(false));
-        let listen_thread = Self::start_listener(peers[rank], recv_sink.clone(), Arc::clone(&shutdown_signal), Arc::clone(&wg));
+        let listen_thread = Self::start_listener(
+            peers[rank],
+            recv_sink.clone(),
+            Arc::clone(&shutdown_signal),
+            Arc::clone(&wg),
+        );
 
         (
             TcpHost {
@@ -59,7 +64,8 @@ impl TcpHost {
     }
 
     pub fn shutdown(mut self) {
-        self.shutting_down.store(true, std::sync::atomic::Ordering::SeqCst);
+        self.shutting_down
+            .store(true, std::sync::atomic::Ordering::SeqCst);
         info!("Shutting down TCP host...");
 
         info!("Waiting for Sender to shutdown...");
@@ -105,7 +111,7 @@ impl TcpHost {
                             .and_then(|ack|
                                 match ack {
                                     Ack::Accept(bytes_read) if bytes_read == msg_sz => Ok(()),
-                                    Ack::Accept(bytes_read) => 
+                                    Ack::Accept(bytes_read) =>
                                     panic!("Bytes read by receiver did not match bytes sent by this node.  Sent {} bytes but receiver Acked {} bytes", msg_sz, bytes_read),
                                 }
                             )
@@ -141,7 +147,13 @@ impl TcpHost {
                     let (receivers_lock, _) = &*receiver_wg;
                     *receivers_lock.lock().unwrap() += 1;
                 }
-                Self::handle_connection(stream, remote, recv_sink.clone(), Arc::clone(&shutdown_signal), Arc::clone(&receiver_wg));
+                Self::handle_connection(
+                    stream,
+                    remote,
+                    recv_sink.clone(),
+                    Arc::clone(&shutdown_signal),
+                    Arc::clone(&receiver_wg),
+                );
             }
         })
     }
