@@ -22,12 +22,11 @@ const CXN_W_TIMEOUT_MS: Duration = Duration::from_millis(5000);
 const RETRY_WAIT_MS: Duration = Duration::from_millis(250);
 const RETRY_MAX_WAIT_MS: Duration = Duration::from_millis(5000);
 
-static SHUTTING_DOWN: AtomicBool = AtomicBool::new(false);
-
 type Sender = crossbeam_channel::Sender<(usize, Vec<u8>)>;
 type Receiver = crossbeam_channel::Receiver<Vec<u8>>;
 
 pub struct TcpHost {
+    shutting_down: Arc<AtomicBool>,
     _listen_thread: Option<thread::JoinHandle<()>>,
     send_thread: Option<thread::JoinHandle<()>>,
     receiver_wg: Arc<(Mutex<usize>, Condvar)>,
@@ -41,16 +40,17 @@ impl TcpHost {
         let (send_sink, send_src): (Sender, _) = crossbeam_channel::unbounded();
         let send_thread = Self::start_serial_sender(peers.clone(), send_src);
 
-        let wg = Arc::new((Mutex::new(0), Condvar::new()));
-
         let (recv_sink, recv_src) = crossbeam_channel::unbounded();
-        let listen_thread = Self::start_listener(peers[rank], recv_sink.clone(), Arc::clone(&wg));
+        let wg = Arc::new((Mutex::new(0), Condvar::new()));
+        let shutdown_signal = Arc::new(AtomicBool::new(false));
+        let listen_thread = Self::start_listener(peers[rank], recv_sink.clone(), Arc::clone(&shutdown_signal), Arc::clone(&wg));
 
         (
             TcpHost {
+                shutting_down: shutdown_signal,
                 send_thread: Some(send_thread),
                 _listen_thread: Some(listen_thread),
-                receiver_wg: Arc::clone(&wg),
+                receiver_wg: wg,
             },
             send_sink,
             recv_sink,
@@ -59,7 +59,7 @@ impl TcpHost {
     }
 
     pub fn shutdown(mut self) {
-        SHUTTING_DOWN.store(true, std::sync::atomic::Ordering::SeqCst);
+        self.shutting_down.store(true, std::sync::atomic::Ordering::SeqCst);
         info!("Shutting down TCP host...");
 
         info!("Waiting for Sender to shutdown...");
@@ -123,6 +123,7 @@ impl TcpHost {
     fn start_listener(
         addr: SocketAddr,
         recv_sink: crossbeam_channel::Sender<Vec<u8>>,
+        shutdown_signal: Arc<AtomicBool>,
         receiver_wg: Arc<(Mutex<usize>, Condvar)>,
     ) -> thread::JoinHandle<()> {
         let listener = TcpListener::bind(addr).unwrap();
@@ -131,7 +132,7 @@ impl TcpHost {
             loop {
                 let (stream, remote) = listener.accept().unwrap();
 
-                if SHUTTING_DOWN.load(Ordering::SeqCst) {
+                if shutdown_signal.load(Ordering::SeqCst) {
                     info!("Received connection attempt but this service is shutting down.  Rejecting and stopping the Listener...");
                     break;
                 }
@@ -140,7 +141,7 @@ impl TcpHost {
                     let (receivers_lock, _) = &*receiver_wg;
                     *receivers_lock.lock().unwrap() += 1;
                 }
-                Self::handle_connection(stream, remote, recv_sink.clone(), Arc::clone(&receiver_wg));
+                Self::handle_connection(stream, remote, recv_sink.clone(), Arc::clone(&shutdown_signal), Arc::clone(&receiver_wg));
             }
         })
     }
@@ -149,6 +150,7 @@ impl TcpHost {
         mut stream: TcpStream,
         remote: SocketAddr,
         recv_sink: crossbeam_channel::Sender<Vec<u8>>,
+        shutdown_signal: Arc<AtomicBool>,
         receiver_wg: Arc<(Mutex<usize>, Condvar)>,
     ) -> JoinHandle<Result<(), io::Error>> {
         info!("Receiving connection from {}", remote);
@@ -185,7 +187,7 @@ impl TcpHost {
                     Err(e) => break Err(e),
                 }
 
-                if SHUTTING_DOWN.load(Ordering::SeqCst) {
+                if shutdown_signal.load(Ordering::SeqCst) {
                     break Ok(());
                 }
             };
