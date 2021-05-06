@@ -37,12 +37,14 @@ impl TcpHost {
         rank: usize,
         peers: Vec<SocketAddr>,
     ) -> (Self, Sender, crossbeam_channel::Sender<Vec<u8>>, Receiver) {
+        let shutdown_signal = Arc::new(AtomicBool::new(false));
+
         let (send_sink, send_src): (Sender, _) = crossbeam_channel::unbounded();
-        let send_thread = Self::start_serial_sender(peers.clone(), send_src);
+        let send_thread =
+            Self::start_serial_sender(peers.clone(), send_src, Arc::clone(&shutdown_signal));
 
         let (recv_sink, recv_src) = crossbeam_channel::unbounded();
         let wg = Arc::new((Mutex::new(0), Condvar::new()));
-        let shutdown_signal = Arc::new(AtomicBool::new(false));
         let listen_thread = Self::start_listener(
             peers[rank],
             recv_sink.clone(),
@@ -86,6 +88,7 @@ impl TcpHost {
     fn start_serial_sender(
         peers: Vec<SocketAddr>,
         send_src: crossbeam_channel::Receiver<(usize, Vec<u8>)>,
+        shutdown_signal: Arc<AtomicBool>,
     ) -> thread::JoinHandle<()> {
         thread::spawn(move || {
             let mut table: HashMap<usize, TcpStream> = HashMap::new();
@@ -116,9 +119,15 @@ impl TcpHost {
                                 }
                             )
                 }) {
-                     error!("Failed to send message to {}: {}", peers[rank], e);
-                     info!("Reconnecting to {}", peers[rank]);
-                    *cxn = Self::connect_with_retry(peers[rank], RETRY_WAIT_MS, RETRY_MAX_WAIT_MS).unwrap();
+                    error!("Failed to send message to {}: {}", peers[rank], e);
+                    if shutdown_signal.load(Ordering::SeqCst) {
+                        // Note: if there are a lot of outgoing messages and all peers are down, then this could take awhile
+                        info!("Shutdown signal received, will drop this message");
+                        break;
+                    } else {
+                        info!("Reconnecting to {}", peers[rank]);
+                        *cxn = Self::connect_with_retry(peers[rank], RETRY_WAIT_MS, RETRY_MAX_WAIT_MS).unwrap();
+                    }
                 };
             }
 
