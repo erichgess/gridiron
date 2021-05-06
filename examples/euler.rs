@@ -275,7 +275,7 @@ fn main() {
     drop(send);
     drop(client);
     drop(receive);
-    tcp_host.join();
+    tcp_host.shutdown();
 }
 
 fn init_logging() {

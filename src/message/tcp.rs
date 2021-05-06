@@ -58,9 +58,7 @@ impl TcpHost {
         )
     }
 
-    // TODO: Change this to shutdown, it will send the shutdown signal to all threads and then
-    // wait until every listener and sender thread has stopped and return to the user
-    pub fn join(mut self) {
+    pub fn shutdown(mut self) {
         SHUTTING_DOWN.store(true, std::sync::atomic::Ordering::SeqCst);
         info!("Shutting down TCP host...");
 
