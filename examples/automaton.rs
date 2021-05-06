@@ -72,7 +72,7 @@ impl Communicator for FakeComm {
         vec![]
     }
 
-    fn requeue_recv(&self, bytes: Vec<u8>) {
+    fn requeue_recv(&self, _bytes: Vec<u8>) {
         todo!()
     }
 }

@@ -28,7 +28,7 @@ type Sender = crossbeam_channel::Sender<(usize, Vec<u8>)>;
 type Receiver = crossbeam_channel::Receiver<Vec<u8>>;
 
 pub struct TcpHost {
-    listen_thread: Option<thread::JoinHandle<()>>,
+    _listen_thread: Option<thread::JoinHandle<()>>,
     send_thread: Option<thread::JoinHandle<()>>,
     receiver_wg: Arc<(Mutex<usize>, Condvar)>,
 }
@@ -49,7 +49,7 @@ impl TcpHost {
         (
             TcpHost {
                 send_thread: Some(send_thread),
-                listen_thread: Some(listen_thread),
+                _listen_thread: Some(listen_thread),
                 receiver_wg: Arc::clone(&wg),
             },
             send_sink,

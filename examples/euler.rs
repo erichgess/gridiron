@@ -157,7 +157,7 @@ fn main() {
         .collect();
 
     // TODO: Connect to peer which will have the second half of the grid
-    let (mut tcp_host, send, recv_sink, receive) = TcpHost::new(opts.rank, peers.clone());
+    let (tcp_host, send, recv_sink, receive) = TcpHost::new(opts.rank, peers.clone());
     let client = TcpCommunicator::new(
         opts.rank,
         peers,
