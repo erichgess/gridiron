@@ -1,4 +1,12 @@
-use std::{collections::HashMap, io, sync::{atomic::{AtomicBool, Ordering}}, thread};
+use std::{
+    collections::HashMap,
+    io,
+    sync::{
+        atomic::{AtomicBool, Ordering},
+        Arc, Condvar, Mutex,
+    },
+    thread,
+};
 use std::{io::prelude::*, thread::JoinHandle};
 use std::{
     net::{SocketAddr, TcpListener, TcpStream},
@@ -22,6 +30,7 @@ type Receiver = crossbeam_channel::Receiver<Vec<u8>>;
 pub struct TcpHost {
     listen_thread: Option<thread::JoinHandle<()>>,
     send_thread: Option<thread::JoinHandle<()>>,
+    receiver_wg: Arc<(Mutex<usize>, Condvar)>,
 }
 
 impl TcpHost {
@@ -32,13 +41,16 @@ impl TcpHost {
         let (send_sink, send_src): (Sender, _) = crossbeam_channel::unbounded();
         let send_thread = Self::start_serial_sender(peers.clone(), send_src);
 
+        let wg = Arc::new((Mutex::new(0), Condvar::new()));
+
         let (recv_sink, recv_src) = crossbeam_channel::unbounded();
-        let listen_thread = Self::start_listener(peers[rank], recv_sink.clone());
+        let listen_thread = Self::start_listener(peers[rank], recv_sink.clone(), Arc::clone(&wg));
 
         (
             TcpHost {
                 send_thread: Some(send_thread),
                 listen_thread: Some(listen_thread),
+                receiver_wg: Arc::clone(&wg),
             },
             send_sink,
             recv_sink,
@@ -55,6 +67,15 @@ impl TcpHost {
         info!("Waiting for Sender to shutdown...");
         self.send_thread.take().unwrap().join().unwrap();
         info!("Sender shutdown");
+
+        info!("Waiting for Receivers to shutdown...");
+        let (lock, cvar) = &*self.receiver_wg;
+        let mut receivers = lock.lock().unwrap();
+        while *receivers > 0 {
+            receivers = cvar.wait(receivers).unwrap();
+        }
+        info!("Receivers shutdown");
+
         info!("TCP host shutdown");
     }
 
@@ -104,16 +125,24 @@ impl TcpHost {
     fn start_listener(
         addr: SocketAddr,
         recv_sink: crossbeam_channel::Sender<Vec<u8>>,
+        receiver_wg: Arc<(Mutex<usize>, Condvar)>,
     ) -> thread::JoinHandle<()> {
         let listener = TcpListener::bind(addr).unwrap();
         thread::spawn(move || {
             info!("Listening to: {}", addr);
             loop {
-                let (stream, remote) = listener.accept().unwrap(); 
-                
-                // TODO: Add a conditional which will exit out of this thread and not create the connection
-                // TODO: when the process is exiting
-                Self::handle_connection(stream, remote, recv_sink.clone());
+                let (stream, remote) = listener.accept().unwrap();
+
+                if SHUTTING_DOWN.load(Ordering::SeqCst) {
+                    info!("Received connection attempt but this service is shutting down.  Rejecting and stopping the Listener...");
+                    break;
+                }
+
+                {
+                    let (receivers_lock, _) = &*receiver_wg;
+                    *receivers_lock.lock().unwrap() += 1;
+                }
+                Self::handle_connection(stream, remote, recv_sink.clone(), Arc::clone(&receiver_wg));
             }
         })
     }
@@ -122,6 +151,7 @@ impl TcpHost {
         mut stream: TcpStream,
         remote: SocketAddr,
         recv_sink: crossbeam_channel::Sender<Vec<u8>>,
+        receiver_wg: Arc<(Mutex<usize>, Condvar)>,
     ) -> JoinHandle<Result<(), io::Error>> {
         info!("Receiving connection from {}", remote);
         stream.set_read_timeout(Some(CXN_R_TIMEOUT_MS)).unwrap();
@@ -134,24 +164,23 @@ impl TcpHost {
 
         thread::spawn(move || {
             let status = loop {
-            // TODO: Stop thread if shutdown event is received
-            let status = util::read_usize(&mut stream)
-                .and_then(|size| util::read_bytes_vec(&mut stream, size))
-                .and_then(|bytes| {
-                    let num_bytes = bytes.len();
-                    recv_sink
-                        .send(bytes)
-                        .map(|()| num_bytes)
-                        .map_err(|msg| io::Error::new(io::ErrorKind::Other, msg))
-                })
-                .and_then(|size| Self::write_ack(&mut stream, Ack::Accept(size)))
-                // TODO: if a reading error happens then send back a Failure message to the sender
-                .map_err(|e| {
-                    io::Error::new(
-                        e.kind(),
-                        format!("Connection from {} failed: {}", remote, e),
-                    )
-                });
+                let status = util::read_usize(&mut stream)
+                    .and_then(|size| util::read_bytes_vec(&mut stream, size))
+                    .and_then(|bytes| {
+                        let num_bytes = bytes.len();
+                        recv_sink
+                            .send(bytes)
+                            .map(|()| num_bytes)
+                            .map_err(|msg| io::Error::new(io::ErrorKind::Other, msg))
+                    })
+                    .and_then(|size| Self::write_ack(&mut stream, Ack::Accept(size)))
+                    // TODO: if a reading error happens then send back a Failure message to the sender
+                    .map_err(|e| {
+                        io::Error::new(
+                            e.kind(),
+                            format!("Connection from {} failed: {}", remote, e),
+                        )
+                    });
 
                 match status {
                     Ok(()) => (),
@@ -162,11 +191,19 @@ impl TcpHost {
                     break Ok(());
                 }
             };
+
             match &status {
                 Ok(()) => (),
                 Err(e) => error!("{}", e),
             }
-            info!("Closed receiver for {}", remote);
+
+            info!("Stopping receiver for {}...", remote);
+            let (lock, cvar) = &*receiver_wg;
+            let mut receivers = lock.lock().unwrap();
+            *receivers -= 1;
+            cvar.notify_all();
+            info!("Stopped receiver for {}", remote);
+
             status
         })
     }
