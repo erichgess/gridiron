@@ -264,7 +264,9 @@ fn main() {
         primitive,
     };
 
-    let file = std::fs::File::create(format!("state-rank-{}.cbor", opts.rank)).unwrap();
+    let result_file = format!("state-rank-{}.cbor", opts.rank);
+    info!("Writing results to {}", result_file);
+    let file = std::fs::File::create(result_file).unwrap();
     let mut buffer = std::io::BufWriter::new(file);
     ciborium::ser::into_writer(&state, &mut buffer).unwrap();
 

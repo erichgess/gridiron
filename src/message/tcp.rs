@@ -1,4 +1,4 @@
-use std::{collections::HashMap, io, thread};
+use std::{collections::HashMap, io, sync::{atomic::{AtomicBool, Ordering}}, thread};
 use std::{io::prelude::*, thread::JoinHandle};
 use std::{
     net::{SocketAddr, TcpListener, TcpStream},
@@ -13,6 +13,8 @@ const CXN_R_TIMEOUT_MS: Duration = Duration::from_millis(5000);
 const CXN_W_TIMEOUT_MS: Duration = Duration::from_millis(5000);
 const RETRY_WAIT_MS: Duration = Duration::from_millis(250);
 const RETRY_MAX_WAIT_MS: Duration = Duration::from_millis(5000);
+
+static SHUTTING_DOWN: AtomicBool = AtomicBool::new(false);
 
 type Sender = crossbeam_channel::Sender<(usize, Vec<u8>)>;
 type Receiver = crossbeam_channel::Receiver<Vec<u8>>;
@@ -46,9 +48,14 @@ impl TcpHost {
 
     // TODO: Change this to shutdown, it will send the shutdown signal to all threads and then
     // wait until every listener and sender thread has stopped and return to the user
-    pub fn join(&mut self) {
-        info!("Shutting down TCP layer");
-        self.send_thread.take().unwrap().join().unwrap()
+    pub fn join(mut self) {
+        SHUTTING_DOWN.store(true, std::sync::atomic::Ordering::SeqCst);
+        info!("Shutting down TCP host...");
+
+        info!("Waiting for Sender to shutdown...");
+        self.send_thread.take().unwrap().join().unwrap();
+        info!("Sender shutdown");
+        info!("TCP host shutdown");
     }
 
     fn start_serial_sender(
@@ -125,9 +132,10 @@ impl TcpHost {
             CXN_W_TIMEOUT_MS.as_millis()
         );
 
-        thread::spawn(move || loop {
+        thread::spawn(move || {
+            let status = loop {
             // TODO: Stop thread if shutdown event is received
-            util::read_usize(&mut stream)
+            let status = util::read_usize(&mut stream)
                 .and_then(|size| util::read_bytes_vec(&mut stream, size))
                 .and_then(|bytes| {
                     let num_bytes = bytes.len();
@@ -143,7 +151,23 @@ impl TcpHost {
                         e.kind(),
                         format!("Connection from {} failed: {}", remote, e),
                     )
-                })?
+                });
+
+                match status {
+                    Ok(()) => (),
+                    Err(e) => break Err(e),
+                }
+
+                if SHUTTING_DOWN.load(Ordering::SeqCst) {
+                    break Ok(());
+                }
+            };
+            match &status {
+                Ok(()) => (),
+                Err(e) => error!("{}", e),
+            }
+            info!("Closed receiver for {}", remote);
+            status
         })
     }
 
