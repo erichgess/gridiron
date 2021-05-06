@@ -1,3 +1,4 @@
+use core::num;
 use std::{collections::HashMap, net::SocketAddr};
 
 use clap::{AppSettings, Clap};
@@ -107,10 +108,12 @@ fn main() {
     info!("{:?}", opts);
 
     // start the host receiver
+    let num_blocks = opts.grid_resolution / opts.block_size;
     let peers: Vec<SocketAddr> = opts
         .peers
         .iter()
         .map(|peer| peer.parse::<SocketAddr>().unwrap())
+        .take(num_blocks)
         .collect();
 
     let mesh = Mesh {
@@ -131,7 +134,6 @@ fn main() {
     let edge_list = primitive_map.adjacency_list(1);
 
     let mut router: HashMap<Rectangle<i64>, usize> = HashMap::new();
-    let num_blocks = opts.grid_resolution / opts.block_size;
 
     let start = (num_blocks / peers.len() * opts.rank * opts.block_size) as i64;
     let end = (if opts.rank == peers.len() - 1 {
