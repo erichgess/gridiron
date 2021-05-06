@@ -147,8 +147,8 @@ fn main() {
         .filter(|prim| {
             let mut rank = (prim.local_rect().0.start / opts.block_size as i64)
                 / (num_blocks / peers.len()) as i64;
-            if rank == peers.len() as i64 {
-                rank -= 1;
+            if rank >= peers.len() as i64 {
+                rank = peers.len() as i64 - 1;
             }
             router.insert(prim.local_rect().clone(), rank as usize);
 
@@ -245,7 +245,8 @@ fn main() {
         let mzps = mesh.total_zones() as f64 / 1e6 / step_seconds;
 
         println!(
-            "[{}] t={:.3} Mzps={:.2} ({:.2}-thread)",
+            "[{}]: [{}] t={:.3} Mzps={:.2} ({:.2}-thread)",
+            opts.rank,
             frame,
             time,
             mzps,
