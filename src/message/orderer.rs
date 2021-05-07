@@ -7,7 +7,7 @@ use std::{
 };
 
 use crossbeam_channel::{Receiver, Sender};
-use log::error;
+use log::{debug, error};
 
 use super::tcp::Iteration;
 
@@ -37,7 +37,6 @@ impl Orderer {
             let c_iter = Arc::clone(&cur_iteration);
             let buffer = Arc::clone(&buffer);
 
-            // TODO: note that this is a tight loop and will not be good to have if there are a lot of messages from teh future
             std::thread::spawn(move || {
                 for env in chan {
                     let c_iter = c_iter.load(Ordering::SeqCst);
@@ -47,7 +46,10 @@ impl Orderer {
                     } else if env.iteration == c_iter {
                         aic.send(env.data).unwrap();
                     } else {
-                        //bic.send(env).unwrap();
+                        debug!(
+                            "Message received for a future iteration ({}), bufferering",
+                            env.iteration
+                        );
                         buffer
                             .lock()
                             .unwrap()
@@ -75,6 +77,11 @@ impl Orderer {
         let mut buffer = self.buffer.lock().unwrap();
         match buffer.get_mut(&self.cur_iteration.load(Ordering::SeqCst)) {
             Some(msgs) => {
+                debug!(
+                    "Flushing {} messages which were buffered for iteration: {}",
+                    msgs.len(),
+                    i
+                );
                 while let Some(msg) = msgs.pop() {
                     self.sink.send(msg).unwrap();
                 }
