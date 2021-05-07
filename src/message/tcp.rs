@@ -120,7 +120,12 @@ impl TcpHost {
                                     panic!("Bytes read by receiver did not match bytes sent by this node.  Sent {} bytes but receiver Acked {} bytes", msg_sz, bytes_read),
                                 }
                             )
-                }, |e| error!("Send failed: {}", e)
+                },
+                |e, d| {
+                    error!("Send failed: {}", e);
+                    info!("Retrying in {}ms", d.as_millis());
+                    thread::sleep(d);
+                },
             ) {
                     error!("Failed to send message to {}: {}", peers[rank], e);
                     if shutdown_signal.load(Ordering::SeqCst) {
@@ -252,7 +257,11 @@ impl TcpHost {
         with_retries
             .retry(
                 || TcpStream::connect(&addr),
-                |e| error!("Failed to connect to {}", e),
+                |e, d| {
+                    error!("Failed to connect to {}", e);
+                    info!("Retrying in {}ms", d.as_millis());
+                    thread::sleep(d);
+                },
             )
             .map(|r| r.unwrap())
             .map(|s| {

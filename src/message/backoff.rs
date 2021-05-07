@@ -1,7 +1,5 @@
 use std::{iter::Take, time::Duration};
 
-use log::info;
-
 /// Provides a mechanism for managing attempting to complete an operation
 /// and retrying the operation, which a backoff, if it fails.
 ///
@@ -51,35 +49,41 @@ impl Iterator for ExponentialBackoff {
 /// defined to be used on Iterators over [Duration] values, those values specfying
 /// the amount of time to wait between each retry.
 pub trait Retry {
-    /// Retry the given function until it returns `Ok`. On an error, execute
+    /// Retry the given function until it returns [Ok]. On an error, execute
     /// the `on_err` closure; this allows you to provide additional logic, like
     /// logging, on the error event which would otherwise be hidden by this
-    /// function.
+    /// function. If the [Iterator] finishes without a successful execution of
+    /// `f` then the last [Err] is returned to the user.
     ///
-    /// Uses [std::thread::sleep] for the delay; so, in its current design, do NOT
-    /// use this with asynchronous code (e.g. `tokio`).
-    fn retry<F, H, T, E>(&mut self, mut f: F, on_err: H) -> Option<Result<T, E>>
+    /// - `f` is the function which will be executed until an [Ok] is returned or the underlying
+    /// iterator is empty
+    /// - `sleep` is called after every attempt but the last and is used to handle
+    /// the delay before the next attempt.  In addition, the error from the last attempt
+    /// is provided so that you may log information.
+    fn retry<F, S, T, E>(&mut self, mut f: F, sleep: S) -> Option<Result<T, E>>
     where
         F: FnMut() -> Result<T, E>,
-        H: Fn(&E),
+        S: Fn(&E, Self::Item),
         Self: Iterator,
-        Self::Item: Into<Duration>,
     {
         let mut last_err = None;
-        for delay in self {
-            match f() {
-                Ok(t) => return Some(Ok(t)),
-                Err(e) => {
-                    on_err(&e);
-                    last_err = Some(Err(e));
-                    let delay: Duration = delay.into();
-                    info!("Retrying in {}ms...", delay.as_millis());
-                    std::thread::sleep(delay);
-                }
+        let mut iter = self.peekable();
+        loop {
+            let is_last = iter.peek().is_none();
+
+            match iter.next() {
+                Some(delay) => match f() {
+                    Ok(v) => return Some(Ok(v)),
+                    Err(e) => {
+                        if !is_last {
+                            sleep(&e, delay.into());
+                        }
+                        last_err = Some(Err(e));
+                    }
+                },
+                None => return last_err,
             }
         }
-
-        last_err
     }
 }
 
