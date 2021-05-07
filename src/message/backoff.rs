@@ -46,6 +46,10 @@ impl Iterator for ExponentialBackoff {
     }
 }
 
+/// The Retry trait provides a protocol for handling retrying a function with a
+/// [Result] type until either it succeeds or the [Iterator] completes.  This is
+/// defined to be used on Iterators over [Duration] values, those values specfying
+/// the amount of time to wait between each retry.
 pub trait Retry {
     /// Retry the given function until it returns `Ok`. On an error, execute
     /// the `on_err` closure; this allows you to provide additional logic, like
