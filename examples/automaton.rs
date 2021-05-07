@@ -2,7 +2,7 @@ use std::collections::HashMap;
 
 use gridiron::{
     automaton::{execute_par, Automaton, Status},
-    message::comm::Communicator,
+    message::{comm::Communicator, tcp::Iteration},
 };
 
 struct ConcatenateNearestNeighbors {
@@ -66,14 +66,10 @@ impl Communicator for FakeComm {
         0
     }
 
-    fn send(&self, _rank: usize, _message: Vec<u8>) {}
+    fn send(&self, _rank: usize, _i: Iteration, _message: Vec<u8>) {}
 
     fn recv(&self) -> Vec<u8> {
         vec![]
-    }
-
-    fn requeue_recv(&self, _bytes: Vec<u8>) {
-        todo!()
     }
 }
 

@@ -4,10 +4,10 @@ use clap::{AppSettings, Clap};
 use log::{info, LevelFilter};
 use simple_logger::SimpleLogger;
 
-use gridiron::automaton;
 use gridiron::hydro::euler2d::Primitive;
 use gridiron::rect_map::RectangleMap;
 use gridiron::solvers::euler2d_pcm::{Mesh, PatchUpdate};
+use gridiron::{automaton, message::orderer::Orderer};
 use gridiron::{index_space::range2d, message::tcp::TcpCommunicator};
 use gridiron::{meshing::GraphTopology, rect_map::Rectangle};
 use gridiron::{message::tcp::TcpHost, patch::Patch};
@@ -158,14 +158,9 @@ fn main() {
         .collect();
 
     // TODO: Connect to peer which will have the second half of the grid
-    let (tcp_host, send, recv_sink, receive) = TcpHost::new(opts.rank, peers.clone());
-    let client = TcpCommunicator::new(
-        opts.rank,
-        peers,
-        send.clone(),
-        recv_sink.clone(),
-        receive.clone(),
-    );
+    let (tcp_host, send, receive) = TcpHost::new(opts.rank, peers.clone());
+    let (mut orderer, messages) = Orderer::new(0, receive);
+    let client = TcpCommunicator::new(opts.rank, peers, send.clone(), messages.clone());
 
     println!("num blocks .... {}", primitive.len());
     println!("num threads ... {}", opts.num_threads);
@@ -215,6 +210,7 @@ fn main() {
     let num_frames = (opts.tfinal / dt).ceil() as u64;
     info!("Total Frames: {}", num_frames);
     for frame in 0..num_frames {
+        orderer.set_iteration(frame as usize);
         time = dt * frame as f64;
         let start = std::time::Instant::now();
 
@@ -272,10 +268,10 @@ fn main() {
     ciborium::ser::into_writer(&state, &mut buffer).unwrap();
 
     info!("Messages to send: {}", send.len());
-    info!("Messages to be processed: {}", receive.len());
+    info!("Messages to be processed: {}", messages.len());
     drop(send);
     drop(client);
-    drop(receive);
+    drop(messages);
     tcp_host.shutdown();
 }
 

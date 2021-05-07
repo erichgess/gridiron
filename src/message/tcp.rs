@@ -15,7 +15,7 @@ use std::{
 
 use log::{error, info};
 
-use crate::message::backoff::Retry;
+use crate::message::{backoff::Retry, orderer::Envelope};
 
 use super::{backoff::ExponentialBackoff, comm::Communicator, util};
 
@@ -24,8 +24,9 @@ const CXN_W_TIMEOUT_MS: Duration = Duration::from_millis(5000);
 const RETRY_WAIT_MS: Duration = Duration::from_millis(250);
 const RETRY_MAX_WAIT_MS: Duration = Duration::from_millis(5000);
 
-type Sender = crossbeam_channel::Sender<(usize, Vec<u8>)>;
-type Receiver = crossbeam_channel::Receiver<Vec<u8>>;
+pub type Iteration = usize;
+type Sender = crossbeam_channel::Sender<(usize, Iteration, Vec<u8>)>;
+type Receiver = crossbeam_channel::Receiver<Envelope>;
 
 pub struct TcpHost {
     shutting_down: Arc<AtomicBool>,
@@ -35,10 +36,7 @@ pub struct TcpHost {
 }
 
 impl TcpHost {
-    pub fn new(
-        rank: usize,
-        peers: Vec<SocketAddr>,
-    ) -> (Self, Sender, crossbeam_channel::Sender<Vec<u8>>, Receiver) {
+    pub fn new(rank: usize, peers: Vec<SocketAddr>) -> (Self, Sender, Receiver) {
         let shutdown_signal = Arc::new(AtomicBool::new(false));
 
         let (send_sink, send_src): (Sender, _) = crossbeam_channel::unbounded();
@@ -62,7 +60,6 @@ impl TcpHost {
                 receiver_wg: wg,
             },
             send_sink,
-            recv_sink,
             recv_src,
         )
     }
@@ -89,13 +86,13 @@ impl TcpHost {
 
     fn start_serial_sender(
         peers: Vec<SocketAddr>,
-        send_src: crossbeam_channel::Receiver<(usize, Vec<u8>)>,
+        send_src: crossbeam_channel::Receiver<(usize, Iteration, Vec<u8>)>,
         shutdown_signal: Arc<AtomicBool>,
     ) -> thread::JoinHandle<()> {
         thread::spawn(move || {
             let mut table: HashMap<usize, TcpStream> = HashMap::new();
 
-            for (rank, message) in &send_src {
+            for (rank, iteration, message) in &send_src {
                 if !table.contains_key(&rank) {
                     table.insert(
                         rank,
@@ -105,6 +102,11 @@ impl TcpHost {
                 }
                 let cxn = table.get_mut(&rank).unwrap();
 
+                let message = rmp_serde::to_vec(&Envelope {
+                    iteration,
+                    data: message,
+                })
+                .unwrap();
                 let msg_sz = message.len();
 
                 // TODO: This is getting better.  Next step is to use the connection state to determine whether to delay and resend or to reconnect
@@ -146,7 +148,7 @@ impl TcpHost {
 
     fn start_listener(
         addr: SocketAddr,
-        recv_sink: crossbeam_channel::Sender<Vec<u8>>,
+        recv_sink: crossbeam_channel::Sender<Envelope>,
         shutdown_signal: Arc<AtomicBool>,
         receiver_wg: Arc<(Mutex<usize>, Condvar)>,
     ) -> thread::JoinHandle<()> {
@@ -179,7 +181,7 @@ impl TcpHost {
     fn handle_connection(
         mut stream: TcpStream,
         remote: SocketAddr,
-        recv_sink: crossbeam_channel::Sender<Vec<u8>>,
+        recv_sink: crossbeam_channel::Sender<Envelope>,
         shutdown_signal: Arc<AtomicBool>,
         receiver_wg: Arc<(Mutex<usize>, Condvar)>,
     ) -> JoinHandle<Result<(), io::Error>> {
@@ -198,10 +200,14 @@ impl TcpHost {
                     .and_then(|size| util::read_bytes_vec(&mut stream, size))
                     .and_then(|bytes| {
                         let num_bytes = bytes.len();
-                        recv_sink
-                            .send(bytes)
-                            .map(|()| num_bytes)
-                            .map_err(|msg| io::Error::new(io::ErrorKind::Other, msg))
+                        rmp_serde::from_slice::<Envelope>(&bytes)
+                            .map_err(|msg| io::Error::new(io::ErrorKind::InvalidData, msg))
+                            .and_then(|envelope| {
+                                recv_sink
+                                    .send(envelope)
+                                    .map(|()| num_bytes)
+                                    .map_err(|msg| io::Error::new(io::ErrorKind::Other, msg))
+                            })
                     })
                     .and_then(|size| Self::write_ack(&mut stream, Ack::Accept(size)))
                     // TODO: if a reading error happens then send back a Failure message to the sender
@@ -291,8 +297,7 @@ enum Ack {
 pub struct TcpCommunicator {
     rank: usize,
     num_peers: usize,
-    send_sink: Option<crossbeam_channel::Sender<(usize, Vec<u8>)>>,
-    recv_sink: Option<crossbeam_channel::Sender<Vec<u8>>>,
+    send_sink: Option<crossbeam_channel::Sender<(usize, Iteration, Vec<u8>)>>,
     recv_src: Option<crossbeam_channel::Receiver<Vec<u8>>>,
 }
 
@@ -300,8 +305,7 @@ impl TcpCommunicator {
     pub fn new(
         rank: usize,
         peers: Vec<SocketAddr>,
-        send_sink: crossbeam_channel::Sender<(usize, Vec<u8>)>,
-        recv_sink: crossbeam_channel::Sender<Vec<u8>>,
+        send_sink: crossbeam_channel::Sender<(usize, Iteration, Vec<u8>)>,
         recv_src: crossbeam_channel::Receiver<Vec<u8>>,
     ) -> Self {
         let num_peers = peers.len();
@@ -309,7 +313,6 @@ impl TcpCommunicator {
             rank,
             num_peers,
             send_sink: Some(send_sink),
-            recv_sink: Some(recv_sink),
             recv_src: Some(recv_src),
         }
     }
@@ -324,20 +327,16 @@ impl Communicator for TcpCommunicator {
         self.num_peers
     }
 
-    fn send(&self, rank: usize, message: Vec<u8>) {
+    fn send(&self, rank: usize, iteration: Iteration, message: Vec<u8>) {
         self.send_sink
             .as_ref()
             .unwrap()
-            .send((rank, message))
+            .send((rank, iteration, message))
             .unwrap()
     }
 
     fn recv(&self) -> Vec<u8> {
         self.recv_src.as_ref().unwrap().recv().unwrap()
-    }
-
-    fn requeue_recv(&self, bytes: Vec<u8>) {
-        self.recv_sink.as_ref().unwrap().send(bytes).unwrap();
     }
 }
 

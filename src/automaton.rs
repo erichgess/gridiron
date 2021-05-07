@@ -251,7 +251,7 @@ fn coordinate<'a, I, A, K, V, S, C>(
             } else {
                 num_sent += 1;
                 match serialize_msg(dest, client.rank(), iteration, &data) {
-                    Ok(bytes) => client.send(dest_rank, bytes),
+                    Ok(bytes) => client.send(dest_rank, iteration, bytes),
                     Err(err) => panic!("Failed to serialize message: {}", err),
                 }
             }
@@ -279,17 +279,6 @@ fn coordinate<'a, I, A, K, V, S, C>(
         let bytes = client.recv();
         let (dest, src_rank, msg_iteration, data) =
             deserialize_msg(&bytes).expect("Failed to deserialize incoming message");
-
-        if msg_iteration > iteration {
-            let bytes = serialize_msg(dest, src_rank, msg_iteration, &data).unwrap();
-            client.requeue_recv(bytes);
-            continue;
-        } else if msg_iteration < iteration {
-            panic!(
-                "Received message from a pervious iteration: {}",
-                msg_iteration
-            );
-        }
 
         *num_received.entry((src_rank, msg_iteration)).or_insert(0) += 1;
 
