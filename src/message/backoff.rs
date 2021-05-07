@@ -47,13 +47,6 @@ impl Iterator for ExponentialBackoff {
 }
 
 pub trait Retry {
-    fn retry<F, H, T, E>(&mut self, f: F, on_err: H) -> Option<Result<T, E>>
-    where
-        F: FnMut() -> Result<T, E>,
-        H: Fn(&E);
-}
-
-impl Retry for ExponentialBackoff {
     /// Retry the given function until it returns `Ok`. On an error, execute
     /// the `on_err` closure; this allows you to provide additional logic, like
     /// logging, on the error event which would otherwise be hidden by this
@@ -65,6 +58,8 @@ impl Retry for ExponentialBackoff {
     where
         F: FnMut() -> Result<T, E>,
         H: Fn(&E),
+        Self: Iterator,
+        Self::Item: Into<Duration>,
     {
         let mut last_err = None;
         for delay in self {
@@ -73,6 +68,7 @@ impl Retry for ExponentialBackoff {
                 Err(e) => {
                     on_err(&e);
                     last_err = Some(Err(e));
+                    let delay: Duration = delay.into();
                     info!("Retrying in {}ms...", delay.as_millis());
                     std::thread::sleep(delay);
                 }
@@ -83,32 +79,6 @@ impl Retry for ExponentialBackoff {
     }
 }
 
-impl Retry for Take<ExponentialBackoff> {
-    /// Retry the given function until it returns `Ok`. On an error, execute
-    /// the `on_err` closure; this allows you to provide additional logic, like
-    /// logging, on the error event which would otherwise be hidden by this
-    /// function.
-    ///
-    /// Uses [std::thread::sleep] for the delay; so, in its current design, do NOT
-    /// use this with asynchronous code (e.g. `tokio`).
-    fn retry<F, H, T, E>(&mut self, mut f: F, on_err: H) -> Option<Result<T, E>>
-    where
-        F: FnMut() -> Result<T, E>,
-        H: Fn(&E),
-    {
-        let mut last_err = None;
-        for delay in self {
-            match f() {
-                Ok(t) => return Some(Ok(t)),
-                Err(e) => {
-                    on_err(&e);
-                    last_err = Some(Err(e));
-                    info!("Retrying in {}ms...", delay.as_millis());
-                    std::thread::sleep(delay);
-                }
-            }
-        }
+impl Retry for ExponentialBackoff {}
 
-        last_err
-    }
-}
+impl Retry for Take<ExponentialBackoff> {}
