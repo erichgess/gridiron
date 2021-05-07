@@ -17,7 +17,7 @@ use log::{error, info};
 
 use crate::message::{backoff::Retry, orderer::Envelope};
 
-use super::{backoff::ExponentialBackoff, comm::Communicator, util};
+use super::{backoff::ExponentialBackoff, comm::Communicator, orderer::Orderer, util};
 
 const CXN_R_TIMEOUT_MS: Duration = Duration::from_millis(5000);
 const CXN_W_TIMEOUT_MS: Duration = Duration::from_millis(5000);
@@ -26,7 +26,7 @@ const RETRY_MAX_WAIT_MS: Duration = Duration::from_millis(5000);
 
 pub type Iteration = usize;
 type Sender = crossbeam_channel::Sender<(usize, Iteration, Vec<u8>)>;
-type Receiver = crossbeam_channel::Receiver<Envelope>;
+type Receiver = crossbeam_channel::Receiver<Vec<u8>>;
 
 pub struct TcpHost {
     shutting_down: Arc<AtomicBool>,
@@ -36,7 +36,7 @@ pub struct TcpHost {
 }
 
 impl TcpHost {
-    pub fn new(rank: usize, peers: Vec<SocketAddr>) -> (Self, Sender, Receiver) {
+    pub fn new(rank: usize, peers: Vec<SocketAddr>) -> (Self, Orderer, Sender, Receiver) {
         let shutdown_signal = Arc::new(AtomicBool::new(false));
 
         let (send_sink, send_src): (Sender, _) = crossbeam_channel::unbounded();
@@ -52,6 +52,7 @@ impl TcpHost {
             Arc::clone(&wg),
         );
 
+        let (orderer, recv_src) = Orderer::new(0, recv_src);
         (
             TcpHost {
                 shutting_down: shutdown_signal,
@@ -59,6 +60,7 @@ impl TcpHost {
                 _listen_thread: Some(listen_thread),
                 receiver_wg: wg,
             },
+            orderer,
             send_sink,
             recv_src,
         )
