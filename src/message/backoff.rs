@@ -1,4 +1,4 @@
-use std::time::Duration;
+use std::{iter::Take, time::Duration};
 
 use log::info;
 
@@ -46,7 +46,11 @@ impl Iterator for ExponentialBackoff {
     }
 }
 
-impl ExponentialBackoff {
+/// The Retry trait provides a protocol for handling retrying a function with a
+/// [Result] type until either it succeeds or the [Iterator] completes.  This is
+/// defined to be used on Iterators over [Duration] values, those values specfying
+/// the amount of time to wait between each retry.
+pub trait Retry {
     /// Retry the given function until it returns `Ok`. On an error, execute
     /// the `on_err` closure; this allows you to provide additional logic, like
     /// logging, on the error event which would otherwise be hidden by this
@@ -54,72 +58,31 @@ impl ExponentialBackoff {
     ///
     /// Uses [std::thread::sleep] for the delay; so, in its current design, do NOT
     /// use this with asynchronous code (e.g. `tokio`).
-    pub fn retry_forever<F, H, T, E>(&mut self, mut f: F, mut on_err: H) -> Option<T>
+    fn retry<F, H, T, E>(&mut self, mut f: F, on_err: H) -> Option<Result<T, E>>
     where
         F: FnMut() -> Result<T, E>,
-        H: FnMut(E),
+        H: Fn(&E),
+        Self: Iterator,
+        Self::Item: Into<Duration>,
     {
+        let mut last_err = None;
         for delay in self {
             match f() {
-                Ok(t) => return Some(t),
+                Ok(t) => return Some(Ok(t)),
                 Err(e) => {
-                    on_err(e);
+                    on_err(&e);
+                    last_err = Some(Err(e));
+                    let delay: Duration = delay.into();
                     info!("Retrying in {}ms...", delay.as_millis());
                     std::thread::sleep(delay);
                 }
             }
         }
 
-        None
-    }
-
-    /// Retry the given function until it returns `Ok` or `max_attempts` have been made.
-    ///
-    /// Uses [std::thread::sleep] for the delay; so, in its current design, do NOT
-    /// use this with asynchronous code (e.g. `tokio`).
-    pub fn retry_upto<F, T, E>(&mut self, max_attempts: usize, mut f: F) -> Result<T, E>
-    where
-        F: FnMut() -> Result<T, E>,
-    {
-        let mut enumerate = self.enumerate();
-        loop {
-            let (i, delay) = enumerate.next().unwrap();
-            match f() {
-                Ok(t) => return Ok(t),
-                Err(e) => {
-                    if i >= max_attempts {
-                        return Err(e);
-                    }
-                    std::thread::sleep(delay)
-                }
-            }
-        }
-    }
-
-    /// Retry the given function until it returns `Ok` or the `do_retry` predicate
-    /// returns `false`.
-    ///
-    /// Uses [std::thread::sleep] for the delay; so, in its current design, do NOT
-    /// use this with asynchronous code (e.g. `tokio`).
-    pub fn retry_while<F, P, T, E>(&mut self, do_retry: P, f: F) -> Result<T, E>
-    where
-        F: Fn() -> Result<T, E>,
-        P: Fn(usize, E) -> bool,
-        E: Copy,
-    {
-        let mut enumerate = self.enumerate();
-        loop {
-            let (i, delay) = enumerate.next().unwrap();
-            match f() {
-                Ok(t) => return Ok(t),
-                Err(e) => {
-                    if do_retry(i, e) {
-                        std::thread::sleep(delay);
-                    } else {
-                        return Err(e);
-                    }
-                }
-            }
-        }
+        last_err
     }
 }
+
+impl Retry for ExponentialBackoff {}
+
+impl Retry for Take<ExponentialBackoff> {}
