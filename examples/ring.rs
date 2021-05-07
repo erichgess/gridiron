@@ -14,8 +14,8 @@ fn main() {
     let comms: Vec<_> = ranks
         .clone()
         .map(|rank| {
-            let (mut _tcp_host, send, recv_sink, receive) = TcpHost::new(rank, peers.clone());
-            TcpCommunicator::new(rank, peers.clone(), send, recv_sink, receive)
+            let (mut _tcp_host, _, send, receive) = TcpHost::new(rank, peers.clone());
+            TcpCommunicator::new(rank, peers.clone(), send, receive)
         })
         .collect();
     let procs: Vec<_> = comms
@@ -24,7 +24,7 @@ fn main() {
             thread::spawn(move || {
                 let dest = (comm.rank() + 1) % comm.size();
                 let message = format!("hello from {}", comm.rank());
-                comm.send(dest, message.into_bytes());
+                comm.send(dest, 1, message.into_bytes());
 
                 let received = comm.recv();
                 println! {
