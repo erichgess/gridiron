@@ -15,6 +15,8 @@ use std::{
 
 use log::{error, info};
 
+use crate::message::backoff::Retry;
+
 use super::{backoff::ExponentialBackoff, comm::Communicator, util};
 
 const CXN_R_TIMEOUT_MS: Duration = Duration::from_millis(5000);
@@ -106,7 +108,7 @@ impl TcpHost {
                 let msg_sz = message.len();
 
                 // TODO: This is getting better.  Next step is to use the connection state to determine whether to delay and resend or to reconnect
-                while let Err(e) = ExponentialBackoff::new(RETRY_WAIT_MS, RETRY_MAX_WAIT_MS, 2).retry_upto(3, || {
+                while let Some(Err(e)) = ExponentialBackoff::new(RETRY_WAIT_MS, RETRY_MAX_WAIT_MS, 2).take(3).retry(|| {
                         cxn
                             .write_all(&msg_sz.to_le_bytes())
                             .and_then(|()| cxn.write_all(&message))
@@ -118,7 +120,8 @@ impl TcpHost {
                                     panic!("Bytes read by receiver did not match bytes sent by this node.  Sent {} bytes but receiver Acked {} bytes", msg_sz, bytes_read),
                                 }
                             )
-                }) {
+                }, |e| error!("Send failed: {}", e)
+            ) {
                     error!("Failed to send message to {}: {}", peers[rank], e);
                     if shutdown_signal.load(Ordering::SeqCst) {
                         // Note: if there are a lot of outgoing messages and all peers are down, then this could take awhile
@@ -247,10 +250,11 @@ impl TcpHost {
         let mut with_retries = ExponentialBackoff::new(initial_wait, max_wait, 2);
 
         with_retries
-            .retry_forever(
+            .retry(
                 || TcpStream::connect(&addr),
-                |e| error!("Failed to connect: {}", e),
+                |e| error!("Failed to connect to {}", e),
             )
+            .map(|r| r.unwrap())
             .map(|s| {
                 s.set_read_timeout(Some(CXN_R_TIMEOUT_MS)).unwrap();
                 s.set_write_timeout(Some(CXN_W_TIMEOUT_MS)).unwrap();
