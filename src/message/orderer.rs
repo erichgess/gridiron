@@ -75,10 +75,9 @@ impl Orderer {
         let mut buffer = self.buffer.lock().unwrap();
         match buffer.get_mut(&self.cur_iteration.load(Ordering::SeqCst)) {
             Some(msgs) => {
-                for msg in msgs.iter() {
-                    self.sink.send(msg.clone()).unwrap();
+                while let Some(msg) = msgs.pop() {
+                    self.sink.send(msg).unwrap();
                 }
-                *msgs = vec![];
             }
             None => (),
         }
