@@ -88,8 +88,9 @@ impl Orderer {
         )
     }
 
-    pub fn set_iteration(&mut self, i: usize) {
-        self.cur_iteration.store(i, Ordering::SeqCst);
+    pub fn increment(&mut self) {
+        self.cur_iteration.fetch_add(1, Ordering::SeqCst);
+        let i = self.cur_iteration.load(Ordering::SeqCst);
 
         let mut buffer = self.buffer.lock().unwrap();
         match buffer.get_mut(&self.cur_iteration.load(Ordering::SeqCst)) {

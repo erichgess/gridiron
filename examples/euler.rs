@@ -209,7 +209,7 @@ fn main() {
     let num_frames = (opts.tfinal / dt).ceil() as u64;
     info!("Total Frames: {}", num_frames);
     for frame in 0..num_frames {
-        orderer.set_iteration(frame as usize);
+        orderer.increment();
         time = dt * frame as f64;
         let start = std::time::Instant::now();
 
