@@ -24,7 +24,7 @@ const CXN_W_TIMEOUT_MS: Duration = Duration::from_millis(5000);
 const RETRY_WAIT_MS: Duration = Duration::from_millis(250);
 const RETRY_MAX_WAIT_MS: Duration = Duration::from_millis(5000);
 
-pub type Iteration = usize;
+pub(super) type Iteration = usize;
 type Sender = crossbeam_channel::Sender<(usize, Iteration, Vec<u8>)>;
 type Receiver = crossbeam_channel::Receiver<Vec<u8>>;
 

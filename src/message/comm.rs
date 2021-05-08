@@ -1,4 +1,4 @@
-use super::{tcp::Iteration, util};
+use super::util;
 
 /// Interface for a group of processes that can exchange messages over a
 /// network. The underlying transport can in principle be TCP, UDP, or a
@@ -72,7 +72,7 @@ pub trait Communicator {
     /// Implements an all-reduce (symmetric fold) operation over a commutative
     /// binary operator.
     ///
-    fn all_reduce<F>(&self, iteration: Iteration, f: F, value: Vec<u8>) -> Vec<u8>
+    fn all_reduce<F>(&self, f: F, value: Vec<u8>) -> Vec<u8>
     where
         F: Fn(Vec<u8>, Vec<u8>) -> Vec<u8>,
     {

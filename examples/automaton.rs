@@ -2,7 +2,7 @@ use std::collections::HashMap;
 
 use gridiron::{
     automaton::{execute_par, Automaton, Status},
-    message::{comm::Communicator, tcp::Iteration},
+    message::comm::Communicator,
 };
 
 struct ConcatenateNearestNeighbors {
