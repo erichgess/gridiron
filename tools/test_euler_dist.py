@@ -13,11 +13,13 @@ def parse_args():
     parser.add_argument('-p', '--peers', default="1", required=True)
     parser.add_argument('-f', '--folds', default="1")
     parser.add_argument('-t', '--threads', default="1")
+    parser.add_argument('--gui', default=False, action='store_true')
     args = parser.parse_args()
     return {
         'peers': int(args.peers),
         'folds': int(args.folds),
         'threads': int(args.threads),
+        'gui': args.gui,
     }
 
 
@@ -81,6 +83,7 @@ for c in cmds:
 
 [o.wait() for o in out]
 
-results = get_result_files()
-stitch_results(results)
-show_chart()
+if args['gui']:
+    results = get_result_files()
+    stitch_results(results)
+    show_chart()
