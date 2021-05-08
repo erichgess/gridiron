@@ -36,7 +36,15 @@ pub struct TcpHost {
 }
 
 impl TcpHost {
-    pub fn new(rank: usize, peers: Vec<SocketAddr>) -> (Self, Orderer, Sender, Receiver) {
+    pub fn new(
+        rank: usize,
+        peers: Vec<SocketAddr>,
+    ) -> (
+        Self,
+        Orderer,
+        crossbeam_channel::Sender<(usize, Vec<u8>)>,
+        Receiver,
+    ) {
         let shutdown_signal = Arc::new(AtomicBool::new(false));
 
         let (send_sink, send_src): (Sender, _) = crossbeam_channel::unbounded();
@@ -52,7 +60,7 @@ impl TcpHost {
             Arc::clone(&wg),
         );
 
-        let (orderer, recv_src) = Orderer::new(0, recv_src);
+        let (orderer, recv_src, outbound_sink) = Orderer::new(0, recv_src, send_sink.clone());
         (
             TcpHost {
                 shutting_down: shutdown_signal,
@@ -61,7 +69,7 @@ impl TcpHost {
                 receiver_wg: wg,
             },
             orderer,
-            send_sink,
+            outbound_sink,
             recv_src,
         )
     }
@@ -299,7 +307,7 @@ enum Ack {
 pub struct TcpCommunicator {
     rank: usize,
     num_peers: usize,
-    send_sink: Option<crossbeam_channel::Sender<(usize, Iteration, Vec<u8>)>>,
+    send_sink: Option<crossbeam_channel::Sender<(usize, Vec<u8>)>>,
     recv_src: Option<crossbeam_channel::Receiver<Vec<u8>>>,
 }
 
@@ -307,7 +315,7 @@ impl TcpCommunicator {
     pub fn new(
         rank: usize,
         peers: Vec<SocketAddr>,
-        send_sink: crossbeam_channel::Sender<(usize, Iteration, Vec<u8>)>,
+        send_sink: crossbeam_channel::Sender<(usize, Vec<u8>)>,
         recv_src: crossbeam_channel::Receiver<Vec<u8>>,
     ) -> Self {
         let num_peers = peers.len();
@@ -329,11 +337,11 @@ impl Communicator for TcpCommunicator {
         self.num_peers
     }
 
-    fn send(&self, rank: usize, iteration: Iteration, message: Vec<u8>) {
+    fn send(&self, rank: usize, message: Vec<u8>) {
         self.send_sink
             .as_ref()
             .unwrap()
-            .send((rank, iteration, message))
+            .send((rank, message))
             .unwrap()
     }
 

@@ -66,7 +66,7 @@ impl Communicator for FakeComm {
         0
     }
 
-    fn send(&self, _rank: usize, _i: Iteration, _message: Vec<u8>) {}
+    fn send(&self, _rank: usize, _message: Vec<u8>) {}
 
     fn recv(&self) -> Vec<u8> {
         vec![]

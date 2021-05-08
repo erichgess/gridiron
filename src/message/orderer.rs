@@ -27,7 +27,11 @@ pub struct Orderer {
 }
 
 impl Orderer {
-    pub fn new(initial_iteration: usize, chan: Receiver<Envelope>) -> (Orderer, Receiver<Vec<u8>>) {
+    pub fn new(
+        initial_iteration: usize,
+        inbound_recv: Receiver<Envelope>,
+        tcp_out_sdr: Sender<(usize, Iteration, Vec<u8>)>,
+    ) -> (Orderer, Receiver<Vec<u8>>, Sender<(usize, Vec<u8>)>) {
         let cur_iteration = Arc::new(AtomicUsize::new(initial_iteration));
 
         let buffer = Arc::new(Mutex::new(HashMap::new()));
@@ -38,7 +42,7 @@ impl Orderer {
             let buffer = Arc::clone(&buffer);
 
             std::thread::spawn(move || {
-                for env in chan {
+                for env in inbound_recv {
                     let c_iter = c_iter.load(Ordering::SeqCst);
                     if env.iteration < c_iter {
                         error!("Received message with iteration number that precedes current iteration number");
@@ -61,6 +65,18 @@ impl Orderer {
             });
         }
 
+        let (outbound_sink, outbound_src) = crossbeam_channel::unbounded();
+        {
+            let tcp_out_sink = tcp_out_sdr.clone();
+            let cur_iteration = Arc::clone(&cur_iteration);
+            std::thread::spawn(move || {
+                for (dest, data) in outbound_src {
+                    let iteration = cur_iteration.load(Ordering::SeqCst);
+                    tcp_out_sink.send((dest, iteration, data)).unwrap();
+                }
+            });
+        }
+
         (
             Orderer {
                 cur_iteration,
@@ -68,6 +84,7 @@ impl Orderer {
                 sink: arrival_in,
             },
             arrival_out,
+            outbound_sink,
         )
     }
 

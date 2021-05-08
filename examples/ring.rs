@@ -24,7 +24,7 @@ fn main() {
             thread::spawn(move || {
                 let dest = (comm.rank() + 1) % comm.size();
                 let message = format!("hello from {}", comm.rank());
-                comm.send(dest, 1, message.into_bytes());
+                comm.send(dest, message.into_bytes());
 
                 let received = comm.recv();
                 println! {

@@ -251,7 +251,7 @@ fn coordinate<'a, I, A, K, V, S, C>(
             } else {
                 num_sent += 1;
                 match serialize_msg(dest, client.rank(), iteration, &data) {
-                    Ok(bytes) => client.send(dest_rank, iteration, bytes),
+                    Ok(bytes) => client.send(dest_rank, bytes),
                     Err(err) => panic!("Failed to serialize message: {}", err),
                 }
             }
