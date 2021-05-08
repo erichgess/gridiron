@@ -23,21 +23,21 @@ pub struct Envelope {
 pub struct Orderer {
     cur_iteration: Arc<AtomicUsize>,
     buffer: Arc<Mutex<HashMap<Iteration, Vec<Vec<u8>>>>>,
-    sink: Sender<Vec<u8>>,
+    ordered_inbound_sink: Sender<Vec<u8>>,
 }
 
 impl Orderer {
     pub fn new(
         initial_iteration: usize,
         inbound_recv: Receiver<Envelope>,
-        tcp_out_sdr: Sender<(usize, Iteration, Vec<u8>)>,
+        tcp_out_sink: Sender<(usize, Iteration, Vec<u8>)>,
     ) -> (Orderer, Receiver<Vec<u8>>, Sender<(usize, Vec<u8>)>) {
         let cur_iteration = Arc::new(AtomicUsize::new(initial_iteration));
 
         let buffer = Arc::new(Mutex::new(HashMap::new()));
-        let (arrival_in, arrival_out) = crossbeam_channel::unbounded();
+        let (ordered_inbound_sink, ordered_inbound_src) = crossbeam_channel::unbounded();
         {
-            let aic = arrival_in.clone();
+            let aic = ordered_inbound_sink.clone();
             let c_iter = Arc::clone(&cur_iteration);
             let buffer = Arc::clone(&buffer);
 
@@ -67,7 +67,7 @@ impl Orderer {
 
         let (outbound_sink, outbound_src) = crossbeam_channel::unbounded();
         {
-            let tcp_out_sink = tcp_out_sdr.clone();
+            let tcp_out_sink = tcp_out_sink.clone();
             let cur_iteration = Arc::clone(&cur_iteration);
             std::thread::spawn(move || {
                 for (dest, data) in outbound_src {
@@ -81,9 +81,9 @@ impl Orderer {
             Orderer {
                 cur_iteration,
                 buffer,
-                sink: arrival_in,
+                ordered_inbound_sink,
             },
-            arrival_out,
+            ordered_inbound_src,
             outbound_sink,
         )
     }
@@ -100,7 +100,7 @@ impl Orderer {
                     i
                 );
                 while let Some(msg) = msgs.pop() {
-                    self.sink.send(msg).unwrap();
+                    self.ordered_inbound_sink.send(msg).unwrap();
                 }
             }
             None => (),
