@@ -10,9 +10,15 @@ import os
 def parse_args():
     parser = argparse.ArgumentParser(
         description='Runs an Euler cluster with the specified number of nodes.  Default is 1.')
-    parser.add_argument('-n', '--number', default="1", required=True)
+    parser.add_argument('-p', '--peers', default="1", required=True)
+    parser.add_argument('-f', '--folds', default="1")
+    parser.add_argument('-t', '--threads', default="1")
     args = parser.parse_args()
-    return int(args.number)
+    return {
+        'peers': int(args.peers),
+        'folds': int(args.folds),
+        'threads': int(args.threads),
+    }
 
 
 def check_for_old_results():
@@ -36,13 +42,14 @@ def show_chart():
     run_cmd(cmd).wait()
 
 
-def euler_cmd(t, n, b, peers, rank):
+def euler_cmd(t, n, b, folds, peers, rank):
     return [
         "cargo", "run", "--release", "--example",
         "euler", "--",
         "-t", str(t),
         "-n", str(n),
         "-b", str(b),
+        "-f", str(folds),
         "--strategy", "rayon",
         "--peers", str.join(" ", peers),
         "--rank", str(rank), ]
@@ -52,19 +59,19 @@ def run_cmd(cmd):
     return subprocess.Popen(str.join(" ", cmd), shell=True)
 
 
-number = parse_args()
+args = parse_args()
 
 # If old results are in the directory don't run
 if check_for_old_results():
     print("There are still old CBOR files from previous runs.  Please delete this files so that there is no contamination or accidental loss of old test results")
     exit()
 
-peers = ["127.0.0.1:{}".format(8000 + i) for i in range(0, number)]
+peers = ["127.0.0.1:{}".format(8000 + i) for i in range(0, args['peers'])]
 print(peers)
 
 cmds = [
-    euler_cmd(4, 1000, 100, peers, rank)
-    for rank in range(0, number)
+    euler_cmd(args['threads'], 1000, 100, args['folds'], peers, rank)
+    for rank in range(0, args['peers'])
 ]
 
 print(cmds)
