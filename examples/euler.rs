@@ -208,13 +208,14 @@ fn main() {
     // TODO: then compute the time from the frame counter
     let num_frames = (opts.tfinal / dt).ceil() as u64;
     info!("Total Frames: {}", num_frames);
+    let start_time = std::time::Instant::now();
     for frame in 0..num_frames {
-        orderer.increment();
         time = dt * frame as f64;
         let start = std::time::Instant::now();
 
         // TODO: Handle folding with distribution
         for _ in 0..opts.fold {
+            orderer.increment();
             task_list = match &executor {
                 Execution::Serial => {
                     automaton::execute(frame as usize, task_list, &client, &router).collect()
@@ -249,6 +250,8 @@ fn main() {
             mzps / opts.num_threads as f64
         );
     }
+    let compute_duration = start_time.elapsed();
+    info!("Time to Compute: {}s", compute_duration.as_secs_f32());
 
     let primitive = task_list
         .into_iter()
