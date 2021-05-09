@@ -1,5 +1,8 @@
 use core::hash::Hash;
-use std::collections::hash_map::{Entry, HashMap};
+use std::{
+    collections::hash_map::{Entry, HashMap},
+    time::Instant,
+};
 
 use log::{debug, error};
 use serde::{de::DeserializeOwned, Serialize};
@@ -128,6 +131,7 @@ pub fn execute_par<'a, I, A, K, V, C>(
     flow: I,
     client: &C,
     router: &HashMap<K, usize>,
+    stats: crossbeam_channel::Sender<(Instant, Instant)>,
 ) -> impl Iterator<Item = V>
 where
     I: IntoIterator<Item = A>,
@@ -149,8 +153,12 @@ where
         flow,
         |a: A| {
             let sink = sink.clone();
+            let stats = stats.clone();
             scope.spawn_fifo(move |_| {
+                let start = Instant::now();
                 sink.send(a.value()).unwrap();
+                let stop = Instant::now();
+                stats.send((start, stop)).unwrap();
             })
         },
         client,
