@@ -259,6 +259,9 @@ fn main() {
     let compute_duration = start_time.elapsed();
     info!("Time to Compute: {}s", compute_duration.as_secs_f32());
 
+    drop(stats_sink);
+    stats::compute_worker_stats(stats_src);
+
     let primitive = task_list
         .into_iter()
         .map(|block| block.primitive())
@@ -279,6 +282,34 @@ fn main() {
     info!("Messages to be processed: {}", client.inbound_len());
     drop(client);
     tcp_host.shutdown();
+}
+
+mod stats {
+    use crossbeam_channel::Receiver;
+
+    use super::*;
+    use std::time::{Duration, Instant};
+    pub fn compute_worker_stats(stats_src: Receiver<(Instant, Instant)>) {
+        info!("Worker Measurement Events: {}", stats_src.len());
+
+        let stats: Vec<(Instant, Instant)> = stats_src.iter().collect();
+        let mut durations: Vec<Duration> = stats.iter().map(|(s, e)| *e - *s).collect();
+        durations.sort_by(|a, b| a.cmp(b));
+
+        let total_time: Duration = durations.iter().sum();
+        info!("Total Time Computing: {}ms", total_time.as_millis());
+
+        if durations.len() > 0 {
+            let median = durations[durations.len() / 2];
+            info!("Median Duration: {}μs", median.as_micros());
+
+            let p90_idx = (durations.len() * 90) / 100;
+            info!("p90 Duration: {}μs", durations[p90_idx].as_micros());
+
+            let p95_idx = (durations.len() * 95) / 100;
+            info!("p95 Duration: {}μs", durations[p95_idx].as_micros());
+        }
+    }
 }
 
 fn init_logging() {
