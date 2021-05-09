@@ -86,7 +86,7 @@ fn main() {
 
         assert_eq! {
             group_size as usize,
-            execute_par(scope, 0, group, &fc, &router)
+            execute_par(scope, 0, group, &fc, &router).1
             .inspect(|result| println!("{}", result))
             .count()
         };

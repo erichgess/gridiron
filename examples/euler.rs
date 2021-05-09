@@ -1,4 +1,8 @@
-use std::{collections::HashMap, net::SocketAddr};
+use std::{
+    collections::HashMap,
+    net::SocketAddr,
+    time::{self, Duration},
+};
 
 use clap::{AppSettings, Clap};
 use log::{info, LevelFilter};
@@ -209,6 +213,7 @@ fn main() {
     let num_frames = (opts.tfinal / dt).ceil() as u64;
     info!("Total Frames: {}", num_frames);
     let start_time = std::time::Instant::now();
+    let mut frame_stats = vec![];
     for frame in 0..num_frames {
         time = dt * frame as f64;
         let start = std::time::Instant::now();
@@ -216,24 +221,31 @@ fn main() {
         // TODO: Handle folding with distribution
         for _ in 0..opts.fold {
             orderer.increment();
-            task_list = match &executor {
+            let start_time = time::Instant::now();
+            let (stats, tl) = match &executor {
                 Execution::Serial => {
-                    automaton::execute(frame as usize, task_list, &client, &router).collect()
+                    let (s, tl) = automaton::execute(frame as usize, task_list, &client, &router);
+                    (s, tl.collect())
                 }
-                Execution::Stupid(pool) => automaton::execute_par_stupid(
-                    &pool,
-                    frame as usize,
-                    task_list,
-                    &client,
-                    &router,
-                )
-                .collect(),
-                Execution::Rayon(pool) => pool
-                    .scope_fifo(|scope| {
-                        automaton::execute_par(scope, frame as usize, task_list, &client, &router)
-                    })
-                    .collect(),
+                Execution::Stupid(pool) => {
+                    let (s, tl) = automaton::execute_par_stupid(
+                        &pool,
+                        frame as usize,
+                        task_list,
+                        &client,
+                        &router,
+                    );
+                    (s, tl.collect())
+                }
+                Execution::Rayon(pool) => pool.scope_fifo(|scope| {
+                    let (s, tl) =
+                        automaton::execute_par(scope, frame as usize, task_list, &client, &router);
+                    (s, tl.collect())
+                }),
             };
+            let compute_time = start_time.elapsed();
+            task_list = tl;
+            frame_stats.push((stats, compute_time));
             time += dt;
             iteration += 1;
         }
@@ -252,6 +264,12 @@ fn main() {
     }
     let compute_duration = start_time.elapsed();
     info!("Time to Compute: {}s", compute_duration.as_secs_f32());
+    let peer_time: Duration = frame_stats.iter().map(|(s, _)| s.remote_msg_time).sum();
+    info!("Time Spent On Remote Msg: {}ms", peer_time.as_millis());
+    let local_time: Duration = frame_stats.iter().map(|(s, _)| s.local_msg_time).sum();
+    info!("Time Spent On Local Msg: {}ms", local_time.as_millis());
+    let compute_time: Duration = frame_stats.iter().map(|(_, c)| c).sum();
+    info!("Time Spent On Solver: {}ms", compute_time.as_millis());
 
     let primitive = task_list
         .into_iter()

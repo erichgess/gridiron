@@ -1,10 +1,22 @@
 use core::hash::Hash;
-use std::collections::hash_map::{Entry, HashMap};
+use std::{
+    collections::hash_map::{Entry, HashMap},
+    time::Duration,
+};
 
 use log::{debug, error};
 use serde::{de::DeserializeOwned, Serialize};
 
 use crate::message::comm::Communicator;
+
+/// Contains statistics about each pass of Coordinate
+pub struct Stats {
+    /// Time spent moving messages between local threads
+    pub local_msg_time: Duration,
+
+    /// Time spent waiting for messages to arrive from remote peers
+    pub remote_msg_time: Duration,
+}
 
 /// Returned by [`Automaton::receive`] to indicate whether a task is eligible
 /// to be evaluated.
@@ -94,7 +106,7 @@ pub fn execute<I, A, K, V, C>(
     stage: I,
     client: &C,
     router: &HashMap<K, usize>,
-) -> impl Iterator<Item = V>
+) -> (Stats, impl Iterator<Item = V>)
 where
     I: IntoIterator<Item = A>,
     A: Automaton<Key = K, Value = V>,
@@ -104,15 +116,16 @@ where
 {
     let (eligible_sink, eligible_source) = crossbeam_channel::unbounded();
 
-    coordinate(
-        iteration,
-        stage,
-        |a: A| eligible_sink.send(a).unwrap(),
-        client,
-        router,
-    );
-
-    eligible_source.into_iter().map(|peer: A| peer.value())
+    (
+        coordinate(
+            iteration,
+            stage,
+            |a: A| eligible_sink.send(a).unwrap(),
+            client,
+            router,
+        ),
+        eligible_source.into_iter().map(|peer: A| peer.value()),
+    )
 }
 
 /// Execute a group of tasks in parallel on the Rayon thread pool. As tasks
@@ -128,7 +141,7 @@ pub fn execute_par<'a, I, A, K, V, C>(
     flow: I,
     client: &C,
     router: &HashMap<K, usize>,
-) -> impl Iterator<Item = V>
+) -> (Stats, impl Iterator<Item = V>)
 where
     I: IntoIterator<Item = A>,
     A: Send + Automaton<Key = K, Value = V> + 'a,
@@ -144,19 +157,21 @@ where
 
     let (sink, source) = crossbeam_channel::unbounded();
 
-    coordinate(
-        iteration,
-        flow,
-        |a: A| {
-            let sink = sink.clone();
-            scope.spawn_fifo(move |_| {
-                sink.send(a.value()).unwrap();
-            })
-        },
-        client,
-        router,
-    );
-    source.into_iter()
+    (
+        coordinate(
+            iteration,
+            flow,
+            |a: A| {
+                let sink = sink.clone();
+                scope.spawn_fifo(move |_| {
+                    sink.send(a.value()).unwrap();
+                })
+            },
+            client,
+            router,
+        ),
+        source.into_iter(),
+    )
 }
 
 /// Execute a group of tasks in parallel using `gridiron`'s stupid scheduler.
@@ -167,7 +182,7 @@ pub fn execute_par_stupid<I, A, K, V, C>(
     flow: I,
     client: &C,
     router: &HashMap<K, usize>,
-) -> impl Iterator<Item = V>
+) -> (Stats, impl Iterator<Item = V>)
 where
     I: IntoIterator<Item = A>,
     A: 'static + Send + Automaton<Key = K, Value = V>,
@@ -183,19 +198,21 @@ where
 
     let (sink, source) = crossbeam_channel::unbounded();
 
-    coordinate(
-        iteration,
-        flow,
-        |a: A| {
-            let sink = sink.clone();
-            pool.spawn_on(a.worker_hint(), move || {
-                sink.send(a.value()).unwrap();
-            });
-        },
-        client,
-        router,
-    );
-    source.into_iter()
+    (
+        coordinate(
+            iteration,
+            flow,
+            |a: A| {
+                let sink = sink.clone();
+                pool.spawn_on(a.worker_hint(), move || {
+                    sink.send(a.value()).unwrap();
+                });
+            },
+            client,
+            router,
+        ),
+        source.into_iter(),
+    )
 }
 
 // TODO: Pass in channels from host to receive and send msgs from and to peers
@@ -207,7 +224,8 @@ fn coordinate<'a, I, A, K, V, S, C>(
     sink: S,
     client: &C,
     router: &HashMap<K, usize>,
-) where
+) -> Stats
+where
     I: IntoIterator<Item = A>,
     A: Automaton<Key = K, Value = V>,
     A::Message: Serialize + DeserializeOwned,
@@ -219,6 +237,7 @@ fn coordinate<'a, I, A, K, V, S, C>(
     let mut undelivered = HashMap::new();
     let mut num_sent = 0;
 
+    let start_time = std::time::Instant::now();
     for mut a in flow {
         // For each of A's messages, either deliver it to the recipient peer,
         // if the peer has already been seen, or otherwise put it in the
@@ -273,7 +292,9 @@ fn coordinate<'a, I, A, K, V, S, C>(
             seen.insert(a.key(), a);
         }
     }
+    let local_msg_time = start_time.elapsed();
 
+    let start_time = std::time::Instant::now();
     let mut num_received: HashMap<(usize, usize), usize> = HashMap::new();
     while !seen.is_empty() {
         let bytes = client.recv();
@@ -293,6 +314,7 @@ fn coordinate<'a, I, A, K, V, S, C>(
             }
         }
     }
+    let remote_msg_time = start_time.elapsed();
 
     debug!("Sent: {}", num_sent);
     debug!("Received: {:?}", num_received);
@@ -305,6 +327,11 @@ fn coordinate<'a, I, A, K, V, S, C>(
     }
     assert_eq!(seen.len(), 0);
     assert_eq!(undelivered.len(), 0);
+
+    Stats {
+        local_msg_time,
+        remote_msg_time,
+    }
 }
 
 fn serialize_msg<D: Serialize, M: Serialize>(
