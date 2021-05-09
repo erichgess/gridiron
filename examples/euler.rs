@@ -1,10 +1,11 @@
 use std::{
     collections::HashMap,
     net::SocketAddr,
-    time::{self, Duration},
+    time::{self, Duration, Instant},
 };
 
 use clap::{AppSettings, Clap};
+use crossbeam_channel::Receiver;
 use log::{info, LevelFilter};
 use simple_logger::SimpleLogger;
 
@@ -270,8 +271,6 @@ fn main() {
             mzps / opts.num_threads as f64
         );
     }
-    info!("Measurements: {}", stats_sink.len());
-    drop(stats_sink);
     let compute_duration = start_time.elapsed();
     info!("Time to Compute: {}s", compute_duration.as_secs_f32());
     let peer_time: Duration = frame_stats.iter().map(|(s, _)| s.remote_msg_time).sum();
@@ -281,11 +280,8 @@ fn main() {
     let compute_time: Duration = frame_stats.iter().map(|(_, c)| c).sum();
     info!("Time Spent On Solver: {}ms", compute_time.as_millis());
 
-    let mut total_time = Duration::from_millis(0);
-    for (start, stop) in stats_src {
-        total_time += stop - start;
-    }
-    info!("Total Time Computing: {}ms", total_time.as_millis());
+    drop(stats_sink);
+    stats::compute_worker_stats(stats_src);
 
     let primitive = task_list
         .into_iter()
@@ -309,6 +305,31 @@ fn main() {
     drop(client);
     drop(receive);
     tcp_host.shutdown();
+}
+
+mod stats {
+    use super::*;
+    pub fn compute_worker_stats(stats_src: Receiver<(Instant, Instant)>) {
+        info!("Worker Measurement Events: {}", stats_src.len());
+
+        let stats: Vec<(Instant, Instant)> = stats_src.iter().collect();
+        let mut durations: Vec<Duration> = stats.iter().map(|(s, e)| *e - *s).collect();
+        durations.sort_by(|a, b| a.cmp(b));
+
+        let total_time: Duration = durations.iter().sum();
+        info!("Total Time Computing: {}ms", total_time.as_millis());
+
+        if durations.len() > 0 {
+            let median = durations[durations.len() / 2];
+            info!("Median Duration: {}μs", median.as_micros());
+
+            let p90_idx = (durations.len() * 90) / 100;
+            info!("p90 Duration: {}μs", durations[p90_idx].as_micros());
+
+            let p95_idx = (durations.len() * 95) / 100;
+            info!("p95 Duration: {}μs", durations[p95_idx].as_micros());
+        }
+    }
 }
 
 fn init_logging() {
