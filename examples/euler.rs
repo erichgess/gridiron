@@ -204,8 +204,6 @@ fn main() {
         }
     };
 
-    // TODO: change this to use an integer counter.  Needs reliable and deterministic ordering.
-    // TODO: then compute the time from the frame counter
     let num_frames = (opts.tfinal / dt).ceil() as u64;
     info!("Total Frames: {}", num_frames);
     let start_time = std::time::Instant::now();
@@ -213,7 +211,6 @@ fn main() {
         time = dt * frame as f64;
         let start = std::time::Instant::now();
 
-        // TODO: Handle folding with distribution
         for _ in 0..opts.fold {
             orderer.increment();
             task_list = match &executor {
@@ -278,7 +275,6 @@ fn main() {
 }
 
 fn init_logging() {
-    // configure logger
     SimpleLogger::new()
         .with_level(LevelFilter::Info)
         .init()
