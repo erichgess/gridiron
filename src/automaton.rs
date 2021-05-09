@@ -1,7 +1,7 @@
 use core::hash::Hash;
 use std::{
     collections::hash_map::{Entry, HashMap},
-    time::Duration,
+    time::{self, Duration},
 };
 
 use log::{debug, error};
@@ -141,6 +141,7 @@ pub fn execute_par<'a, I, A, K, V, C>(
     flow: I,
     client: &C,
     router: &HashMap<K, usize>,
+    stats: crossbeam_channel::Sender<(time::Instant, time::Instant)>,
 ) -> (Stats, impl Iterator<Item = V>)
 where
     I: IntoIterator<Item = A>,
@@ -163,8 +164,13 @@ where
             flow,
             |a: A| {
                 let sink = sink.clone();
+                let stats = stats.clone();
                 scope.spawn_fifo(move |_| {
-                    sink.send(a.value()).unwrap();
+                    let start = time::Instant::now();
+                    let v = a.value();
+                    let stop = time::Instant::now();
+                    sink.send(v).unwrap();
+                    stats.send((start, stop)).unwrap();
                 })
             },
             client,
@@ -182,6 +188,7 @@ pub fn execute_par_stupid<I, A, K, V, C>(
     flow: I,
     client: &C,
     router: &HashMap<K, usize>,
+    stats: crossbeam_channel::Sender<(time::Instant, time::Instant)>,
 ) -> (Stats, impl Iterator<Item = V>)
 where
     I: IntoIterator<Item = A>,
@@ -204,8 +211,13 @@ where
             flow,
             |a: A| {
                 let sink = sink.clone();
+                let stats = stats.clone();
                 pool.spawn_on(a.worker_hint(), move || {
-                    sink.send(a.value()).unwrap();
+                    let start = time::Instant::now();
+                    let v = a.value();
+                    let stop = time::Instant::now();
+                    sink.send(v).unwrap();
+                    stats.send((start, stop)).unwrap();
                 });
             },
             client,

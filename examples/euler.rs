@@ -214,6 +214,7 @@ fn main() {
     info!("Total Frames: {}", num_frames);
     let start_time = std::time::Instant::now();
     let mut frame_stats = vec![];
+    let (stats_sink, stats_src) = crossbeam_channel::unbounded();
     for frame in 0..num_frames {
         time = dt * frame as f64;
         let start = std::time::Instant::now();
@@ -234,12 +235,19 @@ fn main() {
                         task_list,
                         &client,
                         &router,
+                        stats_sink.clone(),
                     );
                     (s, tl.collect())
                 }
                 Execution::Rayon(pool) => pool.scope_fifo(|scope| {
-                    let (s, tl) =
-                        automaton::execute_par(scope, frame as usize, task_list, &client, &router);
+                    let (s, tl) = automaton::execute_par(
+                        scope,
+                        frame as usize,
+                        task_list,
+                        &client,
+                        &router,
+                        stats_sink.clone(),
+                    );
                     (s, tl.collect())
                 }),
             };
@@ -262,6 +270,8 @@ fn main() {
             mzps / opts.num_threads as f64
         );
     }
+    info!("Measurements: {}", stats_sink.len());
+    drop(stats_sink);
     let compute_duration = start_time.elapsed();
     info!("Time to Compute: {}s", compute_duration.as_secs_f32());
     let peer_time: Duration = frame_stats.iter().map(|(s, _)| s.remote_msg_time).sum();
@@ -270,6 +280,12 @@ fn main() {
     info!("Time Spent On Local Msg: {}ms", local_time.as_millis());
     let compute_time: Duration = frame_stats.iter().map(|(_, c)| c).sum();
     info!("Time Spent On Solver: {}ms", compute_time.as_millis());
+
+    let mut total_time = Duration::from_millis(0);
+    for (start, stop) in stats_src {
+        total_time += stop - start;
+    }
+    info!("Total Time Computing: {}ms", total_time.as_millis());
 
     let primitive = task_list
         .into_iter()
