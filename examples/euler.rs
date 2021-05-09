@@ -207,6 +207,8 @@ fn main() {
     let num_frames = (opts.tfinal / dt).ceil() as u64;
     info!("Total Frames: {}", num_frames);
     let start_time = std::time::Instant::now();
+
+    let (stats_sink, stats_src) = crossbeam_channel::unbounded();
     for frame in 0..num_frames {
         time = dt * frame as f64;
         let start = std::time::Instant::now();
@@ -227,7 +229,14 @@ fn main() {
                 .collect(),
                 Execution::Rayon(pool) => pool
                     .scope_fifo(|scope| {
-                        automaton::execute_par(scope, frame as usize, task_list, &client, &router)
+                        automaton::execute_par(
+                            scope,
+                            frame as usize,
+                            task_list,
+                            &client,
+                            &router,
+                            stats_sink.clone(),
+                        )
                     })
                     .collect(),
             };
