@@ -14,7 +14,7 @@ fn main() {
         .clone()
         .map(|rank| {
             let (_tcp_host, recv_src, send_sink) = TcpHost::new(rank, peers.clone());
-            OrderedCommunicator::new(rank, peers.len(), 0, recv_src, send_sink)
+            OrderedCommunicator::new(rank, peers.len(), recv_src, send_sink)
         })
         .collect();
     let procs: Vec<_> = comms

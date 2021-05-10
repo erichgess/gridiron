@@ -34,11 +34,10 @@ impl OrderedCommunicator {
     pub fn new(
         rank: usize,
         num_peers: usize,
-        initial_iteration: usize,
         inbound_recv: Receiver<Envelope>,
         tcp_outbound_sink: Sender<(usize, Iteration, Vec<u8>)>,
     ) -> OrderedCommunicator {
-        let cur_iteration = Arc::new(AtomicUsize::new(initial_iteration));
+        let cur_iteration = Arc::new(AtomicUsize::new(0));
 
         let buffer = Arc::new(Mutex::new(HashMap::new()));
         let (ordered_inbound_sink, ordered_inbound_src) = crossbeam_channel::unbounded();
