@@ -4,10 +4,11 @@ use std::{
         atomic::{AtomicUsize, Ordering},
         Arc, Mutex,
     },
+    thread::JoinHandle,
 };
 
 use crossbeam_channel::{Receiver, Sender};
-use log::{debug, error};
+use log::{debug, error, info};
 
 use super::{comm::Communicator, tcp::Iteration};
 
@@ -28,6 +29,7 @@ pub struct OrderedCommunicator {
     tcp_outbound_sink: Sender<(usize, Iteration, Vec<u8>)>,
     rank: usize,
     num_peers: usize,
+    _listener: Option<JoinHandle<()>>,
 }
 
 impl OrderedCommunicator {
@@ -41,7 +43,7 @@ impl OrderedCommunicator {
 
         let buffer = Arc::new(Mutex::new(HashMap::new()));
         let (ordered_inbound_sink, ordered_inbound_src) = crossbeam_channel::unbounded();
-        {
+        let listener = {
             let aic = ordered_inbound_sink.clone();
             let c_iter = Arc::clone(&cur_iteration);
             let buffer = Arc::clone(&buffer);
@@ -67,8 +69,9 @@ impl OrderedCommunicator {
                             .push(env.data)
                     }
                 }
-            });
-        }
+                info!("Inbound Receiver shutting down")
+            })
+        };
 
         OrderedCommunicator {
             rank,
@@ -78,6 +81,7 @@ impl OrderedCommunicator {
             ordered_inbound_sink,
             tcp_outbound_sink,
             ordered_inbound_src,
+            _listener: Some(listener),
         }
     }
 
@@ -107,6 +111,20 @@ impl OrderedCommunicator {
 
     pub fn inbound_len(&self) -> usize {
         self.ordered_inbound_src.len()
+    }
+}
+
+impl Drop for OrderedCommunicator {
+    fn drop(&mut self) {
+        // This is currently commented out because there is an unavoidable deadlock with dropping
+        // this and shutting down the TCP Host (with the current design).  The tcp_outbound_sink
+        // needs to be dropped so that the TcpHost can stop listening to the channel and shutdown
+        // and then the OrderedCommunicator::listener thread can stop listening to the inbound
+        // channel and stop.  The easiest solution is to probably move the TcpHost into here
+        // and have this manage the shutdown but then there is a tight coupling between this and
+        // the transport.  The other option will be to have two functions: stop_outbound_tcp and
+        // stop_inbound.  There are probably other options.
+        //self.listener.take().unwrap().join().unwrap();
     }
 }
 
