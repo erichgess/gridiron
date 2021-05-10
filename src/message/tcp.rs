@@ -17,7 +17,7 @@ use log::{error, info};
 
 use crate::message::{backoff::Retry, orderer::Envelope};
 
-use super::{backoff::ExponentialBackoff, comm::Communicator, orderer::Orderer, util};
+use super::{backoff::ExponentialBackoff, orderer::Orderer, util};
 
 const CXN_R_TIMEOUT_MS: Duration = Duration::from_millis(5000);
 const CXN_W_TIMEOUT_MS: Duration = Duration::from_millis(5000);
@@ -26,7 +26,6 @@ const RETRY_MAX_WAIT_MS: Duration = Duration::from_millis(5000);
 
 pub(super) type Iteration = usize;
 type Sender = crossbeam_channel::Sender<(usize, Iteration, Vec<u8>)>;
-type Receiver = crossbeam_channel::Receiver<Vec<u8>>;
 
 pub struct TcpHost {
     shutting_down: Arc<AtomicBool>,
@@ -288,62 +287,4 @@ impl TcpHost {
 #[derive(serde::Serialize, serde::Deserialize)]
 enum Ack {
     Accept(usize),
-}
-
-/////////////////////////////////////////////////////
-/////////////////////////////////////////////////////
-/////////////////////////////////////////////////////
-/////////////////////////////////////////////////////
-
-pub struct TcpCommunicator {
-    rank: usize,
-    num_peers: usize,
-    send_sink: Option<crossbeam_channel::Sender<(usize, Vec<u8>)>>,
-    recv_src: Option<crossbeam_channel::Receiver<Vec<u8>>>,
-}
-
-impl TcpCommunicator {
-    pub fn new(
-        rank: usize,
-        peers: Vec<SocketAddr>,
-        send_sink: crossbeam_channel::Sender<(usize, Vec<u8>)>,
-        recv_src: crossbeam_channel::Receiver<Vec<u8>>,
-    ) -> Self {
-        let num_peers = peers.len();
-        Self {
-            rank,
-            num_peers,
-            send_sink: Some(send_sink),
-            recv_src: Some(recv_src),
-        }
-    }
-}
-
-impl Communicator for TcpCommunicator {
-    fn rank(&self) -> usize {
-        self.rank
-    }
-
-    fn size(&self) -> usize {
-        self.num_peers
-    }
-
-    fn send(&self, rank: usize, message: Vec<u8>) {
-        self.send_sink
-            .as_ref()
-            .unwrap()
-            .send((rank, message))
-            .unwrap()
-    }
-
-    fn recv(&self) -> Vec<u8> {
-        self.recv_src.as_ref().unwrap().recv().unwrap()
-    }
-}
-
-impl Drop for TcpCommunicator {
-    fn drop(&mut self) {
-        self.send_sink.take().unwrap();
-        self.recv_src.take().unwrap();
-    }
 }

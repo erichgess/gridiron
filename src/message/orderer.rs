@@ -71,18 +71,6 @@ impl Orderer {
             });
         }
 
-        let (outbound_sink, outbound_src) = crossbeam_channel::unbounded();
-        {
-            let tcp_out_sink = tcp_outbound_sink.clone();
-            let cur_iteration = Arc::clone(&cur_iteration);
-            std::thread::spawn(move || {
-                for (dest, data) in outbound_src {
-                    let iteration = cur_iteration.load(Ordering::SeqCst);
-                    tcp_out_sink.send((dest, iteration, data)).unwrap();
-                }
-            });
-        }
-
         Orderer {
             rank,
             num_peers,

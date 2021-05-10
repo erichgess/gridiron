@@ -1,4 +1,3 @@
-use gridiron::message::tcp::TcpCommunicator;
 use gridiron::message::{comm::Communicator, tcp::TcpHost};
 use std::net::{IpAddr, Ipv4Addr, SocketAddr};
 use std::ops::Range;
@@ -14,8 +13,8 @@ fn main() {
     let comms: Vec<_> = ranks
         .clone()
         .map(|rank| {
-            let (mut _tcp_host, _, send, receive) = TcpHost::new(rank, peers.clone());
-            TcpCommunicator::new(rank, peers.clone(), send, receive)
+            let (mut _tcp_host, client) = TcpHost::new(rank, peers.clone());
+            client
         })
         .collect();
     let procs: Vec<_> = comms

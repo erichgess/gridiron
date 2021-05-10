@@ -6,9 +6,9 @@ use simple_logger::SimpleLogger;
 
 use gridiron::automaton;
 use gridiron::hydro::euler2d::Primitive;
+use gridiron::index_space::range2d;
 use gridiron::rect_map::RectangleMap;
 use gridiron::solvers::euler2d_pcm::{Mesh, PatchUpdate};
-use gridiron::{index_space::range2d, message::tcp::TcpCommunicator};
 use gridiron::{meshing::GraphTopology, rect_map::Rectangle};
 use gridiron::{message::tcp::TcpHost, patch::Patch};
 
