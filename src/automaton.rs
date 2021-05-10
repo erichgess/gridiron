@@ -1,7 +1,7 @@
 use core::hash::Hash;
 use std::{
     collections::hash_map::{Entry, HashMap},
-    time::Instant,
+    time::{Instant, SystemTime},
 };
 
 use log::{debug, error};
@@ -131,7 +131,7 @@ pub fn execute_par<'a, I, A, K, V, C>(
     flow: I,
     client: &C,
     router: &HashMap<K, usize>,
-    stats: crossbeam_channel::Sender<(Instant, Instant)>,
+    stats: crossbeam_channel::Sender<(SystemTime, SystemTime)>,
 ) -> impl Iterator<Item = V>
 where
     I: IntoIterator<Item = A>,
@@ -155,9 +155,9 @@ where
             let sink = sink.clone();
             let stats = stats.clone();
             scope.spawn_fifo(move |_| {
-                let start = Instant::now();
+                let start = std::time::SystemTime::now();
                 sink.send(a.value()).unwrap();
-                let stop = Instant::now();
+                let stop = std::time::SystemTime::now();
                 stats.send((start, stop)).unwrap();
             })
         },
