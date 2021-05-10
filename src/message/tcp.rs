@@ -60,7 +60,8 @@ impl TcpHost {
             Arc::clone(&wg),
         );
 
-        let (orderer, recv_src, outbound_sink) = Orderer::new(0, recv_src, send_sink.clone());
+        let (orderer, recv_src, outbound_sink) =
+            Orderer::new(rank, peers.len(), 0, recv_src, send_sink.clone());
         (
             TcpHost {
                 shutting_down: shutdown_signal,

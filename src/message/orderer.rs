@@ -9,7 +9,7 @@ use std::{
 use crossbeam_channel::{Receiver, Sender};
 use log::{debug, error};
 
-use super::tcp::Iteration;
+use super::{comm::Communicator, tcp::Iteration};
 
 #[derive(serde::Serialize, serde::Deserialize)]
 pub struct Envelope {
@@ -24,13 +24,19 @@ pub struct Orderer {
     cur_iteration: Arc<AtomicUsize>,
     buffer: Arc<Mutex<HashMap<Iteration, Vec<Vec<u8>>>>>,
     ordered_inbound_sink: Sender<Vec<u8>>,
+    ordered_inbound_src: Receiver<Vec<u8>>,
+    tcp_outbound_sink: Sender<(usize, Iteration, Vec<u8>)>,
+    rank: usize,
+    num_peers: usize,
 }
 
 impl Orderer {
     pub fn new(
+        rank: usize,
+        num_peers: usize,
         initial_iteration: usize,
         inbound_recv: Receiver<Envelope>,
-        tcp_out_sink: Sender<(usize, Iteration, Vec<u8>)>,
+        tcp_outbound_sink: Sender<(usize, Iteration, Vec<u8>)>,
     ) -> (Orderer, Receiver<Vec<u8>>, Sender<(usize, Vec<u8>)>) {
         let cur_iteration = Arc::new(AtomicUsize::new(initial_iteration));
 
@@ -67,7 +73,7 @@ impl Orderer {
 
         let (outbound_sink, outbound_src) = crossbeam_channel::unbounded();
         {
-            let tcp_out_sink = tcp_out_sink.clone();
+            let tcp_out_sink = tcp_outbound_sink.clone();
             let cur_iteration = Arc::clone(&cur_iteration);
             std::thread::spawn(move || {
                 for (dest, data) in outbound_src {
@@ -79,9 +85,13 @@ impl Orderer {
 
         (
             Orderer {
+                rank,
+                num_peers,
                 cur_iteration,
                 buffer,
                 ordered_inbound_sink,
+                tcp_outbound_sink,
+                ordered_inbound_src: ordered_inbound_src.clone(),
             },
             ordered_inbound_src,
             outbound_sink,
@@ -106,5 +116,26 @@ impl Orderer {
             }
             None => (),
         }
+    }
+}
+
+impl Communicator for Orderer {
+    fn rank(&self) -> usize {
+        self.rank
+    }
+
+    fn size(&self) -> usize {
+        self.num_peers
+    }
+
+    fn send(&self, rank: usize, message: Vec<u8>) {
+        let iteration = self.cur_iteration.load(Ordering::SeqCst);
+        self.tcp_outbound_sink
+            .send((rank, iteration, message))
+            .unwrap();
+    }
+
+    fn recv(&self) -> Vec<u8> {
+        self.ordered_inbound_src.recv().unwrap()
     }
 }
