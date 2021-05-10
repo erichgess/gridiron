@@ -20,7 +20,7 @@ pub struct Envelope {
 /// Orderer enforces the proper ordering on incoming messages and makes sure that
 /// arriving messages which are from a future iteration are kept until the local
 /// workers have reached that iteration.
-pub struct Orderer {
+pub struct OrderedCommunicator {
     cur_iteration: Arc<AtomicUsize>,
     buffer: Arc<Mutex<HashMap<Iteration, Vec<Vec<u8>>>>>,
     ordered_inbound_sink: Sender<Vec<u8>>,
@@ -30,14 +30,14 @@ pub struct Orderer {
     num_peers: usize,
 }
 
-impl Orderer {
+impl OrderedCommunicator {
     pub fn new(
         rank: usize,
         num_peers: usize,
         initial_iteration: usize,
         inbound_recv: Receiver<Envelope>,
         tcp_outbound_sink: Sender<(usize, Iteration, Vec<u8>)>,
-    ) -> Orderer {
+    ) -> OrderedCommunicator {
         let cur_iteration = Arc::new(AtomicUsize::new(initial_iteration));
 
         let buffer = Arc::new(Mutex::new(HashMap::new()));
@@ -71,7 +71,7 @@ impl Orderer {
             });
         }
 
-        Orderer {
+        OrderedCommunicator {
             rank,
             num_peers,
             cur_iteration,
@@ -111,7 +111,7 @@ impl Orderer {
     }
 }
 
-impl Communicator for Orderer {
+impl Communicator for OrderedCommunicator {
     fn rank(&self) -> usize {
         self.rank
     }
