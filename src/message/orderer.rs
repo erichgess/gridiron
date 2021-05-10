@@ -37,7 +37,7 @@ impl Orderer {
         initial_iteration: usize,
         inbound_recv: Receiver<Envelope>,
         tcp_outbound_sink: Sender<(usize, Iteration, Vec<u8>)>,
-    ) -> (Orderer, Receiver<Vec<u8>>, Sender<(usize, Vec<u8>)>) {
+    ) -> Orderer {
         let cur_iteration = Arc::new(AtomicUsize::new(initial_iteration));
 
         let buffer = Arc::new(Mutex::new(HashMap::new()));
@@ -83,19 +83,15 @@ impl Orderer {
             });
         }
 
-        (
-            Orderer {
-                rank,
-                num_peers,
-                cur_iteration,
-                buffer,
-                ordered_inbound_sink,
-                tcp_outbound_sink,
-                ordered_inbound_src: ordered_inbound_src.clone(),
-            },
+        Orderer {
+            rank,
+            num_peers,
+            cur_iteration,
+            buffer,
+            ordered_inbound_sink,
+            tcp_outbound_sink,
             ordered_inbound_src,
-            outbound_sink,
-        )
+        }
     }
 
     pub fn increment(&mut self) {
@@ -116,6 +112,14 @@ impl Orderer {
             }
             None => (),
         }
+    }
+
+    pub fn outbound_len(&self) -> usize {
+        self.tcp_outbound_sink.len()
+    }
+
+    pub fn inbound_len(&self) -> usize {
+        self.ordered_inbound_src.len()
     }
 }
 

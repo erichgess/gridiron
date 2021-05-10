@@ -158,8 +158,7 @@ fn main() {
         .collect();
 
     // TODO: Connect to peer which will have the second half of the grid
-    let (tcp_host, mut orderer, send, receive) = TcpHost::new(opts.rank, peers.clone());
-    let client = TcpCommunicator::new(opts.rank, peers, send.clone(), receive.clone());
+    let (tcp_host, mut client) = TcpHost::new(opts.rank, peers.clone());
 
     println!("num blocks .... {}", primitive.len());
     println!("num threads ... {}", opts.num_threads);
@@ -212,7 +211,7 @@ fn main() {
         let start = std::time::Instant::now();
 
         for _ in 0..opts.fold {
-            orderer.increment();
+            client.increment();
             task_list = match &executor {
                 Execution::Serial => {
                     automaton::execute(frame as usize, task_list, &client, &router).collect()
@@ -266,11 +265,9 @@ fn main() {
     let mut buffer = std::io::BufWriter::new(file);
     ciborium::ser::into_writer(&state, &mut buffer).unwrap();
 
-    info!("Messages to send: {}", send.len());
-    info!("Messages to be processed: {}", receive.len());
-    drop(send);
+    info!("Messages to send: {}", client.outbound_len());
+    info!("Messages to be processed: {}", client.inbound_len());
     drop(client);
-    drop(receive);
     tcp_host.shutdown();
 }
 

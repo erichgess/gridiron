@@ -36,15 +36,7 @@ pub struct TcpHost {
 }
 
 impl TcpHost {
-    pub fn new(
-        rank: usize,
-        peers: Vec<SocketAddr>,
-    ) -> (
-        Self,
-        Orderer,
-        crossbeam_channel::Sender<(usize, Vec<u8>)>,
-        Receiver,
-    ) {
+    pub fn new(rank: usize, peers: Vec<SocketAddr>) -> (Self, Orderer) {
         let shutdown_signal = Arc::new(AtomicBool::new(false));
 
         let (send_sink, send_src): (Sender, _) = crossbeam_channel::unbounded();
@@ -60,8 +52,8 @@ impl TcpHost {
             Arc::clone(&wg),
         );
 
-        let (orderer, recv_src, outbound_sink) =
-            Orderer::new(rank, peers.len(), 0, recv_src, send_sink.clone());
+        let orderer = Orderer::new(rank, peers.len(), 0, recv_src, send_sink);
+
         (
             TcpHost {
                 shutting_down: shutdown_signal,
@@ -70,8 +62,6 @@ impl TcpHost {
                 receiver_wg: wg,
             },
             orderer,
-            outbound_sink,
-            recv_src,
         )
     }
 
