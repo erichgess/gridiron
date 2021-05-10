@@ -260,7 +260,8 @@ fn main() {
     info!("Time to Compute: {}s", compute_duration.as_secs_f32());
 
     drop(stats_sink);
-    stats::compute_worker_stats(stats_src);
+    let data = stats::compute_worker_stats(stats_src);
+    stats::write_to_file("./durations.csv", &data);
 
     let primitive = task_list
         .into_iter()
@@ -288,12 +289,37 @@ mod stats {
     use crossbeam_channel::Receiver;
 
     use super::*;
-    use std::time::{Duration, Instant};
-    pub fn compute_worker_stats(stats_src: Receiver<(Instant, Instant)>) {
+    use std::{
+        io::Write,
+        time::{Duration, Instant, SystemTime, UNIX_EPOCH},
+    };
+
+    pub fn write_to_file(file: &str, v: &[(SystemTime, SystemTime)]) {
+        let file = std::fs::File::create(file).unwrap();
+        let mut buffer = std::io::BufWriter::new(file);
+
+        writeln!(buffer, "start,stop").unwrap();
+        for (start, stop) in v {
+            writeln!(
+                buffer,
+                "{},{}",
+                (start.duration_since(UNIX_EPOCH).unwrap()).as_micros(),
+                (stop.duration_since(UNIX_EPOCH).unwrap()).as_micros(),
+            )
+            .unwrap();
+        }
+    }
+
+    pub fn compute_worker_stats(
+        stats_src: Receiver<(SystemTime, SystemTime)>,
+    ) -> Vec<(SystemTime, SystemTime)> {
         info!("Worker Measurement Events: {}", stats_src.len());
 
-        let stats: Vec<(Instant, Instant)> = stats_src.iter().collect();
-        let mut durations: Vec<Duration> = stats.iter().map(|(s, e)| *e - *s).collect();
+        let stats: Vec<(SystemTime, SystemTime)> = stats_src.iter().collect();
+        let mut durations: Vec<Duration> = stats
+            .iter()
+            .map(|(s, e)| e.duration_since(*s).unwrap())
+            .collect();
         durations.sort_by(|a, b| a.cmp(b));
 
         let total_time: Duration = durations.iter().sum();
@@ -309,6 +335,8 @@ mod stats {
             let p95_idx = (durations.len() * 95) / 100;
             info!("p95 Duration: {}μs", durations[p95_idx].as_micros());
         }
+
+        stats
     }
 }
 
