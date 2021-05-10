@@ -13,14 +13,14 @@ use std::{
     time::Duration,
 };
 
-use log::{error, info};
+use log::{error, info, warn};
 
 use crate::message::{backoff::Retry, orderer::Envelope};
 
 use super::{backoff::ExponentialBackoff, util};
 
-const CXN_R_TIMEOUT_MS: Duration = Duration::from_millis(5000);
-const CXN_W_TIMEOUT_MS: Duration = Duration::from_millis(5000);
+const CXN_R_TIMEOUT_MS: Option<Duration> = None;
+const CXN_W_TIMEOUT_MS: Option<Duration> = None;
 const RETRY_WAIT_MS: Duration = Duration::from_millis(250);
 const RETRY_MAX_WAIT_MS: Duration = Duration::from_millis(5000);
 
@@ -192,12 +192,12 @@ impl TcpHost {
         receiver_wg: Arc<(Mutex<usize>, Condvar)>,
     ) -> JoinHandle<Result<(), io::Error>> {
         info!("Receiving connection from {}", remote);
-        stream.set_read_timeout(Some(CXN_R_TIMEOUT_MS)).unwrap();
-        stream.set_write_timeout(Some(CXN_W_TIMEOUT_MS)).unwrap();
+        stream.set_read_timeout(CXN_R_TIMEOUT_MS).unwrap();
+        stream.set_write_timeout(CXN_W_TIMEOUT_MS).unwrap();
         info!(
-            "Read timeout {}ms.  Write timeout {}ms",
-            CXN_R_TIMEOUT_MS.as_millis(),
-            CXN_W_TIMEOUT_MS.as_millis()
+            "Read timeout {:?}ms.  Write timeout {:?}ms",
+            CXN_R_TIMEOUT_MS.map(|t| t.as_millis()),
+            CXN_W_TIMEOUT_MS.map(|t| t.as_millis()),
         );
 
         thread::spawn(move || {
@@ -226,7 +226,10 @@ impl TcpHost {
 
                 match status {
                     Ok(()) => (),
-                    Err(e) => break Err(e),
+                    Err(e) => {
+                        warn!("Nothing to read: {}", e);
+                        thread::sleep(Duration::from_millis(500));
+                    }
                 }
 
                 if shutdown_signal.load(Ordering::SeqCst) {
@@ -277,13 +280,13 @@ impl TcpHost {
             )
             .map(|r| r.unwrap())
             .map(|s| {
-                s.set_read_timeout(Some(CXN_R_TIMEOUT_MS)).unwrap();
-                s.set_write_timeout(Some(CXN_W_TIMEOUT_MS)).unwrap();
+                s.set_read_timeout(CXN_R_TIMEOUT_MS).unwrap();
+                s.set_write_timeout(CXN_W_TIMEOUT_MS).unwrap();
                 info!(
-                    "Connected to {} with: Read timeout {}ms.  Write timeout {}ms",
+                    "Connected to {} with: Read timeout {:?}ms.  Write timeout {:?}ms",
                     addr,
-                    CXN_R_TIMEOUT_MS.as_millis(),
-                    CXN_W_TIMEOUT_MS.as_millis()
+                    CXN_R_TIMEOUT_MS.map(|t| t.as_millis()),
+                    CXN_W_TIMEOUT_MS.map(|t| t.as_millis()),
                 );
                 s
             })

@@ -1,7 +1,7 @@
 use core::hash::Hash;
 use std::collections::hash_map::{Entry, HashMap};
 
-use log::{debug, error};
+use log::{debug, error, info};
 use serde::{de::DeserializeOwned, Serialize};
 
 use crate::message::comm::Communicator;
@@ -217,8 +217,9 @@ fn coordinate<'a, I, A, K, V, S, C>(
 {
     let mut seen: HashMap<K, A> = HashMap::new();
     let mut undelivered = HashMap::new();
-    let mut num_sent = 0;
 
+    debug!("[{}]({}) Handle Local Messages", client.rank(), iteration);
+    let mut num_sent: HashMap<usize, usize> = HashMap::new();
     for mut a in flow {
         // For each of A's messages, either deliver it to the recipient peer,
         // if the peer has already been seen, or otherwise put it in the
@@ -249,7 +250,7 @@ fn coordinate<'a, I, A, K, V, S, C>(
                     }
                 }
             } else {
-                num_sent += 1;
+                *num_sent.entry(dest_rank).or_insert(0) += 1;
                 match serialize_msg(dest, client.rank(), iteration, &data) {
                     Ok(bytes) => client.send(dest_rank, bytes),
                     Err(err) => panic!("Failed to serialize message: {}", err),
@@ -274,6 +275,7 @@ fn coordinate<'a, I, A, K, V, S, C>(
         }
     }
 
+    debug!("[{}]({}) Handle Remote Messages", client.rank(), iteration);
     let mut num_received: HashMap<(usize, usize), usize> = HashMap::new();
     while !seen.is_empty() {
         let bytes = client.recv();
@@ -294,8 +296,13 @@ fn coordinate<'a, I, A, K, V, S, C>(
         }
     }
 
-    debug!("Sent: {}", num_sent);
-    debug!("Received: {:?}", num_received);
+    debug!("[{}]({}) Sent: {:?}", client.rank(), iteration, num_sent);
+    debug!(
+        "[{}]({}) Received: {:?}",
+        client.rank(),
+        iteration,
+        num_received
+    );
 
     // Have two loops: process local then process remote (where I read from the channel)
     if seen.len() > 0 {

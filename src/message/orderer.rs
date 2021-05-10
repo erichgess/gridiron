@@ -47,9 +47,9 @@ impl OrderedCommunicator {
             let aic = ordered_inbound_sink.clone();
             let c_iter = Arc::clone(&cur_iteration);
             let buffer = Arc::clone(&buffer);
-
             std::thread::spawn(move || {
                 for env in inbound_recv {
+                    let mut buffer = buffer.lock().unwrap();
                     let c_iter = c_iter.load(Ordering::SeqCst);
                     if env.iteration < c_iter {
                         error!("Received message with iteration number that precedes current iteration number");
@@ -61,12 +61,7 @@ impl OrderedCommunicator {
                             "Message received for a future iteration ({}), bufferering",
                             env.iteration
                         );
-                        buffer
-                            .lock()
-                            .unwrap()
-                            .entry(env.iteration)
-                            .or_insert(vec![])
-                            .push(env.data)
+                        buffer.entry(env.iteration).or_insert(vec![]).push(env.data)
                     }
                 }
                 info!("Inbound Receiver shutting down")
@@ -86,10 +81,11 @@ impl OrderedCommunicator {
     }
 
     pub fn increment(&mut self) {
+        let mut buffer = self.buffer.lock().unwrap();
         self.cur_iteration.fetch_add(1, Ordering::SeqCst);
         let i = self.cur_iteration.load(Ordering::SeqCst);
+        //info!("[{}] Clock Incremented to {}", self.rank, i);
 
-        let mut buffer = self.buffer.lock().unwrap();
         match buffer.get_mut(&self.cur_iteration.load(Ordering::SeqCst)) {
             Some(msgs) => {
                 debug!(
