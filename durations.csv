@@ -1,4 +1,7 @@
 <<<<<<< HEAD
+<<<<<<< HEAD
+=======
+>>>>>>> 8ab1ea1... Put the rank in the perf output csv file and store the file in the targets directory
 start,stop
 1620648893570250,1620648893571595
 1620648893571511,1620648893572830
@@ -50000,6 +50003,7 @@ start,stop
 1620648925794044,1620648925795086
 1620648925794662,1620648925795712
 1620648925795087,1620648925796135
+<<<<<<< HEAD
 =======
 duration
 1475
@@ -100003,3 +100007,5 @@ duration
 1138
 1105
 >>>>>>> 56d58df... Change timer to use SystemTime because this will let me print out the UnixTime for start and stop rather than just the duration.
+=======
+>>>>>>> 8ab1ea1... Put the rank in the perf output csv file and store the file in the targets directory
