@@ -261,7 +261,7 @@ fn main() {
 
     drop(stats_sink);
     let data = stats::compute_worker_stats(stats_src);
-    stats::write_to_file("./durations.csv", &data);
+    stats::write_to_file(&format!("./target/durations-rank-{}.csv", opts.rank), &data);
 
     let primitive = task_list
         .into_iter()
@@ -293,7 +293,7 @@ mod stats {
     use super::*;
     use std::{
         io::Write,
-        time::{Duration, Instant, SystemTime, UNIX_EPOCH},
+        time::{Duration, SystemTime, UNIX_EPOCH},
     };
 
     pub fn write_to_file(file: &str, v: &[(SystemTime, SystemTime)]) {
