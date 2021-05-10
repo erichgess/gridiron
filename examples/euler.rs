@@ -4,11 +4,11 @@ use clap::{AppSettings, Clap};
 use log::{info, LevelFilter};
 use simple_logger::SimpleLogger;
 
-use gridiron::automaton;
 use gridiron::hydro::euler2d::Primitive;
 use gridiron::index_space::range2d;
 use gridiron::rect_map::RectangleMap;
 use gridiron::solvers::euler2d_pcm::{Mesh, PatchUpdate};
+use gridiron::{automaton, message::orderer::OrderedCommunicator};
 use gridiron::{meshing::GraphTopology, rect_map::Rectangle};
 use gridiron::{message::tcp::TcpHost, patch::Patch};
 
@@ -158,7 +158,8 @@ fn main() {
         .collect();
 
     // TODO: Connect to peer which will have the second half of the grid
-    let (tcp_host, mut client) = TcpHost::new(opts.rank, peers.clone());
+    let (tcp_host, recv_src, send_sink) = TcpHost::new(opts.rank, peers.clone());
+    let mut client = OrderedCommunicator::new(opts.rank, peers.len(), 0, recv_src, send_sink);
 
     println!("num blocks .... {}", primitive.len());
     println!("num threads ... {}", opts.num_threads);

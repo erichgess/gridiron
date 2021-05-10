@@ -17,7 +17,7 @@ use log::{error, info};
 
 use crate::message::{backoff::Retry, orderer::Envelope};
 
-use super::{backoff::ExponentialBackoff, orderer::OrderedCommunicator, util};
+use super::{backoff::ExponentialBackoff, util};
 
 const CXN_R_TIMEOUT_MS: Duration = Duration::from_millis(5000);
 const CXN_W_TIMEOUT_MS: Duration = Duration::from_millis(5000);
@@ -35,7 +35,14 @@ pub struct TcpHost {
 }
 
 impl TcpHost {
-    pub fn new(rank: usize, peers: Vec<SocketAddr>) -> (Self, OrderedCommunicator) {
+    pub fn new(
+        rank: usize,
+        peers: Vec<SocketAddr>,
+    ) -> (
+        TcpHost,
+        crossbeam_channel::Receiver<Envelope>,
+        crossbeam_channel::Sender<(usize, usize, Vec<u8>)>,
+    ) {
         let shutdown_signal = Arc::new(AtomicBool::new(false));
 
         let (send_sink, send_src): (Sender, _) = crossbeam_channel::unbounded();
@@ -51,8 +58,6 @@ impl TcpHost {
             Arc::clone(&wg),
         );
 
-        let orderer = OrderedCommunicator::new(rank, peers.len(), 0, recv_src, send_sink);
-
         (
             TcpHost {
                 shutting_down: shutdown_signal,
@@ -60,7 +65,8 @@ impl TcpHost {
                 _listen_thread: Some(listen_thread),
                 receiver_wg: wg,
             },
-            orderer,
+            recv_src,
+            send_sink,
         )
     }
 
