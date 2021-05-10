@@ -1,7 +1,7 @@
 use core::hash::Hash;
 use std::{
     collections::hash_map::{Entry, HashMap},
-    time::{Instant, SystemTime},
+    time::SystemTime,
 };
 
 use log::{debug, error};
