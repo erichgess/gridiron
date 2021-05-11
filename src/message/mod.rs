@@ -7,6 +7,6 @@
 
 mod backoff;
 pub mod comm;
-pub mod orderer;
+pub mod ordered;
 pub mod tcp;
 pub mod util;

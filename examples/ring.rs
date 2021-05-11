@@ -1,4 +1,4 @@
-use gridiron::message::{comm::Communicator, orderer::OrderedCommunicator, tcp::TcpHost};
+use gridiron::message::{comm::Communicator, ordered::OrderedCommunicator, tcp::TcpHost};
 use std::net::{IpAddr, Ipv4Addr, SocketAddr};
 use std::ops::Range;
 use std::thread;

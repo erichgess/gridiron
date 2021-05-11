@@ -15,7 +15,7 @@ use std::{
 
 use log::{error, info};
 
-use crate::message::{backoff::Retry, orderer::Envelope};
+use crate::message::{backoff::Retry, ordered::Envelope};
 
 use super::{backoff::ExponentialBackoff, util};
 
