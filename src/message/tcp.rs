@@ -13,7 +13,7 @@ use std::{
     time::Duration,
 };
 
-use log::{error, info, warn};
+use log::{error, info};
 
 use crate::message::{backoff::Retry, orderer::Envelope};
 
@@ -226,10 +226,7 @@ impl TcpHost {
 
                 match status {
                     Ok(()) => (),
-                    Err(e) => {
-                        warn!("Nothing to read: {}", e);
-                        thread::sleep(Duration::from_millis(500));
-                    }
+                    Err(e) => break Err(e),
                 }
 
                 if shutdown_signal.load(Ordering::SeqCst) {

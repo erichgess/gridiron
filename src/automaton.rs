@@ -1,7 +1,7 @@
 use core::hash::Hash;
 use std::collections::hash_map::{Entry, HashMap};
 
-use log::{debug, error, info};
+use log::{debug, error};
 use serde::{de::DeserializeOwned, Serialize};
 
 use crate::message::comm::Communicator;
