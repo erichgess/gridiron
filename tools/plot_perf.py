@@ -61,15 +61,29 @@ def read_results(file):
         csv_reader = csv.DictReader(csv_file, delimiter=',')
         line_count = 0
         for row in csv_reader:
-            results.append((int(row['start']), int(row['stop'])))
+            results.append((int(row['id']), int(
+                row['start']), int(row['stop'])))
             line_count += 1
 
     return results
 
 
+def extract_ids(results):
+    ids = [id for (id, _, _) in results]
+    return list(set(ids))
+
+
 def extract_duration(results):
-    x = [start for (start, _) in results]
-    y = [(stop - start) for (start, stop) in results]
+    x = [start for (_, start, _) in results]
+    y = [(stop - start) for (_, start, stop) in results]
+    return x, y
+
+
+def extract_id_duration(id, results):
+    nth = 1
+    id_results = [(i, s, e) for (i, s, e) in results if i == id]
+    x = [start for (i, start, _) in id_results[::nth] if i == id]
+    y = [(stop - start) for (i, start, stop) in id_results[::nth] if i == id]
     return x, y
 
 
@@ -88,13 +102,17 @@ plt.suptitle('CPU:{}\nMemory: {}'.format(
 cols = min(3, len(files))
 rows = len(files) // cols + min(1, len(files) % cols)
 
+
 subplot = 1
 for f in files:
     plt.subplot(rows, cols, subplot)
     subplot += 1
+
     results = read_results(f)
+    ids = extract_ids(results)
+
     x, y = extract_duration(results)
-    plt.plot(x, y, '.', mfc='none')
+    plt.plot(x, y, 'o', mfc='none')
 
 plt.legend()
 plt.show()

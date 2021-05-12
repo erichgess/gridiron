@@ -1,6 +1,7 @@
 use core::hash::Hash;
 use std::{
-    collections::hash_map::{Entry, HashMap},
+    collections::hash_map::{DefaultHasher, Entry, HashMap},
+    hash::Hasher,
     time::SystemTime,
 };
 
@@ -156,9 +157,12 @@ where
             let stats = stats.clone();
             scope.spawn_fifo(move |_| {
                 let start = SystemTime::now();
+                let mut hasher = DefaultHasher::new();
+                a.key().hash(&mut hasher);
+                let key = hasher.finish();
                 sink.send(a.value()).unwrap();
                 let stop = SystemTime::now();
-                stats.send(MetricEvent::Work(start, stop)).unwrap();
+                stats.send(MetricEvent::Work(key, start, stop)).unwrap();
             })
         },
         client,

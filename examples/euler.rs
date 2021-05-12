@@ -299,14 +299,15 @@ mod stats {
         let file = std::fs::File::create(file).unwrap();
         let mut buffer = std::io::BufWriter::new(file);
 
-        writeln!(buffer, "start,stop").unwrap();
-        for (start, stop) in v.iter().filter_map(|e| match e {
-            MetricEvent::Work(s, d) => Some((s, d)),
+        writeln!(buffer, "id,start,stop").unwrap();
+        for (id, start, stop) in v.iter().filter_map(|e| match e {
+            MetricEvent::Work(id, s, d) => Some((id, s, d)),
             _ => None,
         }) {
             writeln!(
                 buffer,
-                "{},{}",
+                "{},{},{}",
+                id,
                 (start.duration_since(UNIX_EPOCH).unwrap()).as_micros(),
                 (stop.duration_since(UNIX_EPOCH).unwrap()).as_micros(),
             )
@@ -321,7 +322,7 @@ mod stats {
         let mut durations: Vec<Duration> = stats
             .iter()
             .filter_map(|e| match e {
-                MetricEvent::Work(s, d) => Some((s, d)),
+                MetricEvent::Work(_, s, d) => Some((s, d)),
                 _ => None,
             })
             .map(|(s, e)| e.duration_since(*s).unwrap())
