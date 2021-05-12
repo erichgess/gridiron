@@ -155,9 +155,9 @@ where
             let sink = sink.clone();
             let stats = stats.clone();
             scope.spawn_fifo(move |_| {
-                let start = std::time::SystemTime::now();
+                let start = SystemTime::now();
                 sink.send(a.value()).unwrap();
-                let stop = std::time::SystemTime::now();
+                let stop = SystemTime::now();
                 stats.send(MetricEvent::Work(start, stop)).unwrap();
             })
         },
