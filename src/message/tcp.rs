@@ -123,7 +123,9 @@ impl TcpHost {
                             || {
                                 cxn.write_all(&msg_sz.to_le_bytes())
                                     .and_then(|()| cxn.write_all(&message))
-                                /*.and_then(|()| Self::read_ack(cxn))
+                                /*
+                                The Ack mechanism was killing Linux performance.  Commented this out for now.
+                                .and_then(|()| Self::read_ack(cxn))
                                 .and_then(|ack|
                                     match ack {
                                         Ack::Accept(bytes_read) if bytes_read == msg_sz => Ok(()),
