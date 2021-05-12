@@ -123,16 +123,6 @@ impl TcpHost {
                             || {
                                 cxn.write_all(&msg_sz.to_le_bytes())
                                     .and_then(|()| cxn.write_all(&message))
-                                /*
-                                The Ack mechanism was killing Linux performance.  Commented this out for now.
-                                .and_then(|()| Self::read_ack(cxn))
-                                .and_then(|ack|
-                                    match ack {
-                                        Ack::Accept(bytes_read) if bytes_read == msg_sz => Ok(()),
-                                        Ack::Accept(bytes_read) =>
-                                        panic!("Bytes read by receiver did not match bytes sent by this node.  Sent {} bytes but receiver Acked {} bytes", msg_sz, bytes_read),
-                                    }
-                                )*/
                             },
                             |e, d| {
                                 error!("Send failed: {}", e);
@@ -226,7 +216,6 @@ impl TcpHost {
                                     .map_err(|msg| io::Error::new(io::ErrorKind::Other, msg))
                             })
                     })
-                    //.and_then(|size| Self::write_ack(&mut stream, Ack::Accept(size)))
                     // TODO: if a reading error happens then send back a Failure message to the sender
                     .map_err(|e| {
                         io::Error::new(
@@ -259,16 +248,6 @@ impl TcpHost {
 
             status
         })
-    }
-
-    #[allow(dead_code)]
-    fn write_ack(stream: &mut TcpStream, ack: Ack) -> Result<(), io::Error> {
-        rmp_serde::encode::write(stream, &ack).map_err(|e| io::Error::new(io::ErrorKind::Other, e))
-    }
-
-    #[allow(dead_code)]
-    fn read_ack(stream: &mut TcpStream) -> Result<Ack, io::Error> {
-        rmp_serde::decode::from_read(stream).map_err(|e| io::Error::new(io::ErrorKind::Other, e))
     }
 
     fn connect_with_retry(
