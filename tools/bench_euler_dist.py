@@ -44,10 +44,10 @@ def run_test(num_peers, num_threads):
 
 
 test = {
-    1: range(2, 25),
-    2: range(2, 9),
-    3: range(2, 9),
-    4: range(2, 9),
+    1: range(2, 9),
+    2: range(2, 5),
+    3: range(2, 5),
+    4: range(2, 5),
 }
 
 times = []
