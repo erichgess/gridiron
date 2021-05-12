@@ -216,15 +216,21 @@ fn main() {
         for _ in 0..opts.fold {
             client.increment();
             task_list = match &executor {
-                Execution::Serial => {
-                    automaton::execute(frame as usize, task_list, &client, &router).collect()
-                }
+                Execution::Serial => automaton::execute(
+                    frame as usize,
+                    task_list,
+                    &client,
+                    &router,
+                    stats_sink.clone(),
+                )
+                .collect(),
                 Execution::Stupid(pool) => automaton::execute_par_stupid(
                     &pool,
                     frame as usize,
                     task_list,
                     &client,
                     &router,
+                    stats_sink.clone(),
                 )
                 .collect(),
                 Execution::Rayon(pool) => pool
@@ -299,19 +305,26 @@ mod stats {
         let file = std::fs::File::create(file).unwrap();
         let mut buffer = std::io::BufWriter::new(file);
 
-        writeln!(buffer, "id,start,stop").unwrap();
-        for (id, start, stop) in v.iter().filter_map(|e| match e {
-            MetricEvent::Work(id, s, d) => Some((id, s, d)),
-            _ => None,
-        }) {
-            writeln!(
-                buffer,
-                "{},{},{}",
-                id,
-                (start.duration_since(UNIX_EPOCH).unwrap()).as_micros(),
-                (stop.duration_since(UNIX_EPOCH).unwrap()).as_micros(),
-            )
-            .unwrap();
+        writeln!(buffer, "event,id,start,stop").unwrap();
+        for event in v.iter() {
+            match event {
+                MetricEvent::Work(id, start, stop) => writeln!(
+                    buffer,
+                    "work,{},{},{}",
+                    id,
+                    (start.duration_since(UNIX_EPOCH).unwrap()).as_micros(),
+                    (stop.duration_since(UNIX_EPOCH).unwrap()).as_micros(),
+                )
+                .unwrap(),
+                MetricEvent::Network(start, stop) => writeln!(
+                    buffer,
+                    "network,0,{},{}",
+                    (start.duration_since(UNIX_EPOCH).unwrap()).as_micros(),
+                    (stop.duration_since(UNIX_EPOCH).unwrap()).as_micros(),
+                )
+                .unwrap(),
+                _ => (),
+            }
         }
     }
 

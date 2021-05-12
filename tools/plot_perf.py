@@ -61,11 +61,25 @@ def read_results(file):
         csv_reader = csv.DictReader(csv_file, delimiter=',')
         line_count = 0
         for row in csv_reader:
-            results.append((int(row['id']), int(
+            results.append((row['event'], int(row['id']), int(
                 row['start']), int(row['stop'])))
             line_count += 1
 
     return results
+
+
+def extract_results_by_event(event, results):
+    work = [(id, start, stop)
+            for (ty, id, start, stop) in results if ty == event]
+    return work
+
+
+def extract_work_results(results):
+    return extract_results_by_event('work', results)
+
+
+def extract_network_results(results):
+    return extract_results_by_event('network', results)
 
 
 def extract_ids(results):
@@ -87,6 +101,13 @@ def extract_id_duration(id, results):
     return x, y
 
 
+def extract_network(results):
+    x = []
+    for (_, start, stop) in results:
+        x.append([[start, stop], [0, 0]])
+    return x
+
+
 # parse CLI arguments
 args = parse_args()
 
@@ -94,11 +115,10 @@ args = parse_args()
 files = args['input']
 
 sys_info = get_sys_info()
-plt.suptitle('CPU:{}\nMemory: {}'.format(
-    sys_info['cpu']['name'], sys_info['total_memory']))
+plt.suptitle('Microseconds/Patch Above Waiting For Remotes')
 
 # configure the chart layout to have at most 3 columns
-cols = min(3, len(files))
+cols = min(1, len(files))
 rows = len(files) // cols + min(1, len(files) % cols)
 
 subplot = 1
@@ -107,10 +127,15 @@ for f in files:
     subplot += 1
 
     results = read_results(f)
-    ids = extract_ids(results)
+    work = extract_work_results(results)
+    network = extract_network_results(results)
 
-    x, y = extract_duration(results)
+    x, y = extract_duration(work)
     plt.plot(x, y, 'o', mfc='none')
+
+    x = extract_network(network)
+    for idx in range(0, len(x)):
+        plt.plot(x[idx][0], x[idx][1], '-^', mfc='none')
 
 plt.legend()
 plt.show()

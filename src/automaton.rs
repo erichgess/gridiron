@@ -98,6 +98,7 @@ pub fn execute<I, A, K, V, C>(
     stage: I,
     client: &C,
     router: &HashMap<K, usize>,
+    stats: crossbeam_channel::Sender<MetricEvent>,
 ) -> impl Iterator<Item = V>
 where
     I: IntoIterator<Item = A>,
@@ -114,6 +115,7 @@ where
         |a: A| eligible_sink.send(a).unwrap(),
         client,
         router,
+        stats,
     );
 
     eligible_source.into_iter().map(|peer: A| peer.value())
@@ -167,6 +169,7 @@ where
         },
         client,
         router,
+        stats.clone(),
     );
     source.into_iter()
 }
@@ -179,6 +182,7 @@ pub fn execute_par_stupid<I, A, K, V, C>(
     flow: I,
     client: &C,
     router: &HashMap<K, usize>,
+    stats: crossbeam_channel::Sender<MetricEvent>,
 ) -> impl Iterator<Item = V>
 where
     I: IntoIterator<Item = A>,
@@ -206,6 +210,7 @@ where
         },
         client,
         router,
+        stats.clone(),
     );
     source.into_iter()
 }
@@ -219,6 +224,7 @@ fn coordinate<'a, I, A, K, V, S, C>(
     sink: S,
     client: &C,
     router: &HashMap<K, usize>,
+    stats: crossbeam_channel::Sender<MetricEvent>,
 ) where
     I: IntoIterator<Item = A>,
     A: Automaton<Key = K, Value = V>,
@@ -289,6 +295,7 @@ fn coordinate<'a, I, A, K, V, S, C>(
 
     debug!("[{}]({}) Handle Remote Messages", client.rank(), iteration);
     let mut num_received: HashMap<(usize, usize), usize> = HashMap::new();
+    let start = SystemTime::now();
     while !seen.is_empty() {
         let bytes = client.recv();
         let (dest, src_rank, msg_iteration, data) =
@@ -307,6 +314,8 @@ fn coordinate<'a, I, A, K, V, S, C>(
             }
         }
     }
+    let end = SystemTime::now();
+    stats.send(MetricEvent::Network(start, end)).unwrap();
 
     debug!("[{}]({}) Sent: {:?}", client.rank(), iteration, num_sent);
     debug!(
