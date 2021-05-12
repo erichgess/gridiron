@@ -13,6 +13,7 @@ def parse_args():
     parser.add_argument('-p', '--peers', default="1", required=True)
     parser.add_argument('-f', '--folds', default="1")
     parser.add_argument('-t', '--threads', default="1")
+    parser.add_argument('-b', '--block_size', default="100")
     parser.add_argument('--tfinal', default="0.1")
     parser.add_argument('--gui', default=False, action='store_true')
     args = parser.parse_args()
@@ -20,6 +21,7 @@ def parse_args():
         'peers': int(args.peers),
         'folds': int(args.folds),
         'threads': int(args.threads),
+        'block_size': int(args.block_size),
         'tfinal': float(args.tfinal),
         'gui': args.gui,
     }
@@ -75,7 +77,7 @@ peers = ["127.0.0.1:{}".format(8000 + i) for i in range(0, args['peers'])]
 print(peers)
 
 cmds = [
-    euler_cmd(args['threads'], 1000, 100, args['folds'],
+    euler_cmd(args['threads'], 1000, args['block_size'], args['folds'],
               args['tfinal'], peers, rank)
     for rank in range(0, args['peers'])
 ]
