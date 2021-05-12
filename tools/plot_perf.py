@@ -93,7 +93,6 @@ args = parse_args()
 # Load CSV test results
 files = args['input']
 
-
 sys_info = get_sys_info()
 plt.suptitle('CPU:{}\nMemory: {}'.format(
     sys_info['cpu']['name'], sys_info['total_memory']))
@@ -101,7 +100,6 @@ plt.suptitle('CPU:{}\nMemory: {}'.format(
 # configure the chart layout to have at most 3 columns
 cols = min(3, len(files))
 rows = len(files) // cols + min(1, len(files) % cols)
-
 
 subplot = 1
 for f in files:

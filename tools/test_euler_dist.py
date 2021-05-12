@@ -13,12 +13,14 @@ def parse_args():
     parser.add_argument('-p', '--peers', default="1", required=True)
     parser.add_argument('-f', '--folds', default="1")
     parser.add_argument('-t', '--threads', default="1")
+    parser.add_argument('--tfinal', default="0.1")
     parser.add_argument('--gui', default=False, action='store_true')
     args = parser.parse_args()
     return {
         'peers': int(args.peers),
         'folds': int(args.folds),
         'threads': int(args.threads),
+        'tfinal': float(args.tfinal),
         'gui': args.gui,
     }
 
@@ -44,7 +46,7 @@ def show_chart():
     run_cmd(cmd).wait()
 
 
-def euler_cmd(t, n, b, folds, peers, rank):
+def euler_cmd(t, n, b, folds, tfinal, peers, rank):
     return [
         "cargo", "run", "--release", "--example",
         "euler", "--",
@@ -52,6 +54,7 @@ def euler_cmd(t, n, b, folds, peers, rank):
         "-n", str(n),
         "-b", str(b),
         "-f", str(folds),
+        "--tfinal", str(tfinal),
         "--strategy", "rayon",
         "--peers", str.join(" ", peers),
         "--rank", str(rank), ]
@@ -72,7 +75,8 @@ peers = ["127.0.0.1:{}".format(8000 + i) for i in range(0, args['peers'])]
 print(peers)
 
 cmds = [
-    euler_cmd(args['threads'], 1000, 100, args['folds'], peers, rank)
+    euler_cmd(args['threads'], 1000, 100, args['folds'],
+              args['tfinal'], peers, rank)
     for rank in range(0, args['peers'])
 ]
 
