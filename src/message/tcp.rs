@@ -116,36 +116,45 @@ impl TcpHost {
                 let msg_sz = message.len();
 
                 // TODO: This is getting better.  Next step is to use the connection state to determine whether to delay and resend or to reconnect
-                while let Some(Err(e)) = ExponentialBackoff::new(RETRY_WAIT_MS, RETRY_MAX_WAIT_MS, 2).take(3).retry(|| {
-                        cxn
-                            .write_all(&msg_sz.to_le_bytes())
-                            .and_then(|()| cxn.write_all(&message))
-                            .and_then(|()| Self::read_ack(cxn))
-                            .and_then(|ack|
-                                match ack {
-                                    Ack::Accept(bytes_read) if bytes_read == msg_sz => Ok(()),
-                                    Ack::Accept(bytes_read) =>
-                                    panic!("Bytes read by receiver did not match bytes sent by this node.  Sent {} bytes but receiver Acked {} bytes", msg_sz, bytes_read),
-                                }
-                            )
-                },
-                |e, d| {
-                    error!("Send failed: {}", e);
-                    info!("Retrying in {}ms", d.as_millis());
-                    thread::sleep(d);
-                },
-            ) {
+                while let Some(Err(e)) =
+                    ExponentialBackoff::new(RETRY_WAIT_MS, RETRY_MAX_WAIT_MS, 2)
+                        .take(3)
+                        .retry(
+                            || {
+                                cxn.write_all(&msg_sz.to_le_bytes())
+                                    .and_then(|()| cxn.write_all(&message))
+                                /*.and_then(|()| Self::read_ack(cxn))
+                                .and_then(|ack|
+                                    match ack {
+                                        Ack::Accept(bytes_read) if bytes_read == msg_sz => Ok(()),
+                                        Ack::Accept(bytes_read) =>
+                                        panic!("Bytes read by receiver did not match bytes sent by this node.  Sent {} bytes but receiver Acked {} bytes", msg_sz, bytes_read),
+                                    }
+                                )*/
+                            },
+                            |e, d| {
+                                error!("Send failed: {}", e);
+                                info!("Retrying in {}ms", d.as_millis());
+                                thread::sleep(d);
+                            },
+                        )
+                {
                     error!("Failed to send message to {}: {}", peers[rank], e);
                     if shutdown_signal.load(Ordering::SeqCst) {
                         // Note: if there are a lot of outgoing messages and all peers are down, then this could take awhile
                         info!("Shutdown signal received, will drop this message");
-                        info!("There are {} messages remaining in the channel", &send_src.len());
+                        info!(
+                            "There are {} messages remaining in the channel",
+                            &send_src.len()
+                        );
                         break;
                     } else {
                         info!("Reconnecting to {}", peers[rank]);
-                        *cxn = Self::connect_with_retry(peers[rank], RETRY_WAIT_MS, RETRY_MAX_WAIT_MS).unwrap();
+                        *cxn =
+                            Self::connect_with_retry(peers[rank], RETRY_WAIT_MS, RETRY_MAX_WAIT_MS)
+                                .unwrap();
                     }
-                };
+                }
             }
 
             info!("Stopped Sending Messages");
@@ -215,7 +224,7 @@ impl TcpHost {
                                     .map_err(|msg| io::Error::new(io::ErrorKind::Other, msg))
                             })
                     })
-                    .and_then(|size| Self::write_ack(&mut stream, Ack::Accept(size)))
+                    //.and_then(|size| Self::write_ack(&mut stream, Ack::Accept(size)))
                     // TODO: if a reading error happens then send back a Failure message to the sender
                     .map_err(|e| {
                         io::Error::new(
@@ -225,7 +234,7 @@ impl TcpHost {
                     });
 
                 match status {
-                    Ok(()) => (),
+                    Ok(_) => (),
                     Err(e) => break Err(e),
                 }
 
