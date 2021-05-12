@@ -261,10 +261,12 @@ impl TcpHost {
         })
     }
 
+    #[allow(dead_code)]
     fn write_ack(stream: &mut TcpStream, ack: Ack) -> Result<(), io::Error> {
         rmp_serde::encode::write(stream, &ack).map_err(|e| io::Error::new(io::ErrorKind::Other, e))
     }
 
+    #[allow(dead_code)]
     fn read_ack(stream: &mut TcpStream) -> Result<Ack, io::Error> {
         rmp_serde::decode::from_read(stream).map_err(|e| io::Error::new(io::ErrorKind::Other, e))
     }
