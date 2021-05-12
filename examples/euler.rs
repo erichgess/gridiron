@@ -287,6 +287,7 @@ fn main() {
 
 mod stats {
     use crossbeam_channel::Receiver;
+    use gridiron::stats::MetricEvent;
 
     use super::*;
     use std::{
@@ -294,12 +295,15 @@ mod stats {
         time::{Duration, SystemTime, UNIX_EPOCH},
     };
 
-    pub fn write_to_file(file: &str, v: &[(SystemTime, SystemTime)]) {
+    pub fn write_to_file(file: &str, v: &[MetricEvent]) {
         let file = std::fs::File::create(file).unwrap();
         let mut buffer = std::io::BufWriter::new(file);
 
         writeln!(buffer, "start,stop").unwrap();
-        for (start, stop) in v {
+        for (start, stop) in v.iter().filter_map(|e| match e {
+            MetricEvent::Work(s, d) => Some((s, d)),
+            _ => None,
+        }) {
             writeln!(
                 buffer,
                 "{},{}",
@@ -310,14 +314,16 @@ mod stats {
         }
     }
 
-    pub fn compute_worker_stats(
-        stats_src: Receiver<(SystemTime, SystemTime)>,
-    ) -> Vec<(SystemTime, SystemTime)> {
+    pub fn compute_worker_stats(stats_src: Receiver<MetricEvent>) -> Vec<MetricEvent> {
         info!("Worker Measurement Events: {}", stats_src.len());
 
-        let stats: Vec<(SystemTime, SystemTime)> = stats_src.iter().collect();
+        let stats: Vec<MetricEvent> = stats_src.iter().collect();
         let mut durations: Vec<Duration> = stats
             .iter()
+            .filter_map(|e| match e {
+                MetricEvent::Work(s, d) => Some((s, d)),
+                _ => None,
+            })
             .map(|(s, e)| e.duration_since(*s).unwrap())
             .collect();
         durations.sort_by(|a, b| a.cmp(b));

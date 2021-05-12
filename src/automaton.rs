@@ -7,7 +7,7 @@ use std::{
 use log::{debug, error};
 use serde::{de::DeserializeOwned, Serialize};
 
-use crate::message::comm::Communicator;
+use crate::{message::comm::Communicator, stats::MetricEvent};
 
 /// Returned by [`Automaton::receive`] to indicate whether a task is eligible
 /// to be evaluated.
@@ -131,7 +131,7 @@ pub fn execute_par<'a, I, A, K, V, C>(
     flow: I,
     client: &C,
     router: &HashMap<K, usize>,
-    stats: crossbeam_channel::Sender<(SystemTime, SystemTime)>,
+    stats: crossbeam_channel::Sender<MetricEvent>,
 ) -> impl Iterator<Item = V>
 where
     I: IntoIterator<Item = A>,
@@ -158,7 +158,7 @@ where
                 let start = std::time::SystemTime::now();
                 sink.send(a.value()).unwrap();
                 let stop = std::time::SystemTime::now();
-                stats.send((start, stop)).unwrap();
+                stats.send(MetricEvent::Work(start, stop)).unwrap();
             })
         },
         client,

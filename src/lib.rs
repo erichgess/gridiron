@@ -60,4 +60,5 @@ pub mod overlap;
 pub mod patch;
 pub mod rect_map;
 pub mod solvers;
+pub mod stats;
 pub mod thread_pool;
